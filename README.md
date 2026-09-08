@@ -75,16 +75,16 @@ Inicia el servidor:
 npm run dev
 ```
 
-### 3. Frontend - React
+### 3. Frontend - React (Vite)
 
 En otra terminal:
 ```bash
 cd frontend
 npm install
-npm start
+npm run dev
 ```
 
-Abre http://localhost:3000
+Abre http://localhost:5173
 
 ---
 
@@ -129,7 +129,11 @@ DB_NAME=teno_erp_dev
 DB_USER=postgres
 DB_PASSWORD=tu_contraseña
 JWT_SECRET=clave_secreta_aqui
-REACT_APP_API_URL=http://localhost:3000/api
+```
+
+Frontend (`frontend/.env`, ver `.env.example`):
+```env
+VITE_API_URL=http://localhost:3000
 ```
 
 ---

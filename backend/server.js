@@ -13,6 +13,7 @@ const labelsRoutes = require('./routes/labels');
 const dashboardRoutes = require('./routes/dashboard');
 const preferencesRoutes = require('./routes/preferences');
 const productsRoutes = require('./routes/products');
+const posRoutes = require('./routes/pos');
 
 // Crear aplicación
 const app = express();
@@ -36,6 +37,7 @@ app.use('/api/labels', labelsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/preferences', preferencesRoutes);
 app.use('/api/products', productsRoutes);
+app.use('/api/pos', posRoutes);
 
 // ============================================
 // RUTAS DE PRUEBA
@@ -54,7 +56,8 @@ app.get('/', (req, res) => {
       labels: '/api/labels',
       dashboard: '/api/dashboard',
       preferences: '/api/preferences',
-      products: '/api/products'
+      products: '/api/products',
+      pos: '/api/pos/sale'
     }
   });
 });

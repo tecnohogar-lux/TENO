@@ -26,9 +26,13 @@ router.post('/login', async (req, res) => {
 
     const user = result.rows[0];
 
-    // Verificar contraseña (por ahora comparamos directamente, después usaremos bcrypt)
-    if (password !== '123456') {
+    const validPassword = await bcryptjs.compare(password, user.password);
+    if (!validPassword) {
       return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
+    }
+
+    if (!user.is_active) {
+      return res.status(403).json({ error: 'Tu cuenta está desactivada' });
     }
 
     // Crear token JWT

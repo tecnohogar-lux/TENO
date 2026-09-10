@@ -24,7 +24,7 @@ const useAuthStore = create((set) => ({
       localStorage.setItem('teno_token', data.token);
       localStorage.setItem('teno_user', JSON.stringify(data.user));
       set({ user: data.user, token: data.token, isAuthenticated: true, loading: false });
-      return { success: true };
+      return { success: true, user: data.user };
     } catch (err) {
       const message = err.response?.data?.error || 'Error al iniciar sesión';
       set({ loading: false, error: message });

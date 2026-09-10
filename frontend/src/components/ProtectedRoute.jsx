@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
+import { defaultRouteFor } from '../utils/routes';
 
 export default function ProtectedRoute({ children, roles }) {
   const { isAuthenticated, user } = useAuth();
@@ -9,7 +10,7 @@ export default function ProtectedRoute({ children, roles }) {
   }
 
   if (roles && !roles.includes(user?.role)) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={defaultRouteFor(user?.role)} replace />;
   }
 
   return children;

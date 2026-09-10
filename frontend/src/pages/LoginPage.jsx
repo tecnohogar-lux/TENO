@@ -1,16 +1,17 @@
 import { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
+import { defaultRouteFor } from '../utils/routes';
 
 export default function LoginPage() {
-  const { login, loading, isAuthenticated } = useAuth();
+  const { login, loading, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
   if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={defaultRouteFor(user?.role)} replace />;
   }
 
   async function handleSubmit(e) {
@@ -18,7 +19,7 @@ export default function LoginPage() {
     setError('');
     const result = await login(email, password);
     if (result.success) {
-      navigate('/dashboard');
+      navigate(defaultRouteFor(result.user.role));
     } else {
       setError(result.error);
     }

@@ -11,6 +11,9 @@ export const DELIVERY_STATUS_LABELS = {
   entregado: { label: 'Entregado', color: '#4c7a52' },
   cancelado: { label: 'Cancelado', color: '#b3423a' },
   reprogramado: { label: 'Reprogramado', color: '#8a5fb0' },
+  solo_envio_pagado: { label: 'Solo envío (ya pago)', color: '#3a6ea5' },
+  solo_entrega_incompleto: { label: 'Solo entrega (incompleto)', color: '#b98a2e' },
+  cambio_producto: { label: 'Cambio de producto', color: '#8a5fb0' },
 };
 
 export const DELIVERY_STATUS_OPTIONS = Object.keys(DELIVERY_STATUS_LABELS);
@@ -18,12 +21,15 @@ export const DELIVERY_STATUS_OPTIONS = Object.keys(DELIVERY_STATUS_LABELS);
 export const TIPO_VENTA_LABELS = {
   ENVIO: { label: 'Envío', color: '#3a6ea5' },
   TIENDA: { label: 'Tienda', color: '#4c7a52' },
+  ENVIO_PREPAGADO: { label: 'Envío prepagado', color: '#1b2a82' },
+  ENVIO_REGION: { label: 'Envío a región', color: '#8a5fb0' },
 };
 
 export const PAYMENT_METHOD_LABELS = {
   efectivo: 'Efectivo',
   tarjeta: 'Tarjeta',
   transferencia: 'Transferencia',
+  link_pago: 'Link de pago',
 };
 
 export function saleStatusLabel(value) {

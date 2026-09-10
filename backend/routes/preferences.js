@@ -44,10 +44,10 @@ router.put('/theme', authenticateToken, async (req, res) => {
     const { theme } = req.body;
 
     // Validar tema
-    const validThemes = ['light', 'dark', 'coral'];
+    const validThemes = ['light', 'dark'];
     if (!validThemes.includes(theme)) {
-      return res.status(400).json({ 
-        error: 'Tema inválido. Opciones: light, dark, coral' 
+      return res.status(400).json({
+        error: 'Tema inválido. Opciones: light, dark'
       });
     }
 
@@ -144,7 +144,7 @@ router.put('/', authenticateToken, async (req, res) => {
 
     // Validaciones
     if (theme) {
-      const validThemes = ['light', 'dark', 'coral'];
+      const validThemes = ['light', 'dark'];
       if (!validThemes.includes(theme)) {
         return res.status(400).json({ error: 'Tema inválido' });
       }

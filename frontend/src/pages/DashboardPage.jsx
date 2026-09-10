@@ -1,12 +1,16 @@
+import { useState } from 'react';
 import Layout from '../components/Layout';
 import Dashboard from '../components/Dashboard';
+import NoticiasFeed from '../components/NoticiasFeed';
+import DeadlineBanner from '../components/DeadlineBanner';
 import useFetch from '../hooks/useFetch';
 import useAuth from '../hooks/useAuth';
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const { data, loading, error } = useFetch('/api/dashboard');
-  const { data: comparison } = useFetch('/api/dashboard/comparison');
+  const [period, setPeriod] = useState('week');
+  const { data: comparison } = useFetch(`/api/dashboard/comparison?period=${period}`, { deps: [period] });
 
   return (
     <Layout>
@@ -14,6 +18,9 @@ export default function DashboardPage() {
       <p style={{ color: 'var(--color-text-muted)', marginTop: 0, marginBottom: 28 }}>
         Resumen de tu actividad
       </p>
+
+      <DeadlineBanner />
+      <NoticiasFeed />
 
       {loading && (
         <div className="page-loading">
@@ -23,7 +30,7 @@ export default function DashboardPage() {
 
       {error && <div className="alert alert-error">{error}</div>}
 
-      {data && <Dashboard data={data} comparison={comparison} />}
+      {data && <Dashboard data={data} comparison={comparison} period={period} onPeriodChange={setPeriod} />}
     </Layout>
   );
 }

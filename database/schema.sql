@@ -153,6 +153,20 @@ CREATE TABLE IF NOT EXISTS app_settings (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS retiros_tienda (
+  id SERIAL PRIMARY KEY,
+  vendor_id INTEGER NOT NULL REFERENCES users(id),
+  client_id INTEGER NOT NULL REFERENCES clients(id),
+  items JSON NOT NULL,
+  total DECIMAL(10, 2) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'pendiente' CHECK (status IN ('pendiente', 'entregado')),
+  notes TEXT,
+  delivered_at TIMESTAMP,
+  delivered_by INTEGER REFERENCES users(id),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX idx_sales_vendor_id ON sales(vendor_id);
 CREATE INDEX idx_sales_client_id ON sales(client_id);
 CREATE INDEX idx_sales_created_at ON sales(created_at);
@@ -167,6 +181,8 @@ CREATE INDEX idx_users_role ON users(role);
 CREATE INDEX idx_noticias_created_at ON noticias(created_at DESC);
 CREATE INDEX idx_anotaciones_fecha ON anotaciones_diarias(fecha DESC);
 CREATE INDEX idx_envios_regiones_region ON envios_regiones(region);
+CREATE INDEX idx_retiros_tienda_vendor ON retiros_tienda(vendor_id);
+CREATE INDEX idx_retiros_tienda_status ON retiros_tienda(status);
 CREATE INDEX idx_cierre_caja_closed_at ON cierre_caja(closed_at);
 CREATE UNIQUE INDEX idx_cierre_caja_una_abierta ON cierre_caja((closed_at IS NULL)) WHERE closed_at IS NULL;
 CREATE INDEX idx_gastos_created_at ON gastos(created_at DESC);

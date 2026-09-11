@@ -3,7 +3,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 
 // ============================================
@@ -23,15 +23,12 @@ router.get('/', authenticateToken, async (req, res) => {
 // ============================================
 // PUT - Actualizar un valor de configuración (solo Admin)
 // ============================================
-router.put('/:key', authenticateToken, async (req, res) => {
+router.put('/:key', authenticateToken, requireRole(['admin'], 'Solo un admin puede cambiar la configuración'), async (req, res) => {
   try {
     const user = req.user;
     const { key } = req.params;
     const { value } = req.body;
 
-    if (user.role !== 'admin') {
-      return res.status(403).json({ error: 'Solo un admin puede cambiar la configuración' });
-    }
     if (value === undefined) {
       return res.status(400).json({ error: 'Valor requerido' });
     }

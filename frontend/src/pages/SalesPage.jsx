@@ -32,6 +32,7 @@ export default function SalesPage() {
   );
   const { put, del } = useApi();
   const { confirm, dialog: confirmDialog } = useConfirm();
+  const [actionError, setActionError] = useState('');
 
   function handleSearchChange(value) {
     setSearch(value);
@@ -39,11 +40,14 @@ export default function SalesPage() {
   }
 
   async function toggleTransferenciaVerificada(sale) {
+    setActionError('');
     const result = await put(`/api/sales/${sale.id}`, { transferencia_verificada: !sale.transferencia_verificada });
     if (result.success) refetch();
+    else if (result.error) setActionError(result.error);
   }
 
   async function handleDelete(sale) {
+    setActionError('');
     const ok = await confirm(`¿Eliminar la venta "${sale.product_name}" de ${sale.client_name}? Podrás recuperarla desde la Papelera.`, {
       title: 'Eliminar venta',
       confirmLabel: 'Eliminar',
@@ -52,6 +56,7 @@ export default function SalesPage() {
     if (!ok) return;
     const result = await del(`/api/sales/${sale.id}`);
     if (result.success) refetch();
+    else if (result.error) setActionError(result.error);
   }
 
   return (
@@ -70,6 +75,8 @@ export default function SalesPage() {
           style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', width: 300, background: 'var(--color-surface)', color: 'var(--color-text)' }}
         />
       </div>
+
+      {actionError && <div className="alert alert-error">{actionError}</div>}
 
       {summary && (
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>

@@ -3,15 +3,10 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 
-function requireAdminOperador(req, res, next) {
-  if (req.user.role !== 'admin' && req.user.role !== 'operador') {
-    return res.status(403).json({ error: 'No tienes permiso para acceder a Cierre de Caja' });
-  }
-  next();
-}
+const requireAdminOperador = requireRole(['admin', 'operador'], 'No tienes permiso para acceder a Cierre de Caja');
 
 // Calcula los totales del período [desde, hasta] para una caja (abierta o ya cerrada).
 async function calcularTotales(desde, hasta, saldoInicial) {
@@ -175,10 +170,14 @@ router.post('/:id/close', authenticateToken, requireAdminOperador, async (req, r
       `UPDATE cierre_caja
        SET closed_at = $1, closed_by = $2, total_vendido = $3, total_gastos = $4,
            saldo_real = $5, efectivo_contado = $6, diferencia = $7, notas = $8
-       WHERE id = $9
+       WHERE id = $9 AND closed_at IS NULL
        RETURNING *`,
       [cerradoEn, user.id, total_vendido, total_gastos, saldo_real, efectivo_contado, diferencia, notas || null, id]
     );
+
+    if (result.rows.length === 0) {
+      return res.status(409).json({ error: 'La caja ya fue cerrada por otra solicitud' });
+    }
 
     await logAudit({ userId: user.id, action: 'cerrar_caja', tableName: 'cierre_caja', recordId: Number(id), oldValues: caja, newValues: result.rows[0] });
 

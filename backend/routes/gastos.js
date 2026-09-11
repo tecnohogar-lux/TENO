@@ -3,15 +3,10 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 
-function requireAdminOperador(req, res, next) {
-  if (req.user.role !== 'admin' && req.user.role !== 'operador') {
-    return res.status(403).json({ error: 'No tienes permiso para acceder a gastos y egresos' });
-  }
-  next();
-}
+const requireAdminOperador = requireRole(['admin', 'operador'], 'No tienes permiso para acceder a gastos y egresos');
 
 // ============================================
 // GET - Listar gastos (paginado, más recientes primero). Soporta ?from=&to= (ISO) para acotar por fecha

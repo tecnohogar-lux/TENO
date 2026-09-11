@@ -4,10 +4,12 @@ const router = express.Router();
 const multer = require('multer');
 const xlsx = require('xlsx');
 const pool = require('../config/database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 const { crearNoticia } = require('./noticias');
 const fs = require('fs');
 const path = require('path');
+
+const requireManage = (message) => requireRole(['admin', 'operador'], message);
 
 // Configurar multer para archivos Excel
 const upload = multer({ 
@@ -113,14 +115,11 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // ============================================
 // POST - Crear producto individual
 // ============================================
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, requireManage('No tienes permiso para crear productos'), async (req, res) => {
   try {
     const user = req.user;
     const { title, sku, price, cover_image_url, caracteristicas } = req.body;
 
-    if (user.role !== 'admin' && user.role !== 'operador') {
-      return res.status(403).json({ error: 'No tienes permiso para crear productos' });
-    }
     if (!title || !price) {
       return res.status(400).json({ error: 'Título y precio requeridos' });
     }
@@ -149,7 +148,7 @@ router.post('/', authenticateToken, async (req, res) => {
 // ============================================
 // POST - Importar productos desde Excel
 // ============================================
-router.post('/import/excel', authenticateToken, upload.single('file'), async (req, res) => {
+router.post('/import/excel', authenticateToken, requireManage('No tienes permiso para importar productos'), upload.single('file'), async (req, res) => {
   try {
     const user = req.user;
 
@@ -229,15 +228,11 @@ router.post('/import/excel', authenticateToken, upload.single('file'), async (re
 // ============================================
 // PUT - Actualizar producto
 // ============================================
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', authenticateToken, requireManage('No tienes permiso para editar productos'), async (req, res) => {
   try {
     const { id } = req.params;
     const user = req.user;
     const { title, sku, price, cover_image_url, caracteristicas } = req.body;
-
-    if (user.role !== 'admin' && user.role !== 'operador') {
-      return res.status(403).json({ error: 'No tienes permiso para editar productos' });
-    }
 
     const result = await pool.query(
       `UPDATE products
@@ -273,15 +268,11 @@ router.put('/:id', authenticateToken, async (req, res) => {
 // ============================================
 // PUT - Marcar/desmarcar producto como agotado
 // ============================================
-router.put('/:id/agotado', authenticateToken, async (req, res) => {
+router.put('/:id/agotado', authenticateToken, requireManage('No tienes permiso para editar productos'), async (req, res) => {
   try {
     const { id } = req.params;
     const user = req.user;
     const { agotado } = req.body;
-
-    if (user.role !== 'admin' && user.role !== 'operador') {
-      return res.status(403).json({ error: 'No tienes permiso para editar productos' });
-    }
 
     const result = await pool.query(
       `UPDATE products SET agotado = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
@@ -311,14 +302,10 @@ router.put('/:id/agotado', authenticateToken, async (req, res) => {
 // ============================================
 // DELETE - Eliminar producto
 // ============================================
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, requireManage('No tienes permiso para eliminar productos'), async (req, res) => {
   try {
     const { id } = req.params;
     const user = req.user;
-
-    if (user.role !== 'admin' && user.role !== 'operador') {
-      return res.status(403).json({ error: 'No tienes permiso para eliminar productos' });
-    }
 
     const existing = await pool.query('SELECT title FROM products WHERE id = $1', [id]);
 

@@ -3,8 +3,10 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
+
+const requireManage = (message) => requireRole(['admin', 'operador'], message);
 
 // ============================================
 // GET - Listar costos por región/comuna (todos los roles)
@@ -22,14 +24,11 @@ router.get('/', authenticateToken, async (req, res) => {
 // ============================================
 // POST - Crear región/comuna con precio (Admin/Operador)
 // ============================================
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, requireManage('No tienes permiso para editar envíos a regiones'), async (req, res) => {
   try {
     const user = req.user;
     const { region, comuna, precio } = req.body;
 
-    if (user.role !== 'admin' && user.role !== 'operador') {
-      return res.status(403).json({ error: 'No tienes permiso para editar envíos a regiones' });
-    }
     if (!region || !comuna || !precio) {
       return res.status(400).json({ error: 'Región, comuna y precio requeridos' });
     }
@@ -52,22 +51,18 @@ router.post('/', authenticateToken, async (req, res) => {
 // ============================================
 // PUT - Editar precio de una región/comuna (Admin/Operador)
 // ============================================
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', authenticateToken, requireManage('No tienes permiso para editar envíos a regiones'), async (req, res) => {
   try {
     const user = req.user;
     const { id } = req.params;
     const { region, comuna, precio } = req.body;
-
-    if (user.role !== 'admin' && user.role !== 'operador') {
-      return res.status(403).json({ error: 'No tienes permiso para editar envíos a regiones' });
-    }
 
     const result = await pool.query(
       `UPDATE envios_regiones
        SET region = COALESCE($1, region), comuna = COALESCE($2, comuna), precio = COALESCE($3, precio), updated_at = CURRENT_TIMESTAMP
        WHERE id = $4
        RETURNING *`,
-      [region || null, comuna || null, precio || null, id]
+      [region || null, comuna || null, precio !== undefined && precio !== null && precio !== '' ? precio : null, id]
     );
 
     if (result.rows.length === 0) {
@@ -87,14 +82,10 @@ router.put('/:id', authenticateToken, async (req, res) => {
 // ============================================
 // DELETE - Eliminar región/comuna (Admin/Operador)
 // ============================================
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, requireManage('No tienes permiso para eliminar envíos a regiones'), async (req, res) => {
   try {
     const user = req.user;
     const { id } = req.params;
-
-    if (user.role !== 'admin' && user.role !== 'operador') {
-      return res.status(403).json({ error: 'No tienes permiso para eliminar envíos a regiones' });
-    }
 
     const result = await pool.query('DELETE FROM envios_regiones WHERE id = $1 RETURNING id', [id]);
 

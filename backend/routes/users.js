@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const bcryptjs = require('bcryptjs');
 const pool = require('../config/database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 
 // ============================================
@@ -84,15 +84,10 @@ router.put('/me', authenticateToken, async (req, res) => {
 // ============================================
 // POST - Crear nuevo usuario (solo admin)
 // ============================================
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, requireRole(['admin'], 'Solo un admin puede crear usuarios'), async (req, res) => {
   try {
     const user = req.user;
     const { name, email, password, role, marketplace_accounts } = req.body;
-
-    // Solo admins pueden crear usuarios
-    if (user.role !== 'admin') {
-      return res.status(403).json({ error: 'Solo un admin puede crear usuarios' });
-    }
 
     // Validaciones
     if (!name || !email || !password || !role) {
@@ -140,15 +135,14 @@ router.post('/', authenticateToken, async (req, res) => {
 // ============================================
 // PUT - Actualizar usuario (solo admin)
 // ============================================
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', authenticateToken, requireRole(['admin'], 'Solo un admin puede editar usuarios'), async (req, res) => {
   try {
     const user = req.user;
     const { id } = req.params;
     const { name, email, role, is_active, password, marketplace_accounts } = req.body;
 
-    // Solo admins pueden editar usuarios
-    if (user.role !== 'admin') {
-      return res.status(403).json({ error: 'Solo un admin puede editar usuarios' });
+    if (role !== undefined && !['vendedor', 'operador', 'admin', 'escaneo'].includes(role)) {
+      return res.status(400).json({ error: 'Rol inválido' });
     }
 
     const before = await pool.query('SELECT name, email, role, is_active FROM users WHERE id = $1', [id]);
@@ -200,15 +194,10 @@ router.put('/:id', authenticateToken, async (req, res) => {
 // ============================================
 // PUT - Activar/Desactivar usuario
 // ============================================
-router.put('/:id/toggle-status', authenticateToken, async (req, res) => {
+router.put('/:id/toggle-status', authenticateToken, requireRole(['admin'], 'Solo admins pueden cambiar estado de usuarios'), async (req, res) => {
   try {
     const user = req.user;
     const { id } = req.params;
-
-    // Solo admin puede hacer esto
-    if (user.role !== 'admin') {
-      return res.status(403).json({ error: 'Solo admins pueden cambiar estado de usuarios' });
-    }
 
     const result = await pool.query(
       `UPDATE users
@@ -237,14 +226,10 @@ router.put('/:id/toggle-status', authenticateToken, async (req, res) => {
 // ============================================
 // DELETE - Eliminar usuario (solo admin)
 // ============================================
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, requireRole(['admin'], 'Solo un admin puede eliminar usuarios'), async (req, res) => {
   try {
     const user = req.user;
     const { id } = req.params;
-
-    if (user.role !== 'admin') {
-      return res.status(403).json({ error: 'Solo un admin puede eliminar usuarios' });
-    }
 
     if (user.id === parseInt(id)) {
       return res.status(400).json({ error: 'No puedes eliminar tu propia cuenta' });

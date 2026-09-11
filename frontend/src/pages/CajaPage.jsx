@@ -1,14 +1,20 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
+import SearchableSelect from '../components/SearchableSelect';
 import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
 import { formatCurrency } from '../utils/format';
+
+const FREE_PRODUCT_OPTION = [{ value: '__free__', label: 'Producto libre (no registrado)' }];
 
 const emptyNewClient = { name: '', address: '', phone: '', email: '' };
 
 export default function CajaPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const retiro = location.state?.retiroId ? location.state : null;
+
   const { data: usersData } = useFetch('/api/users');
   const { data: clientsData } = useFetch('/api/clients');
   const { data: productsData } = useFetch('/api/products');
@@ -16,16 +22,27 @@ export default function CajaPage() {
   const { post, loading: saving, error: saveError } = useApi();
 
   const vendedores = (usersData?.users || []).filter((u) => u.role === 'vendedor' && u.is_active);
+  const vendorOptions = useMemo(() => vendedores.map((v) => ({ value: v.id, label: v.name })), [vendedores]);
+  const clientOptions = useMemo(() => (clientsData?.clients || []).map((c) => ({ value: c.id, label: c.name })), [clientsData]);
+  const productOptions = useMemo(
+    () => (productsData?.products || []).map((p) => ({ value: p.id, label: `${p.title} · ${formatCurrency(p.price)}${p.agotado ? ' (agotado)' : ''}` })),
+    [productsData]
+  );
 
+  const [retiroId, setRetiroId] = useState(retiro?.retiroId || null);
   const [tipo, setTipo] = useState('TIENDA');
-  const [vendorId, setVendorId] = useState('');
+  const [vendorId, setVendorId] = useState(retiro?.vendorId ? String(retiro.vendorId) : '');
   const [useExistingClient, setUseExistingClient] = useState(true);
-  const [clientId, setClientId] = useState('');
+  const [clientId, setClientId] = useState(retiro?.clientId ? String(retiro.clientId) : '');
   const [newClient, setNewClient] = useState(emptyNewClient);
   const [selectedProductId, setSelectedProductId] = useState('');
   const [selectedQty, setSelectedQty] = useState(1);
   const [freeProduct, setFreeProduct] = useState({ name: '', price: '', quantity: 1 });
-  const [cart, setCart] = useState([]);
+  const [cart, setCart] = useState(
+    retiro?.items
+      ? retiro.items.map((item) => ({ key: `retiro-${item.product_id}`, product_name: item.product_name, price: Number(item.price), quantity: Number(item.quantity) }))
+      : []
+  );
   const [paymentMethod, setPaymentMethod] = useState('efectivo');
   const [transferenciaVerificada, setTransferenciaVerificada] = useState(false);
   const [notes, setNotes] = useState('');
@@ -106,6 +123,10 @@ export default function CajaPage() {
       payload.client = newClient;
     }
 
+    if (retiroId) {
+      payload.retiro_id = retiroId;
+    }
+
     const result = await post('/api/caja/sale', payload);
     if (result.success) {
       setSuccessMsg(
@@ -121,6 +142,7 @@ export default function CajaPage() {
       setComuna('');
       setPhone('');
       setTransferenciaVerificada(false);
+      setRetiroId(null);
     }
   }
 
@@ -140,6 +162,12 @@ export default function CajaPage() {
         </button>
       </div>
 
+      {retiroId && (
+        <div className="card" style={{ padding: 16, marginBottom: 20, borderColor: 'var(--color-primary)' }}>
+          Procesando Retiro en Tienda de <strong>{retiro?.clientName}</strong>. Al registrar la venta se marcará como entregado.
+        </div>
+      )}
+
       {successMsg && <div className="card" style={{ padding: 16, marginBottom: 20, color: 'var(--color-success)' }}>{successMsg}</div>}
       {saveError && <div className="alert alert-error">{saveError}</div>}
 
@@ -149,12 +177,13 @@ export default function CajaPage() {
 
           <div className="form-field">
             <label>Vendedor</label>
-            <select value={vendorId} onChange={(e) => setVendorId(e.target.value)} required>
-              <option value="">Selecciona un vendedor</option>
-              {vendedores.map((v) => (
-                <option key={v.id} value={v.id}>{v.name}</option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={vendorId}
+              onChange={setVendorId}
+              options={vendorOptions}
+              placeholder="Selecciona un vendedor"
+              required
+            />
           </div>
 
           <div className="form-field">
@@ -169,12 +198,13 @@ export default function CajaPage() {
             </div>
 
             {useExistingClient ? (
-              <select value={clientId} onChange={(e) => setClientId(e.target.value)} required={useExistingClient}>
-                <option value="">Selecciona un cliente</option>
-                {(clientsData?.clients || []).map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={clientId}
+                onChange={setClientId}
+                options={clientOptions}
+                placeholder="Selecciona un cliente"
+                required={useExistingClient}
+              />
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <input placeholder="Nombre" value={newClient.name} onChange={(e) => setNewClient({ ...newClient, name: e.target.value })} required={!useExistingClient} />
@@ -239,13 +269,16 @@ export default function CajaPage() {
 
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: 'flex', gap: 8, marginBottom: selectedProductId === '__free__' ? 8 : 0 }}>
-              <select value={selectedProductId} onChange={(e) => setSelectedProductId(e.target.value)} style={{ flex: 1 }} disabled={isEnvioPrepagado && cart.length >= 1}>
-                <option value="">Selecciona un producto</option>
-                <option value="__free__">Producto libre (no registrado)</option>
-                {(productsData?.products || []).map((p) => (
-                  <option key={p.id} value={p.id}>{p.title} · {formatCurrency(p.price)}{p.agotado ? ' (agotado)' : ''}</option>
-                ))}
-              </select>
+              <div style={{ flex: 1 }}>
+                <SearchableSelect
+                  value={selectedProductId}
+                  onChange={setSelectedProductId}
+                  options={productOptions}
+                  pinnedOptions={FREE_PRODUCT_OPTION}
+                  placeholder="Selecciona un producto"
+                  disabled={isEnvioPrepagado && cart.length >= 1}
+                />
+              </div>
               {selectedProductId !== '__free__' && (
                 <input type="number" min="1" value={selectedQty} onChange={(e) => setSelectedQty(e.target.value)} style={{ width: 70 }} disabled={isEnvioPrepagado && cart.length >= 1} />
               )}

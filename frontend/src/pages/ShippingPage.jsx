@@ -4,10 +4,12 @@ import Layout from '../components/Layout';
 import Badge from '../components/Badge';
 import LabelPrint from '../components/LabelPrint';
 import LabelPrintBatch from '../components/LabelPrintBatch';
+import SearchableSelect from '../components/SearchableSelect';
 import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
 import useAuth from '../hooks/useAuth';
 import useConfirm from '../hooks/useConfirm';
+import useDebouncedValue from '../hooks/useDebouncedValue';
 import { formatCurrency, formatDate } from '../utils/format';
 import { DELIVERY_STATUS_LABELS, DELIVERY_STATUS_OPTIONS, deliveryStatusLabel } from '../utils/labels';
 
@@ -37,7 +39,13 @@ export default function ShippingPage() {
   const canCreate = user.role !== 'escaneo';
   const canScanButton = canManage || user.role === 'escaneo';
 
-  const { data, loading, error, refetch } = useFetch('/api/sales');
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search);
+
+  const { data, loading, error, refetch } = useFetch(
+    `/api/sales?search=${encodeURIComponent(debouncedSearch)}`,
+    { deps: [debouncedSearch] }
+  );
   const { data: usersData } = useFetch('/api/users', { enabled: canManage });
   const { data: clientsData } = useFetch('/api/clients');
   const { data: shippingCostsData } = useFetch('/api/shipping-costs');
@@ -56,8 +64,11 @@ export default function ShippingPage() {
   const [editForm, setEditForm] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createForm, setCreateForm] = useState(emptyCreateForm);
+  const [actionError, setActionError] = useState('');
 
   const vendedores = (usersData?.users || []).filter((u) => u.role === 'vendedor' && u.is_active);
+  const vendorOptions = useMemo(() => vendedores.map((v) => ({ value: v.id, label: v.name })), [vendedores]);
+  const clientOptions = useMemo(() => (clientsData?.clients || []).map((c) => ({ value: c.id, label: c.name })), [clientsData]);
   const regiones = [...new Set((regionShippingData?.costos || []).map((c) => c.region))].sort();
   const comunasDeRegion = (regionShippingData?.costos || []).filter((c) => c.region === createForm.region);
 
@@ -78,21 +89,27 @@ export default function ShippingPage() {
   }
 
   async function handleStatusChange(sale, newStatus) {
+    setActionError('');
     const result = await put(`/api/sales/${sale.id}/status`, { status: newStatus });
     if (result.success) refetch();
+    else if (result.error) setActionError(result.error);
   }
 
   async function handleBulkStatus() {
+    setActionError('');
     const result = await put('/api/sales/batch-status', { ids: selectedIds, status: bulkStatusValue });
     if (result.success) {
       setSelectedIds([]);
       setBulkStatusPanel(false);
       setActionsOpen(false);
       refetch();
+    } else if (result.error) {
+      setActionError(result.error);
     }
   }
 
   async function handleDelete(sale) {
+    setActionError('');
     const ok = await confirm(`¿Eliminar el envío "${sale.product_name}" de ${sale.client_name}? Podrás recuperarlo desde la Papelera.`, {
       title: 'Eliminar envío',
       confirmLabel: 'Eliminar',
@@ -101,6 +118,7 @@ export default function ShippingPage() {
     if (!ok) return;
     const result = await del(`/api/sales/${sale.id}`);
     if (result.success) refetch();
+    else if (result.error) setActionError(result.error);
   }
 
   function openBulkPrint() {
@@ -195,7 +213,13 @@ export default function ShippingPage() {
     <Layout>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <h1 style={{ fontSize: 22, margin: 0 }}>Envíos</h1>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            placeholder="Buscar por vendedor, cliente, producto, comuna..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', width: 260, background: 'var(--color-surface)', color: 'var(--color-text)' }}
+          />
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)' }}>
             <option value="todos">Todos los estados</option>
             {DELIVERY_STATUS_OPTIONS.map((opt) => (
@@ -265,6 +289,8 @@ export default function ShippingPage() {
         </div>
       </div>
 
+      {actionError && <div className="alert alert-error">{actionError}</div>}
+
       {showCreateForm && (
         <form onSubmit={handleCreateSubmit} className="card" style={{ padding: 20, marginBottom: 24 }}>
           {saveError && <div className="alert alert-error">{saveError}</div>}
@@ -272,12 +298,13 @@ export default function ShippingPage() {
             <div className="form-field">
               <label>Vendedor</label>
               {canManage ? (
-                <select value={createForm.vendor_id} onChange={(e) => setCreateForm({ ...createForm, vendor_id: e.target.value })} required>
-                  <option value="">Selecciona un vendedor</option>
-                  {vendedores.map((v) => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  value={createForm.vendor_id}
+                  onChange={(v) => setCreateForm({ ...createForm, vendor_id: v })}
+                  options={vendorOptions}
+                  placeholder="Selecciona un vendedor"
+                  required
+                />
               ) : (
                 <input value={user.name} disabled />
               )}
@@ -294,12 +321,13 @@ export default function ShippingPage() {
                 </button>
               </div>
               {createForm.useExistingClient ? (
-                <select value={createForm.client_id} onChange={(e) => setCreateForm({ ...createForm, client_id: e.target.value })} required={createForm.useExistingClient}>
-                  <option value="">Selecciona un cliente</option>
-                  {(clientsData?.clients || []).map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  value={createForm.client_id}
+                  onChange={(v) => setCreateForm({ ...createForm, client_id: v })}
+                  options={clientOptions}
+                  placeholder="Selecciona un cliente"
+                  required={createForm.useExistingClient}
+                />
               ) : (
                 <input
                   placeholder="Nombre del cliente nuevo"
@@ -510,20 +538,24 @@ export default function ShippingPage() {
             {canManage && (
               <div className="form-field">
                 <label>Vendedor</label>
-                <select value={editForm.vendor_id} onChange={(e) => setEditForm({ ...editForm, vendor_id: e.target.value })} required>
-                  {vendedores.map((v) => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  value={editForm.vendor_id}
+                  onChange={(v) => setEditForm({ ...editForm, vendor_id: v })}
+                  options={vendorOptions}
+                  placeholder="Selecciona un vendedor"
+                  required
+                />
               </div>
             )}
             <div className="form-field">
               <label>Cliente</label>
-              <select value={editForm.client_id} onChange={(e) => setEditForm({ ...editForm, client_id: e.target.value })} required>
-                {(clientsData?.clients || []).map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={editForm.client_id}
+                onChange={(v) => setEditForm({ ...editForm, client_id: v })}
+                options={clientOptions}
+                placeholder="Selecciona un cliente"
+                required
+              />
             </div>
             <div className="form-field">
               <label>Producto</label>

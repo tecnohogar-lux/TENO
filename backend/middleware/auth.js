@@ -20,4 +20,13 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-module.exports = { authenticateToken };
+// Middleware factory: exige que req.user.role esté en la lista dada.
+// Uso: requireRole(['admin', 'operador'], 'Mensaje de error opcional')
+const requireRole = (roles, message = 'No tienes permiso para realizar esta acción') => (req, res, next) => {
+  if (!roles.includes(req.user.role)) {
+    return res.status(403).json({ error: message });
+  }
+  next();
+};
+
+module.exports = { authenticateToken, requireRole };

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Sidebar from './Sidebar';
+import Logo from './Logo';
 
 export default function Layout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -12,7 +13,9 @@ export default function Layout({ children }) {
             <path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
         </button>
-        <span style={{ fontWeight: 800, fontSize: 16, color: 'var(--color-sidebar-text)' }}>TecnOS</span>
+        <div style={{ background: '#fff', borderRadius: 'var(--radius-sm)', padding: '4px 8px' }}>
+          <Logo height={18} />
+        </div>
       </div>
 
       <div

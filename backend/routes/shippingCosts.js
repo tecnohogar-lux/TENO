@@ -3,8 +3,10 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
+
+const requireManage = (message) => requireRole(['admin', 'operador'], message);
 
 // ============================================
 // GET - Listar costos por comuna (todos los roles)
@@ -22,14 +24,11 @@ router.get('/', authenticateToken, async (req, res) => {
 // ============================================
 // POST - Crear comuna con precio (Admin/Operador)
 // ============================================
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, requireManage('No tienes permiso para editar costos de envío'), async (req, res) => {
   try {
     const user = req.user;
     const { comuna, precio } = req.body;
 
-    if (user.role !== 'admin' && user.role !== 'operador') {
-      return res.status(403).json({ error: 'No tienes permiso para editar costos de envío' });
-    }
     if (!comuna || !precio) {
       return res.status(400).json({ error: 'Comuna y precio requeridos' });
     }
@@ -55,22 +54,18 @@ router.post('/', authenticateToken, async (req, res) => {
 // ============================================
 // PUT - Editar precio de una comuna (Admin/Operador)
 // ============================================
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', authenticateToken, requireManage('No tienes permiso para editar costos de envío'), async (req, res) => {
   try {
     const user = req.user;
     const { id } = req.params;
     const { comuna, precio } = req.body;
-
-    if (user.role !== 'admin' && user.role !== 'operador') {
-      return res.status(403).json({ error: 'No tienes permiso para editar costos de envío' });
-    }
 
     const result = await pool.query(
       `UPDATE costos_envio_comuna
        SET comuna = COALESCE($1, comuna), precio = COALESCE($2, precio), updated_at = CURRENT_TIMESTAMP
        WHERE id = $3
        RETURNING *`,
-      [comuna || null, precio || null, id]
+      [comuna || null, precio !== undefined && precio !== null && precio !== '' ? precio : null, id]
     );
 
     if (result.rows.length === 0) {
@@ -90,14 +85,10 @@ router.put('/:id', authenticateToken, async (req, res) => {
 // ============================================
 // DELETE - Eliminar comuna (Admin/Operador)
 // ============================================
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, requireManage('No tienes permiso para eliminar costos de envío'), async (req, res) => {
   try {
     const user = req.user;
     const { id } = req.params;
-
-    if (user.role !== 'admin' && user.role !== 'operador') {
-      return res.status(403).json({ error: 'No tienes permiso para eliminar costos de envío' });
-    }
 
     const result = await pool.query('DELETE FROM costos_envio_comuna WHERE id = $1 RETURNING id', [id]);
 

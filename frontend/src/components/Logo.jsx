@@ -1,10 +1,10 @@
-import logoUrl from '../assets/tecnohogar-logo.png';
+import logoUrl from '../assets/tecnos-erp-logo.png';
 
 export default function Logo({ height = 32, style }) {
   return (
     <img
       src={logoUrl}
-      alt="TecnoHogar"
+      alt="TecnOS ERP"
       style={{ height, width: 'auto', display: 'block', ...style }}
     />
   );

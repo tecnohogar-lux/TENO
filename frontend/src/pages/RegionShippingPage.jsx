@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Layout from '../components/Layout';
 import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
@@ -17,6 +17,14 @@ export default function RegionShippingPage() {
   const [form, setForm] = useState({ region: '', comuna: '', precio: '' });
   const [editingId, setEditingId] = useState(null);
   const [editPrecio, setEditPrecio] = useState('');
+  const [search, setSearch] = useState('');
+
+  const filteredCostos = useMemo(() => {
+    const all = data?.costos || [];
+    if (!search.trim()) return all;
+    const q = search.trim().toLowerCase();
+    return all.filter((c) => c.region.toLowerCase().includes(q) || c.comuna.toLowerCase().includes(q));
+  }, [data, search]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -53,11 +61,19 @@ export default function RegionShippingPage() {
             Precios de envío fuera de la Región Metropolitana.
           </p>
         </div>
-        {canManage && (
-          <button className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>
-            {showForm ? 'Cancelar' : 'Nuevo registro'}
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 12 }}>
+          <input
+            placeholder="Buscar por región o comuna..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', width: 240, background: 'var(--color-surface)', color: 'var(--color-text)' }}
+          />
+          {canManage && (
+            <button className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>
+              {showForm ? 'Cancelar' : 'Nuevo registro'}
+            </button>
+          )}
+        </div>
       </div>
 
       {showForm && (
@@ -107,7 +123,12 @@ export default function RegionShippingPage() {
               </tr>
             </thead>
             <tbody>
-              {data.costos.map((c) => (
+              {data.costos.length > 0 && filteredCostos.length === 0 && (
+                <tr>
+                  <td colSpan={canManage ? 4 : 3} style={{ color: 'var(--color-text-muted)' }}>Sin resultados que coincidan</td>
+                </tr>
+              )}
+              {filteredCostos.map((c) => (
                 <tr key={c.id}>
                   <td data-label="Región">{c.region}</td>
                   <td data-label="Comuna">{c.comuna}</td>

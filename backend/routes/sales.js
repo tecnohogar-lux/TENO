@@ -2,23 +2,20 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 
 const DELIVERY_STATUSES = [
   'listo_para_imprimir', 'impreso', 'en_camino', 'entregado', 'cancelado', 'reprogramado',
   'solo_envio_pagado', 'solo_entrega_incompleto', 'cambio_producto',
 ];
+const requireAdmin = (message) => requireRole(['admin'], message);
 
 // ============================================
 // GET - Papelera (ventas/envíos eliminados, solo admin)
 // ============================================
-router.get('/trash', authenticateToken, async (req, res) => {
+router.get('/trash', authenticateToken, requireAdmin('Solo un admin puede ver la papelera'), async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Solo un admin puede ver la papelera' });
-    }
-
     const result = await pool.query(
       `SELECT s.*, u.name as vendor_name, c.name as client_name
        FROM sales s
@@ -80,7 +77,7 @@ router.get('/summary', authenticateToken, async (req, res) => {
     if (search) {
       params.push(`%${search}%`);
       const idx = params.length;
-      conditions.push(`(u.name ILIKE $${idx} OR c.name ILIKE $${idx} OR s.product_name ILIKE $${idx})`);
+      conditions.push(`(u.name ILIKE $${idx} OR c.name ILIKE $${idx} OR s.product_name ILIKE $${idx} OR s.address ILIKE $${idx} OR s.comuna ILIKE $${idx})`);
     }
 
     const result = await pool.query(
@@ -129,7 +126,7 @@ router.get('/', authenticateToken, async (req, res) => {
     if (search) {
       params.push(`%${search}%`);
       const idx = params.length;
-      conditions.push(`(u.name ILIKE $${idx} OR c.name ILIKE $${idx} OR s.product_name ILIKE $${idx})`);
+      conditions.push(`(u.name ILIKE $${idx} OR c.name ILIKE $${idx} OR s.product_name ILIKE $${idx} OR s.address ILIKE $${idx} OR s.comuna ILIKE $${idx})`);
     }
 
     const whereClause = `WHERE ${conditions.join(' AND ')}`;
@@ -403,6 +400,10 @@ router.put('/:id', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'El usuario de escaneo no puede editar ventas' });
     }
 
+    if (delivery_status !== undefined && !DELIVERY_STATUSES.includes(delivery_status)) {
+      return res.status(400).json({ error: `Estado inválido. Opciones: ${DELIVERY_STATUSES.join(', ')}` });
+    }
+
     const saleResult = await pool.query('SELECT * FROM sales WHERE id = $1 AND deleted_at IS NULL', [id]);
 
     if (saleResult.rows.length === 0) {
@@ -435,8 +436,10 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const total = recalcTotal ? newQuantity * newPrice : null;
 
     const deliveringNow = delivery_status === 'entregado' && sale.delivery_status !== 'entregado';
-    const newStatus = status || (deliveringNow ? 'completado' : null);
+    const undeliveringNow = delivery_status !== undefined && delivery_status !== 'entregado' && sale.delivery_status === 'entregado';
+    const newStatus = status || (deliveringNow ? 'completado' : (undeliveringNow ? 'pendiente' : null));
     const deliveredAt = deliveringNow ? new Date() : null;
+    const clearDeliveredAt = undeliveringNow && !deliveringNow;
 
     const result = await pool.query(
       `UPDATE sales
@@ -452,7 +455,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
            address = COALESCE($10, address),
            comuna = COALESCE($11, comuna),
            phone = COALESCE($12, phone),
-           delivered_at = COALESCE($13, delivered_at),
+           delivered_at = CASE WHEN $16 THEN NULL ELSE COALESCE($13, delivered_at) END,
            transferencia_verificada = COALESCE($14, transferencia_verificada),
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $15
@@ -462,6 +465,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
         product_name, quantity !== undefined ? newQuantity : null, price !== undefined ? newPrice : null, total,
         vendor_id, client_id, address, comuna, phone,
         deliveredAt, transferencia_verificada !== undefined ? !!transferencia_verificada : null, id,
+        clearDeliveredAt,
       ]
     );
 
@@ -603,11 +607,8 @@ router.put('/:id/address', authenticateToken, async (req, res) => {
 // ============================================
 // PUT - Restaurar venta desde la papelera (solo admin)
 // ============================================
-router.put('/:id/restore', authenticateToken, async (req, res) => {
+router.put('/:id/restore', authenticateToken, requireAdmin('Solo un admin puede restaurar ventas'), async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Solo un admin puede restaurar ventas' });
-    }
 
     const { id } = req.params;
     const result = await pool.query(
@@ -632,14 +633,10 @@ router.put('/:id/restore', authenticateToken, async (req, res) => {
 // ============================================
 // DELETE - Enviar a la papelera (solo admin)
 // ============================================
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, requireAdmin('Solo un admin puede eliminar ventas o envíos'), async (req, res) => {
   try {
     const { id } = req.params;
     const user = req.user;
-
-    if (user.role !== 'admin') {
-      return res.status(403).json({ error: 'Solo un admin puede eliminar ventas o envíos' });
-    }
 
     const result = await pool.query(
       `UPDATE sales SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND deleted_at IS NULL RETURNING id`,
@@ -663,12 +660,8 @@ router.delete('/:id', authenticateToken, async (req, res) => {
 // ============================================
 // DELETE - Eliminar definitivamente desde la papelera (solo admin)
 // ============================================
-router.delete('/:id/permanent', authenticateToken, async (req, res) => {
+router.delete('/:id/permanent', authenticateToken, requireAdmin('Solo un admin puede eliminar definitivamente'), async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Solo un admin puede eliminar definitivamente' });
-    }
-
     const { id } = req.params;
     const result = await pool.query(
       `DELETE FROM sales WHERE id = $1 AND deleted_at IS NOT NULL RETURNING id`,

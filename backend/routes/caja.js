@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 
 const PAYMENT_METHODS = ['efectivo', 'tarjeta', 'transferencia', 'link_pago'];
@@ -10,14 +10,10 @@ const PAYMENT_METHODS = ['efectivo', 'tarjeta', 'transferencia', 'link_pago'];
 // ============================================
 // POST - Crear venta desde Caja (tienda o envío prepagado)
 // ============================================
-router.post('/sale', authenticateToken, async (req, res) => {
+router.post('/sale', authenticateToken, requireRole(['operador', 'admin'], 'Solo operadores y admins pueden usar Caja'), async (req, res) => {
   const user = req.user;
 
-  if (user.role !== 'operador' && user.role !== 'admin') {
-    return res.status(403).json({ error: 'Solo operadores y admins pueden usar Caja' });
-  }
-
-  const { vendor_id, client_id, client, items, payment_method, notes, transferencia_verificada } = req.body;
+  const { vendor_id, client_id, client, items, payment_method, notes, transferencia_verificada, retiro_id } = req.body;
   const tipo = req.body.tipo === 'ENVIO_PREPAGADO' ? 'ENVIO_PREPAGADO' : 'TIENDA';
   const { address, comuna, phone } = req.body;
 
@@ -57,6 +53,21 @@ router.post('/sale', authenticateToken, async (req, res) => {
     );
     if (vendorResult.rows.length === 0) {
       throw { status: 400, message: 'Vendedor inválido o inactivo' };
+    }
+
+    // Si esta venta viene de un Retiro en Tienda, se bloquea la fila para evitar
+    // que dos solicitudes lo procesen a la vez y se duplique la venta.
+    if (retiro_id) {
+      const retiroLock = await dbClient.query(
+        `SELECT id, status FROM retiros_tienda WHERE id = $1 FOR UPDATE`,
+        [retiro_id]
+      );
+      if (retiroLock.rows.length === 0) {
+        throw { status: 404, message: 'Retiro en tienda no encontrado' };
+      }
+      if (retiroLock.rows[0].status !== 'pendiente') {
+        throw { status: 409, message: 'Este retiro en tienda ya fue procesado' };
+      }
     }
 
     let precioEnvio = null;
@@ -119,10 +130,26 @@ router.post('/sale', authenticateToken, async (req, res) => {
       }
     }
 
+    if (retiro_id) {
+      const marked = await dbClient.query(
+        `UPDATE retiros_tienda SET status = 'entregado', delivered_at = CURRENT_TIMESTAMP, delivered_by = $1
+         WHERE id = $2 AND status = 'pendiente'
+         RETURNING id`,
+        [user.id, retiro_id]
+      );
+      if (marked.rows.length === 0) {
+        // Otra solicitud lo procesó justo antes: se revierte para no duplicar la venta.
+        throw { status: 409, message: 'Este retiro en tienda ya fue procesado' };
+      }
+    }
+
     await dbClient.query('COMMIT');
 
     for (const sale of createdSales) {
       await logAudit({ userId: user.id, action: 'crear_venta_caja', tableName: 'sales', recordId: sale.id, newValues: sale });
+    }
+    if (retiro_id) {
+      await logAudit({ userId: user.id, action: 'procesar_retiro_tienda', tableName: 'retiros_tienda', recordId: Number(retiro_id) });
     }
 
     res.status(201).json({

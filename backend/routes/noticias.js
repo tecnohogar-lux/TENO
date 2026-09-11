@@ -2,19 +2,27 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
+
+const requireManage = (message) => requireRole(['admin', 'operador'], message);
 
 // Crea una noticia. Se usa tanto desde las rutas de abajo como desde products.js
 // para publicar automáticamente cada cambio de producto.
 async function crearNoticia({ texto, tipo = 'manual', producto_id = null, userId = null }) {
-  const result = await pool.query(
-    `INSERT INTO noticias (tipo, texto, producto_id, created_by)
-     VALUES ($1, $2, $3, $4)
-     RETURNING *`,
-    [tipo, texto, producto_id, userId]
-  );
-  return result.rows[0];
+  try {
+    const result = await pool.query(
+      `INSERT INTO noticias (tipo, texto, producto_id, created_by)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [tipo, texto, producto_id, userId]
+    );
+    return result.rows[0];
+  } catch (err) {
+    // Igual que logAudit: una noticia nunca debe romper la operación principal que la generó.
+    console.error('Error al crear noticia:', err.message);
+    return null;
+  }
 }
 
 // Limpieza perezosa: no hay scheduler en este backend, así que se corre en cada GET.
@@ -54,19 +62,20 @@ router.get('/', authenticateToken, async (req, res) => {
 // ============================================
 // POST - Crear noticia manual (Admin/Operador)
 // ============================================
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, requireManage('No tienes permiso para publicar noticias'), async (req, res) => {
   try {
     const user = req.user;
     const { texto } = req.body;
 
-    if (user.role !== 'admin' && user.role !== 'operador') {
-      return res.status(403).json({ error: 'No tienes permiso para publicar noticias' });
-    }
     if (!texto) {
       return res.status(400).json({ error: 'Texto requerido' });
     }
 
     const noticia = await crearNoticia({ texto, tipo: 'manual', userId: user.id });
+
+    if (!noticia) {
+      return res.status(500).json({ error: 'Error al crear noticia' });
+    }
 
     await logAudit({ userId: user.id, action: 'crear_noticia', tableName: 'noticias', recordId: noticia.id, newValues: noticia });
 
@@ -81,15 +90,12 @@ router.post('/', authenticateToken, async (req, res) => {
 // ============================================
 // PUT - Editar noticia manual (Admin/Operador)
 // ============================================
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', authenticateToken, requireManage('No tienes permiso para editar noticias'), async (req, res) => {
   try {
     const user = req.user;
     const { id } = req.params;
     const { texto } = req.body;
 
-    if (user.role !== 'admin' && user.role !== 'operador') {
-      return res.status(403).json({ error: 'No tienes permiso para editar noticias' });
-    }
     if (!texto) {
       return res.status(400).json({ error: 'Texto requerido' });
     }
@@ -116,14 +122,10 @@ router.put('/:id', authenticateToken, async (req, res) => {
 // ============================================
 // DELETE - Eliminar noticia (Admin/Operador)
 // ============================================
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, requireManage('No tienes permiso para eliminar noticias'), async (req, res) => {
   try {
     const user = req.user;
     const { id } = req.params;
-
-    if (user.role !== 'admin' && user.role !== 'operador') {
-      return res.status(403).json({ error: 'No tienes permiso para eliminar noticias' });
-    }
 
     const result = await pool.query('DELETE FROM noticias WHERE id = $1 RETURNING id', [id]);
 

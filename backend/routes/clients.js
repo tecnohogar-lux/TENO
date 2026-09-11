@@ -2,7 +2,9 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
+
+const requireManage = (message) => requireRole(['admin', 'operador'], message);
 
 // ============================================
 // GET - Obtener todos los clientes
@@ -120,15 +122,11 @@ router.post('/', authenticateToken, async (req, res) => {
 // ============================================
 // PUT - Actualizar cliente
 // ============================================
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', authenticateToken, requireManage('No tienes permiso para editar clientes'), async (req, res) => {
   try {
     const { id } = req.params;
     const user = req.user;
     const { name, address, phone, email } = req.body;
-
-    if (user.role !== 'admin' && user.role !== 'operador') {
-      return res.status(403).json({ error: 'No tienes permiso para editar clientes' });
-    }
 
     const result = await pool.query(
       `UPDATE clients
@@ -160,14 +158,10 @@ router.put('/:id', authenticateToken, async (req, res) => {
 // ============================================
 // DELETE - Eliminar cliente (operador/admin)
 // ============================================
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, requireManage('No tienes permiso para eliminar clientes'), async (req, res) => {
   try {
     const { id } = req.params;
     const user = req.user;
-
-    if (user.role !== 'admin' && user.role !== 'operador') {
-      return res.status(403).json({ error: 'No tienes permiso para eliminar clientes' });
-    }
 
     const result = await pool.query('DELETE FROM clients WHERE id = $1 RETURNING id', [id]);
 

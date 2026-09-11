@@ -2,17 +2,13 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 
 // ============================================
 // GET - Historial de auditoría (solo admin)
 // ============================================
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', authenticateToken, requireRole(['admin'], 'Solo un admin puede ver la auditoría'), async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Solo un admin puede ver la auditoría' });
-    }
-
     const limit = Math.min(parseInt(req.query.limit) || 100, 500);
 
     const result = await pool.query(

@@ -67,14 +67,14 @@ router.get('/', authenticateToken, async (req, res) => {
   try {
     const user = req.user;
 
-    if (user.role === 'escaneo') {
-      return res.status(403).json({ error: 'El usuario de escaneo no tiene dashboard' });
-    } else if (user.role === 'vendedor') {
+    if (user.role === 'vendedor') {
       return res.json(await getDashboardVendedor(user.id));
     } else if (user.role === 'operador') {
       return res.json(await getDashboardOperador());
-    } else {
+    } else if (user.role === 'admin') {
       return res.json(await getDashboardAdmin());
+    } else {
+      return res.status(403).json({ error: 'Este rol no tiene dashboard' });
     }
 
   } catch (err) {

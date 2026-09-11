@@ -31,6 +31,7 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState(null);
   const [editForm, setEditForm] = useState(null);
   const [importResult, setImportResult] = useState(null);
+  const [actionError, setActionError] = useState('');
   const fileInputRef = useRef(null);
 
   function handleSearchChange(value) {
@@ -63,15 +64,19 @@ export default function ProductsPage() {
   }
 
   async function handleDelete(p) {
+    setActionError('');
     const ok = await confirm(`¿Eliminar el producto "${p.title}"?`, { title: 'Eliminar producto', confirmLabel: 'Eliminar', danger: true });
     if (!ok) return;
     const result = await del(`/api/products/${p.id}`);
     if (result.success) refetch();
+    else if (result.error) setActionError(result.error);
   }
 
   async function toggleAgotado(p) {
+    setActionError('');
     const result = await put(`/api/products/${p.id}/agotado`, { agotado: !p.agotado });
     if (result.success) refetch();
+    else if (result.error) setActionError(result.error);
   }
 
   async function handleImport(e) {
@@ -112,6 +117,7 @@ export default function ProductsPage() {
         </div>
       </div>
 
+      {actionError && <div className="alert alert-error">{actionError}</div>}
       {importError && <div className="alert alert-error">{importError}</div>}
       {importResult && (
         <div className="card" style={{ padding: 16, marginBottom: 24, fontSize: 14 }}>

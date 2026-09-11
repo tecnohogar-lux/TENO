@@ -5,6 +5,7 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import SalesPage from './pages/SalesPage';
 import CajaPage from './pages/CajaPage';
+import RetiroTiendaPage from './pages/RetiroTiendaPage';
 import ShippingPage from './pages/ShippingPage';
 import ScanPage from './pages/ScanPage';
 import TrashPage from './pages/TrashPage';
@@ -53,6 +54,7 @@ export default function App() {
         <Route path="/dashboard" element={<ProtectedRoute roles={STAFF_ROLES}><DashboardPage /></ProtectedRoute>} />
         <Route path="/sales" element={<ProtectedRoute roles={STAFF_ROLES}><SalesPage /></ProtectedRoute>} />
         <Route path="/caja" element={<ProtectedRoute roles={ADMIN_OPERADOR}><CajaPage /></ProtectedRoute>} />
+        <Route path="/retiro-tienda" element={<ProtectedRoute roles={STAFF_ROLES}><RetiroTiendaPage /></ProtectedRoute>} />
         <Route path="/shipping" element={<ProtectedRoute roles={[...STAFF_ROLES, 'escaneo']}><ShippingPage /></ProtectedRoute>} />
         <Route path="/scan" element={<ProtectedRoute roles={['operador', 'admin', 'escaneo']}><ScanPage /></ProtectedRoute>} />
         <Route path="/clients" element={<ProtectedRoute roles={STAFF_ROLES}><ClientsPage /></ProtectedRoute>} />

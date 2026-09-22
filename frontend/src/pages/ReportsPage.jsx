@@ -8,6 +8,19 @@ import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, TIPO_VENTA_LABELS, saleStat
 
 const emptyFilters = { dateFrom: '', dateTo: '', nombre: '', producto: '', vendedor: '', cliente: '', canal: '' };
 
+// "YYYY-MM-DD" de un <input type="date"> se parsea como medianoche UTC si se usa
+// new Date(str) directamente; mezclarlo con setHours (que opera en hora local)
+// desalinea el rango en cualquier zona horaria distinta de UTC. Se construye la
+// fecha con componentes locales para que el límite del día coincida con el
+// calendario del usuario.
+function parseLocalDayBoundary(value, endOfDay = false) {
+  if (!value) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  return endOfDay
+    ? new Date(year, month - 1, day, 23, 59, 59, 999)
+    : new Date(year, month - 1, day, 0, 0, 0, 0);
+}
+
 export default function ReportsPage() {
   const { data, loading, error } = useFetch('/api/sales');
   const [filters, setFilters] = useState(emptyFilters);
@@ -21,12 +34,11 @@ export default function ReportsPage() {
     let rows = data?.sales || [];
 
     if (filters.dateFrom) {
-      const from = new Date(filters.dateFrom);
+      const from = parseLocalDayBoundary(filters.dateFrom);
       rows = rows.filter((s) => new Date(s.created_at) >= from);
     }
     if (filters.dateTo) {
-      const to = new Date(filters.dateTo);
-      to.setHours(23, 59, 59, 999);
+      const to = parseLocalDayBoundary(filters.dateTo, true);
       rows = rows.filter((s) => new Date(s.created_at) <= to);
     }
 
@@ -74,7 +86,37 @@ export default function ReportsPage() {
         Fecha: formatDate(s.created_at),
       }));
 
+      // Ventas viejas (previas al desglose precio_producto/precio_envio) solo
+      // tienen "total" sin separar; ante la falta de desglose se asume que todo
+      // el monto es de producto (no hubo envío), para que las tres sumas nunca
+      // pierdan dinero: total productos + total envíos siempre da el total real.
+      let totalProductos = 0;
+      let totalEnvios = 0;
+      for (const s of filteredSales) {
+        const envio = s.precio_envio !== null && s.precio_envio !== undefined ? Number(s.precio_envio) : 0;
+        const producto = s.precio_producto !== null && s.precio_producto !== undefined
+          ? Number(s.precio_producto)
+          : Number(s.total) - envio;
+        totalProductos += producto;
+        totalEnvios += envio;
+      }
+      const totalGeneral = totalProductos + totalEnvios;
+
       const sheet = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.sheet_add_aoa(
+        sheet,
+        [
+          [],
+          [
+            'TOTALES', '', '', '', '',
+            totalProductos || '',
+            totalEnvios || '',
+            totalGeneral || '',
+          ],
+        ],
+        { origin: -1 }
+      );
+
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, sheet, 'Ventas');
       const today = new Date().toISOString().slice(0, 10);

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import UrlOpenButton from '../components/UrlOpenButton';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
 import Badge from '../components/Badge';
@@ -29,8 +30,10 @@ export default function ProductsPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [editingProduct, setEditingProduct] = useState(null);
+  const [viewingProduct, setViewingProduct] = useState(null);
   const [editForm, setEditForm] = useState(null);
   const [importResult, setImportResult] = useState(null);
+  const [showImportInfo, setShowImportInfo] = useState(false);
   const [actionError, setActionError] = useState('');
   const fileInputRef = useRef(null);
 
@@ -82,6 +85,7 @@ export default function ProductsPage() {
   async function handleImport(e) {
     const file = e.target.files?.[0];
     if (!file) return;
+    setImportResult(null);
     const formData = new FormData();
     formData.append('file', file);
     const result = await postImport('/api/products/import/excel', formData);
@@ -90,6 +94,16 @@ export default function ProductsPage() {
       refetch();
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  function openImportInfo() {
+    setImportResult(null);
+    setShowImportInfo(true);
+  }
+
+  function chooseImportFile() {
+    setShowImportInfo(false);
+    fileInputRef.current?.click();
   }
 
   return (
@@ -105,7 +119,7 @@ export default function ProductsPage() {
           />
           {canManage && (
             <>
-              <button className="btn btn-secondary" onClick={() => fileInputRef.current?.click()} disabled={importing}>
+              <button className="btn btn-secondary" onClick={openImportInfo} disabled={importing}>
                 {importing ? 'Importando...' : 'Importar Excel'}
               </button>
               <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleImport} style={{ display: 'none' }} />
@@ -118,7 +132,7 @@ export default function ProductsPage() {
       </div>
 
       {actionError && <div className="alert alert-error">{actionError}</div>}
-      {importError && <div className="alert alert-error">{importError}</div>}
+      {importError && <div className="alert alert-error" style={{ whiteSpace: 'pre-line' }}>{importError}</div>}
       {importResult && (
         <div className="card" style={{ padding: 16, marginBottom: 24, fontSize: 14 }}>
           {importResult.products_created} productos importados de {importResult.total_rows_processed} filas.
@@ -150,7 +164,10 @@ export default function ProductsPage() {
             </div>
             <div className="form-field">
               <label>URL imagen</label>
-              <input value={form.cover_image_url} onChange={(e) => setForm({ ...form, cover_image_url: e.target.value })} />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input style={{ flex: 1 }} value={form.cover_image_url} onChange={(e) => setForm({ ...form, cover_image_url: e.target.value })} />
+                <UrlOpenButton url={form.cover_image_url} />
+              </div>
             </div>
             <div className="form-field" style={{ gridColumn: '1 / -1' }}>
               <label>Características</label>
@@ -190,16 +207,16 @@ export default function ProductsPage() {
                 </tr>
               ) : (
                 data.products.map((p) => (
-                  <tr key={p.id}>
+                  <tr key={p.id} onClick={() => setViewingProduct(p)} style={{ cursor: 'pointer' }}>
                     <td data-label="Título">{p.title}</td>
                     <td data-label="SKU">{p.sku || '-'}</td>
                     <td data-label="Precio">{formatCurrency(p.price)}</td>
-                    <td data-label="Características" style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{p.caracteristicas || '-'}</td>
+                    <td data-label="Características" style={{ fontSize: 13, color: 'var(--color-text-muted)', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.caracteristicas || '-'}</td>
                     <td data-label="Estado">
                       {p.agotado ? <Badge label="Agotado" color="var(--color-danger)" /> : <Badge label="Disponible" color="var(--color-success)" />}
                     </td>
                     {canManage && (
-                      <td data-label="Acciones">
+                      <td data-label="Acciones" onClick={(e) => e.stopPropagation()}>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                           <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => openEdit(p)}>
                             Editar
@@ -246,7 +263,10 @@ export default function ProductsPage() {
             </div>
             <div className="form-field">
               <label>URL imagen</label>
-              <input value={editForm.cover_image_url} onChange={(e) => setEditForm({ ...editForm, cover_image_url: e.target.value })} />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input style={{ flex: 1 }} value={editForm.cover_image_url} onChange={(e) => setEditForm({ ...editForm, cover_image_url: e.target.value })} />
+                <UrlOpenButton url={editForm.cover_image_url} />
+              </div>
             </div>
             <div className="form-field">
               <label>Características</label>
@@ -259,6 +279,112 @@ export default function ProductsPage() {
               <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setEditingProduct(null)}>Cancelar</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {viewingProduct && (
+        <div className="modal-overlay" onClick={() => setViewingProduct(null)}>
+          <div className="modal-panel" style={{ width: 520 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
+              <div>
+                <h3 style={{ margin: '0 0 4px', fontSize: 17 }}>{viewingProduct.title}</h3>
+                <div style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>SKU: {viewingProduct.sku || '-'}</div>
+              </div>
+              {viewingProduct.agotado ? <Badge label="Agotado" color="var(--color-danger)" /> : <Badge label="Disponible" color="var(--color-success)" />}
+            </div>
+
+            {viewingProduct.cover_image_url && (
+              <div style={{ marginBottom: 16, textAlign: 'center' }}>
+                <img
+                  src={viewingProduct.cover_image_url}
+                  alt={viewingProduct.title}
+                  style={{ maxWidth: '100%', maxHeight: 220, borderRadius: 'var(--radius-sm)', objectFit: 'contain' }}
+                  onError={(e) => { e.target.style.display = 'none'; }}
+                />
+                <div style={{ marginTop: 8 }}>
+                  <UrlOpenButton url={viewingProduct.cover_image_url} title="Abrir imagen en una pestaña nueva" />
+                </div>
+              </div>
+            )}
+
+            <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>{formatCurrency(viewingProduct.price)}</div>
+
+            <div className="form-field" style={{ marginBottom: 0 }}>
+              <label>Características</label>
+              <div
+                style={{
+                  fontSize: 14,
+                  lineHeight: 1.5,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  maxHeight: 260,
+                  overflowY: 'auto',
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--color-border)',
+                  background: 'var(--color-bg)',
+                }}
+              >
+                {viewingProduct.caracteristicas || 'Sin características registradas.'}
+              </div>
+            </div>
+
+            <button type="button" className="btn btn-secondary" style={{ width: '100%', marginTop: 20 }} onClick={() => setViewingProduct(null)}>
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showImportInfo && (
+        <div className="modal-overlay" onClick={() => setShowImportInfo(false)}>
+          <div className="modal-panel" style={{ width: 520 }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: '0 0 12px', fontSize: 16 }}>Formato del Excel a importar</h3>
+            <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 0 }}>
+              La primera fila debe ser exactamente este encabezado, en este orden. Si no coincide, o si alguna fila tiene datos inválidos, se rechaza el archivo completo y no se importa nada.
+            </p>
+            <div style={{ overflowX: 'auto', marginBottom: 16 }}>
+              <table className="responsive-stack" style={{ fontSize: 13 }}>
+                <thead>
+                  <tr>
+                    <th>Columna A</th>
+                    <th>Columna B</th>
+                    <th>Columna C</th>
+                    <th>Columna D</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td data-label="Columna A"><strong>Título</strong></td>
+                    <td data-label="Columna B"><strong>SKU</strong></td>
+                    <td data-label="Columna C"><strong>Precio</strong></td>
+                    <td data-label="Columna D"><strong>URL Imagen</strong></td>
+                  </tr>
+                  <tr>
+                    <td data-label="Columna A">Producto Demo</td>
+                    <td data-label="Columna B">SKU-001</td>
+                    <td data-label="Columna C">15990</td>
+                    <td data-label="Columna D">https://...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <ul style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: '0 0 20px', paddingLeft: 20, lineHeight: 1.6 }}>
+              <li><strong>Título</strong>: obligatorio.</li>
+              <li><strong>SKU</strong>: opcional.</li>
+              <li><strong>Precio</strong>: obligatorio, número mayor a 0.</li>
+              <li><strong>URL Imagen</strong>: opcional.</li>
+              <li>Las filas completamente vacías se ignoran; el resto necesita título y precio válidos.</li>
+            </ul>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={chooseImportFile}>
+                Seleccionar archivo
+              </button>
+              <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowImportInfo(false)}>
+                Cancelar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

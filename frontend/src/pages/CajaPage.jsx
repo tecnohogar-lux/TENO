@@ -240,7 +240,8 @@ export default function CajaPage() {
             <label>Forma de pago</label>
             <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} required>
               <option value="efectivo">Efectivo</option>
-              <option value="tarjeta">Tarjeta</option>
+              <option value="debito">Débito</option>
+              <option value="credito">Crédito</option>
               <option value="transferencia">Transferencia</option>
               <option value="link_pago">Link de pago</option>
             </select>

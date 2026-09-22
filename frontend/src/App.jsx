@@ -7,6 +7,7 @@ import SalesPage from './pages/SalesPage';
 import CajaPage from './pages/CajaPage';
 import RetiroTiendaPage from './pages/RetiroTiendaPage';
 import ShippingPage from './pages/ShippingPage';
+import BlueExpressPage from './pages/BlueExpressPage';
 import ScanPage from './pages/ScanPage';
 import TrashPage from './pages/TrashPage';
 import AuditPage from './pages/AuditPage';
@@ -56,6 +57,7 @@ export default function App() {
         <Route path="/caja" element={<ProtectedRoute roles={ADMIN_OPERADOR}><CajaPage /></ProtectedRoute>} />
         <Route path="/retiro-tienda" element={<ProtectedRoute roles={STAFF_ROLES}><RetiroTiendaPage /></ProtectedRoute>} />
         <Route path="/shipping" element={<ProtectedRoute roles={[...STAFF_ROLES, 'escaneo']}><ShippingPage /></ProtectedRoute>} />
+        <Route path="/envios-bluexpress" element={<ProtectedRoute roles={STAFF_ROLES}><BlueExpressPage /></ProtectedRoute>} />
         <Route path="/scan" element={<ProtectedRoute roles={['operador', 'admin', 'escaneo']}><ScanPage /></ProtectedRoute>} />
         <Route path="/clients" element={<ProtectedRoute roles={STAFF_ROLES}><ClientsPage /></ProtectedRoute>} />
         <Route path="/products" element={<ProtectedRoute roles={STAFF_ROLES}><ProductsPage /></ProtectedRoute>} />

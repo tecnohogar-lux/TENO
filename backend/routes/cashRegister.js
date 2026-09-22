@@ -7,6 +7,27 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 
 const requireAdminOperador = requireRole(['admin', 'operador'], 'No tienes permiso para acceder a Cierre de Caja');
+const FORMAS_PAGO = ['efectivo', 'debito', 'credito', 'transferencia', 'link_pago'];
+
+// Cuánto dinero debería existir por cada forma de pago en el período (para
+// cuadrar caja: solo el efectivo se cuenta físicamente, el resto se verifica
+// contra el extracto bancario/POS correspondiente).
+async function obtenerTotalesPorFormaPago(desde, hasta) {
+  const result = await pool.query(
+    `SELECT payment_method, COALESCE(SUM(total), 0) as total
+     FROM sales
+     WHERE deleted_at IS NULL AND status = 'completado' AND created_at >= $1 AND created_at <= $2
+       AND payment_method IS NOT NULL
+     GROUP BY payment_method`,
+    [desde, hasta]
+  );
+
+  const porFormaPago = Object.fromEntries(FORMAS_PAGO.map((m) => [m, 0]));
+  for (const row of result.rows) {
+    if (row.payment_method in porFormaPago) porFormaPago[row.payment_method] = parseFloat(row.total);
+  }
+  return porFormaPago;
+}
 
 // Calcula los totales del período [desde, hasta] para una caja (abierta o ya cerrada).
 async function calcularTotales(desde, hasta, saldoInicial) {
@@ -108,8 +129,9 @@ router.get('/current', authenticateToken, requireAdminOperador, async (req, res)
 
     const caja = result.rows[0];
     const totales = await calcularTotales(caja.opened_at, new Date(), caja.saldo_inicial);
+    const por_forma_pago = await obtenerTotalesPorFormaPago(caja.opened_at, new Date());
 
-    res.json({ caja: { ...caja, ...totales } });
+    res.json({ caja: { ...caja, ...totales }, por_forma_pago });
 
   } catch (err) {
     console.error('Error al obtener caja actual:', err);
@@ -181,7 +203,9 @@ router.post('/:id/close', authenticateToken, requireAdminOperador, async (req, r
 
     await logAudit({ userId: user.id, action: 'cerrar_caja', tableName: 'cierre_caja', recordId: Number(id), oldValues: caja, newValues: result.rows[0] });
 
-    res.json({ message: 'Caja cerrada', caja: result.rows[0] });
+    const por_forma_pago = await obtenerTotalesPorFormaPago(caja.opened_at, cerradoEn);
+
+    res.json({ message: 'Caja cerrada', caja: result.rows[0], por_forma_pago });
 
   } catch (err) {
     console.error('Error al cerrar caja:', err);
@@ -261,8 +285,9 @@ router.get('/:id', authenticateToken, requireAdminOperador, async (req, res) => 
     const { ventas, por_canal } = await obtenerVentasPeriodo(caja.opened_at, hasta, { order_id, cliente, vendedor, fecha, producto, estado, forma_pago });
 
     const totalesEnVivo = caja.closed_at ? null : await calcularTotales(caja.opened_at, hasta, caja.saldo_inicial);
+    const por_forma_pago = await obtenerTotalesPorFormaPago(caja.opened_at, hasta);
 
-    res.json({ caja: totalesEnVivo ? { ...caja, ...totalesEnVivo } : caja, ventas, por_canal });
+    res.json({ caja: totalesEnVivo ? { ...caja, ...totalesEnVivo } : caja, ventas, por_canal, por_forma_pago });
 
   } catch (err) {
     console.error('Error al obtener detalle de caja:', err);

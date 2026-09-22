@@ -145,10 +145,22 @@ router.post('/', authenticateToken, requireManage('No tienes permiso para crear 
   }
 });
 
+// Encabezado esperado del Excel de importación (mismo orden mostrado al
+// usuario en el pop-up del frontend antes de subir el archivo).
+const IMPORT_HEADER = ['Título', 'SKU', 'Precio', 'URL Imagen'];
+
+function normalizarEncabezado(value) {
+  return String(value ?? '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // quita tildes
+    .trim()
+    .toLowerCase();
+}
+
 // ============================================
 // POST - Importar productos desde Excel
 // ============================================
 router.post('/import/excel', authenticateToken, requireManage('No tienes permiso para importar productos'), upload.single('file'), async (req, res) => {
+  const filePath = req.file?.path;
   try {
     const user = req.user;
 
@@ -157,67 +169,108 @@ router.post('/import/excel', authenticateToken, requireManage('No tienes permiso
     }
 
     // Leer archivo Excel
-    const filePath = req.file.path;
     const workbook = xlsx.readFile(filePath);
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const data = xlsx.utils.sheet_to_json(sheet, { header: 1 });
 
-    // Validar que hay filas
+    if (data.length < 1) {
+      fs.unlinkSync(filePath);
+      return res.status(400).json({ error: 'El archivo Excel está vacío' });
+    }
+
+    // La primera fila debe ser exactamente el encabezado esperado, en orden.
+    const headerRow = data[0] || [];
+    const headerValido = IMPORT_HEADER.every((col, idx) => normalizarEncabezado(headerRow[idx]) === normalizarEncabezado(col));
+    if (!headerValido) {
+      fs.unlinkSync(filePath);
+      return res.status(400).json({
+        error: `El archivo no tiene el formato esperado. La primera fila debe ser exactamente: ${IMPORT_HEADER.join(' | ')} (en ese orden, sin columnas de más o de menos).`,
+      });
+    }
+
     if (data.length < 2) {
       fs.unlinkSync(filePath);
-      return res.status(400).json({ error: 'Archivo Excel vacío' });
+      return res.status(400).json({ error: 'El archivo no tiene filas de productos, solo el encabezado.' });
     }
 
-    let productsCreated = 0;
-    let errors = [];
-
-    // Procesar cada fila (saltando encabezado)
+    // Primero se valida TODO el archivo; si hay algún error no se importa nada.
+    const filas = [];
+    const errors = [];
     for (let i = 1; i < data.length; i++) {
-      const row = data[i];
+      const row = data[i] || [];
+      const isBlankRow = row.every((cell) => cell === undefined || cell === null || String(cell).trim() === '');
+      if (isBlankRow) continue;
 
-      // Extraer datos: A=título, B=sku, C=precio, D=imagen
       const title = row[0] ? String(row[0]).trim() : null;
       const sku = row[1] ? String(row[1]).trim() : null;
-      const price = row[2] ? parseFloat(row[2]) : null;
+      const priceRaw = row[2];
+      const price = priceRaw !== undefined && priceRaw !== null && String(priceRaw).trim() !== '' ? parseFloat(priceRaw) : null;
       const cover_image_url = row[3] ? String(row[3]).trim() : null;
 
-      // Validar fila
-      if (!title || !price) {
-        errors.push(`Fila ${i + 1}: Falta título o precio`);
+      if (!title) {
+        errors.push(`Fila ${i + 1}: falta el título`);
+        continue;
+      }
+      if (price === null || isNaN(price)) {
+        errors.push(`Fila ${i + 1}: falta el precio o no es un número`);
+        continue;
+      }
+      if (price <= 0) {
+        errors.push(`Fila ${i + 1}: el precio debe ser mayor a 0`);
         continue;
       }
 
-      if (isNaN(price) || price <= 0) {
-        errors.push(`Fila ${i + 1}: Precio inválido`);
-        continue;
-      }
-
-      try {
-        await pool.query(
-          `INSERT INTO products (title, sku, price, cover_image_url, created_by)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [title, sku || null, price, cover_image_url || null, user.id]
-        );
-        productsCreated++;
-      } catch (dbErr) {
-        errors.push(`Fila ${i + 1}: Error en BD - ${dbErr.message}`);
-      }
+      filas.push({ title, sku, price, cover_image_url });
     }
 
-    // Eliminar archivo temporal
+    if (errors.length > 0) {
+      fs.unlinkSync(filePath);
+      const MAX_ERRORS_SHOWN = 15;
+      const listado = errors.slice(0, MAX_ERRORS_SHOWN).join('\n');
+      const resto = errors.length > MAX_ERRORS_SHOWN ? `\n... y ${errors.length - MAX_ERRORS_SHOWN} error(es) más` : '';
+      return res.status(400).json({
+        error: `El archivo tiene errores y no se importó ningún producto. Corrígelos y vuelve a subirlo:\n${listado}${resto}`,
+      });
+    }
+
+    if (filas.length === 0) {
+      fs.unlinkSync(filePath);
+      return res.status(400).json({ error: 'El archivo no tiene filas de productos con datos.' });
+    }
+
+    // Todas las filas son válidas: se insertan de forma atómica.
+    const dbClient = await pool.connect();
+    let productsCreated = 0;
+    try {
+      await dbClient.query('BEGIN');
+      for (const fila of filas) {
+        await dbClient.query(
+          `INSERT INTO products (title, sku, price, cover_image_url, created_by)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [fila.title, fila.sku || null, fila.price, fila.cover_image_url || null, user.id]
+        );
+        productsCreated++;
+      }
+      await dbClient.query('COMMIT');
+    } catch (dbErr) {
+      await dbClient.query('ROLLBACK');
+      throw dbErr;
+    } finally {
+      dbClient.release();
+    }
+
     fs.unlinkSync(filePath);
 
     res.json({
-      message: `Importación completada`,
+      message: 'Importación completada',
       products_created: productsCreated,
-      errors: errors,
-      total_rows_processed: data.length - 1
+      errors: [],
+      total_rows_processed: filas.length,
     });
 
   } catch (err) {
-    // Limpiar archivo si existe error
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
+    if (filePath && fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
     }
 
     console.error('Error al importar Excel:', err);

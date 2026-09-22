@@ -22,6 +22,20 @@
   --color-success: #4c7a52;
   --color-warning: #b98a2e;
 
+  /* Color por categoría del sidebar, para diferenciar los grupos de módulos a simple vista. */
+  --color-group-ventas: #2f8a5b;
+  --color-group-ventas-bg: #e6f4ec;
+  --color-group-envios: #2f6fb0;
+  --color-group-envios-bg: #e7f0fa;
+  --color-group-catalogo: #c1622a;
+  --color-group-catalogo-bg: #fbece3;
+  --color-group-comunicacion: #7c4fb0;
+  --color-group-comunicacion-bg: #f1e9fa;
+  --color-group-analisis: #12806f;
+  --color-group-analisis-bg: #e1f4f1;
+  --color-group-administracion: #5b6474;
+  --color-group-administracion-bg: #eef0f3;
+
   --radius-sm: 10px;
   --radius-md: 16px;
   --radius-lg: 20px;
@@ -57,6 +71,19 @@
   --color-danger: #e0685c;
   --color-success: #6fae77;
   --color-warning: #d9a54a;
+
+  --color-group-ventas: #4ade80;
+  --color-group-ventas-bg: rgba(74, 222, 128, 0.14);
+  --color-group-envios: #60a5fa;
+  --color-group-envios-bg: rgba(96, 165, 250, 0.14);
+  --color-group-catalogo: #fb923c;
+  --color-group-catalogo-bg: rgba(251, 146, 60, 0.14);
+  --color-group-comunicacion: #c084fc;
+  --color-group-comunicacion-bg: rgba(192, 132, 252, 0.14);
+  --color-group-analisis: #2dd4bf;
+  --color-group-analisis-bg: rgba(45, 212, 191, 0.14);
+  --color-group-administracion: #94a3b8;
+  --color-group-administracion-bg: rgba(148, 163, 184, 0.14);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);

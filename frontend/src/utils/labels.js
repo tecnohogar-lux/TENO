@@ -27,7 +27,8 @@ export const TIPO_VENTA_LABELS = {
 
 export const PAYMENT_METHOD_LABELS = {
   efectivo: 'Efectivo',
-  tarjeta: 'Tarjeta',
+  debito: 'Débito',
+  credito: 'Crédito',
   transferencia: 'Transferencia',
   link_pago: 'Link de pago',
 };

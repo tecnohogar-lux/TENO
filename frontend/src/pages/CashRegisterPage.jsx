@@ -9,6 +9,7 @@ import { formatCurrency, formatDate } from '../utils/format';
 import { saleStatusLabel, deliveryStatusLabel, tipoVentaLabel, paymentMethodLabel, TIPO_VENTA_LABELS } from '../utils/labels';
 
 const emptyFilters = { order_id: '', cliente: '', vendedor: '', fecha: '', producto: '', estado: '', forma_pago: '' };
+const FORMAS_PAGO = ['efectivo', 'debito', 'credito', 'transferencia', 'link_pago'];
 
 function buildQuery(filters) {
   const params = new URLSearchParams();
@@ -23,6 +24,7 @@ export default function CashRegisterPage() {
 
   const [saldoInicial, setSaldoInicial] = useState('');
   const [showCloseForm, setShowCloseForm] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
   const [efectivoContado, setEfectivoContado] = useState('');
   const [notas, setNotas] = useState('');
   const [closedResult, setClosedResult] = useState(null);
@@ -49,12 +51,27 @@ export default function CashRegisterPage() {
     }
   }
 
-  async function handleClose(e) {
+  function handlePreview(e) {
     e.preventDefault();
+    if (efectivoContado === '') return;
+    setPreviewMode(true);
+  }
+
+  function handleBackToEdit() {
+    setPreviewMode(false);
+  }
+
+  function toggleCloseForm() {
+    setShowCloseForm((v) => !v);
+    setPreviewMode(false);
+  }
+
+  async function handleConfirmClose() {
     const result = await closePost(`/api/cash-register/${caja.id}/close`, { efectivo_contado: efectivoContado, notas });
     if (result.success) {
-      setClosedResult(result.data.caja);
+      setClosedResult({ ...result.data.caja, por_forma_pago: result.data.por_forma_pago });
       setShowCloseForm(false);
+      setPreviewMode(false);
       setEfectivoContado('');
       setNotas('');
       refetchCurrent();
@@ -91,6 +108,17 @@ export default function CashRegisterPage() {
               subtext={Number(closedResult.diferencia) === 0 ? 'Cuadra exacto' : (Number(closedResult.diferencia) > 0 ? 'Sobra efectivo' : 'Falta efectivo')}
             />
           </div>
+
+          {closedResult.por_forma_pago && (
+            <>
+              <h4 style={{ margin: '16px 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>Debería haber por forma de pago</h4>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                {FORMAS_PAGO.map((m) => (
+                  <MetricsCard key={m} label={paymentMethodLabel(m)} value={formatCurrency(closedResult.por_forma_pago[m])} />
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -127,7 +155,7 @@ export default function CashRegisterPage() {
                   Apertura: {formatDate(caja.opened_at)} · Responsable: {caja.opened_by_name || '-'}
                 </div>
               </div>
-              <button className="btn btn-primary" onClick={() => setShowCloseForm((v) => !v)}>
+              <button className="btn btn-primary" onClick={toggleCloseForm}>
                 {showCloseForm ? 'Cancelar' : 'Cerrar caja'}
               </button>
             </div>
@@ -139,8 +167,8 @@ export default function CashRegisterPage() {
               <MetricsCard label="Saldo real (efectivo esperado)" value={formatCurrency(caja.saldo_real)} />
             </div>
 
-            {showCloseForm && (
-              <form onSubmit={handleClose} className="card" style={{ padding: 16, marginTop: 20, background: 'var(--color-bg)' }}>
+            {showCloseForm && !previewMode && (
+              <form onSubmit={handlePreview} className="card" style={{ padding: 16, marginTop: 20, background: 'var(--color-bg)' }}>
                 {closeError && <div className="alert alert-error">{closeError}</div>}
                 <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: 16 }}>
                   <div className="form-field">
@@ -152,11 +180,74 @@ export default function CashRegisterPage() {
                     <input value={notas} onChange={(e) => setNotas(e.target.value)} placeholder="Opcional" />
                   </div>
                 </div>
-                <button type="submit" className="btn btn-primary" disabled={closing} style={{ marginTop: 8 }}>
-                  {closing ? 'Cerrando...' : 'Confirmar cierre'}
+                <button type="submit" className="btn btn-primary" style={{ marginTop: 8 }}>
+                  Previsualizar cierre
                 </button>
               </form>
             )}
+
+            {showCloseForm && previewMode && (() => {
+              const diferenciaPreview = Number(efectivoContado || 0) - Number(caja.saldo_real || 0);
+              return (
+                <div className="card" style={{ padding: 16, marginTop: 20, background: 'var(--color-bg)', border: '1px solid var(--color-primary)' }}>
+                  <h4 style={{ margin: '0 0 4px', fontSize: 14 }}>Previsualización del cierre</h4>
+                  <p style={{ margin: '0 0 16px', fontSize: 12, color: 'var(--color-text-muted)' }}>
+                    Revisa que todo esté en orden antes de confirmar. Esto todavía no cierra la caja.
+                  </p>
+                  {closeError && <div className="alert alert-error">{closeError}</div>}
+
+                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
+                    <MetricsCard label="Saldo inicial" value={formatCurrency(caja.saldo_inicial)} />
+                    <MetricsCard label="Total vendido" value={formatCurrency(caja.total_vendido)} />
+                    <MetricsCard label="Total gastos" value={formatCurrency(caja.total_gastos)} />
+                    <MetricsCard label="Saldo real (esperado)" value={formatCurrency(caja.saldo_real)} />
+                    <MetricsCard label="Efectivo contado" value={formatCurrency(efectivoContado)} />
+                    <MetricsCard
+                      label="Diferencia"
+                      value={formatCurrency(diferenciaPreview)}
+                      subtext={diferenciaPreview === 0 ? 'Cuadra exacto' : (diferenciaPreview > 0 ? 'Sobra efectivo' : 'Falta efectivo')}
+                    />
+                  </div>
+
+                  {detailData?.por_canal && (
+                    <>
+                      <h5 style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>Ventas del período por canal</h5>
+                      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
+                        <MetricsCard label="Tienda" value={detailData.por_canal.tienda.cantidad} subtext={formatCurrency(detailData.por_canal.tienda.total)} />
+                        <MetricsCard label="Delivery Santiago" value={detailData.por_canal.envio_rm.cantidad} subtext={formatCurrency(detailData.por_canal.envio_rm.total)} />
+                        <MetricsCard label="Envíos a Región" value={detailData.por_canal.envio_region.cantidad} subtext={formatCurrency(detailData.por_canal.envio_region.total)} />
+                      </div>
+                    </>
+                  )}
+
+                  {detailData?.por_forma_pago && (
+                    <>
+                      <h5 style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>Debería haber por forma de pago</h5>
+                      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
+                        {FORMAS_PAGO.map((m) => (
+                          <MetricsCard key={m} label={paymentMethodLabel(m)} value={formatCurrency(detailData.por_forma_pago[m])} />
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {notas && (
+                    <div style={{ fontSize: 13, marginBottom: 16 }}>
+                      <strong>Notas:</strong> {notas}
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <button type="button" className="btn btn-primary" style={{ flex: 1 }} disabled={closing} onClick={handleConfirmClose}>
+                      {closing ? 'Cerrando...' : 'Confirmar cierre'}
+                    </button>
+                    <button type="button" className="btn btn-secondary" style={{ flex: 1 }} disabled={closing} onClick={handleBackToEdit}>
+                      Volver a editar
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {detailData && (
@@ -164,9 +255,20 @@ export default function CashRegisterPage() {
               <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>Ventas del período por canal</h3>
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
                 <MetricsCard label="Tienda" value={detailData.por_canal.tienda.cantidad} subtext={formatCurrency(detailData.por_canal.tienda.total)} />
-                <MetricsCard label="Envío RM" value={detailData.por_canal.envio_rm.cantidad} subtext={formatCurrency(detailData.por_canal.envio_rm.total)} />
+                <MetricsCard label="Delivery Santiago" value={detailData.por_canal.envio_rm.cantidad} subtext={formatCurrency(detailData.por_canal.envio_rm.total)} />
                 <MetricsCard label="Envíos a Región" value={detailData.por_canal.envio_region.cantidad} subtext={formatCurrency(detailData.por_canal.envio_region.total)} />
               </div>
+
+              {detailData.por_forma_pago && (
+                <>
+                  <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>Debería haber por forma de pago</h3>
+                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
+                    {FORMAS_PAGO.map((m) => (
+                      <MetricsCard key={m} label={paymentMethodLabel(m)} value={formatCurrency(detailData.por_forma_pago[m])} />
+                    ))}
+                  </div>
+                </>
+              )}
 
               <form onSubmit={applyFilters} className="card" style={{ padding: 16, marginBottom: 16 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
@@ -178,7 +280,8 @@ export default function CashRegisterPage() {
                   <select value={filters.forma_pago} onChange={(e) => setFilters({ ...filters, forma_pago: e.target.value })}>
                     <option value="">Forma de pago (todas)</option>
                     <option value="efectivo">Efectivo</option>
-                    <option value="tarjeta">Tarjeta</option>
+                    <option value="debito">Débito</option>
+                    <option value="credito">Crédito</option>
                     <option value="transferencia">Transferencia</option>
                     <option value="link_pago">Link de pago</option>
                   </select>

@@ -11,8 +11,9 @@ const MODULE_GROUPS = [
   },
   {
     label: 'Ventas',
+    color: 'ventas',
     items: [
-      { path: '/sales', label: 'Ventas', roles: ['vendedor', 'operador', 'admin'] },
+      { path: '/sales', label: 'Historial de Ventas', roles: ['vendedor', 'operador', 'admin'] },
       { path: '/retiro-tienda', label: 'Retiro en Tienda', roles: ['vendedor', 'operador', 'admin'] },
       { path: '/caja', label: 'Caja', roles: ['operador', 'admin'] },
       { path: '/cash-register', label: 'Cierre de Caja', roles: ['operador', 'admin'] },
@@ -21,14 +22,17 @@ const MODULE_GROUPS = [
   },
   {
     label: 'Envíos',
+    color: 'envios',
     items: [
-      { path: '/shipping', label: 'Envíos', roles: ['vendedor', 'operador', 'admin', 'escaneo'] },
+      { path: '/shipping', label: 'Delivery Santiago', roles: ['vendedor', 'operador', 'admin', 'escaneo'] },
+      { path: '/envios-bluexpress', label: 'Envíos BlueExpress', roles: ['vendedor', 'operador', 'admin'] },
       { path: '/shipping-costs', label: 'Costos de envío', roles: ['vendedor', 'operador', 'admin'] },
       { path: '/region-shipping', label: 'Envíos a Regiones', roles: ['vendedor', 'operador', 'admin'] },
     ],
   },
   {
     label: 'Catálogo',
+    color: 'catalogo',
     items: [
       { path: '/products', label: 'Productos', roles: ['vendedor', 'operador', 'admin'] },
       { path: '/clients', label: 'Clientes', roles: ['vendedor', 'operador', 'admin'] },
@@ -36,6 +40,7 @@ const MODULE_GROUPS = [
   },
   {
     label: 'Comunicación',
+    color: 'comunicacion',
     items: [
       { path: '/noticias', label: 'Noticias', roles: ['vendedor', 'operador', 'admin'] },
       { path: '/anotaciones', label: 'Anotaciones diarias', roles: ['operador', 'admin'] },
@@ -43,6 +48,7 @@ const MODULE_GROUPS = [
   },
   {
     label: 'Análisis',
+    color: 'analisis',
     items: [
       { path: '/reports', label: 'Reportes', roles: ['operador', 'admin'] },
       { path: '/audit', label: 'Auditoría', roles: ['admin'] },
@@ -50,6 +56,7 @@ const MODULE_GROUPS = [
   },
   {
     label: 'Administración',
+    color: 'administracion',
     items: [
       { path: '/users', label: 'Usuarios', roles: ['admin'] },
       { path: '/trash', label: 'Papelera', roles: ['admin'] },
@@ -64,7 +71,10 @@ const MODULE_GROUPS = [
   },
 ];
 
-function NavItem({ m, onNavigate }) {
+function NavItem({ m, onNavigate, color }) {
+  const activeColor = color ? `var(--color-group-${color})` : 'var(--color-sidebar-text-active)';
+  const activeBg = color ? `var(--color-group-${color}-bg)` : 'var(--color-sidebar-active-bg)';
+
   return (
     <NavLink
       to={m.path}
@@ -77,8 +87,8 @@ function NavItem({ m, onNavigate }) {
         fontWeight: 700,
         marginBottom: 4,
         transition: 'background-color 0.15s ease, color 0.15s ease',
-        color: isActive ? 'var(--color-sidebar-text-active)' : 'var(--color-sidebar-text)',
-        background: isActive ? 'var(--color-sidebar-active-bg)' : 'transparent',
+        color: isActive ? activeColor : 'var(--color-sidebar-text)',
+        background: isActive ? activeBg : 'transparent',
       })}
       onMouseEnter={(e) => {
         if (!e.currentTarget.classList.contains('active')) e.currentTarget.style.background = 'var(--color-sidebar-hover)';
@@ -116,15 +126,50 @@ export default function Sidebar({ mobileOpen = false, onNavigate }) {
 
       <nav style={{ flex: 1, padding: '14px 10px', overflowY: 'auto' }}>
         {visibleGroups.map((g, i) => (
-          <div key={g.label || `group-${i}`} style={{ marginTop: i === 0 ? 0 : 18 }}>
+          <div
+            key={g.label || `group-${i}`}
+            style={{
+              marginTop: i === 0 ? 0 : 18,
+              paddingTop: i === 0 ? 0 : 16,
+              borderTop: i === 0 ? 'none' : '1px solid var(--color-sidebar-border)',
+            }}
+          >
             {g.label && (
-              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-text-muted)', padding: '0 14px', marginBottom: 6 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 7,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  color: g.color ? `var(--color-group-${g.color})` : 'var(--color-text-muted)',
+                  padding: '0 14px',
+                  marginBottom: 6,
+                }}
+              >
+                {g.color && (
+                  <span
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: '50%',
+                      background: `var(--color-group-${g.color})`,
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
                 {g.label}
               </div>
             )}
-            {g.items.map((m) => (
-              <NavItem key={m.path} m={m} onNavigate={onNavigate} />
-            ))}
+            <div
+              style={g.color ? { borderLeft: `2px solid var(--color-group-${g.color})`, paddingLeft: 6, marginLeft: 8 } : undefined}
+            >
+              {g.items.map((m) => (
+                <NavItem key={m.path} m={m} onNavigate={onNavigate} color={g.color} />
+              ))}
+            </div>
           </div>
         ))}
       </nav>

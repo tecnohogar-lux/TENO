@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS sales (
     'solo_envio_pagado', 'solo_entrega_incompleto', 'cambio_producto'
   )),
   tipo_venta VARCHAR(20) NOT NULL DEFAULT 'ENVIO' CHECK (tipo_venta IN ('ENVIO', 'TIENDA', 'ENVIO_PREPAGADO', 'ENVIO_REGION')),
-  payment_method VARCHAR(30) CHECK (payment_method IN ('efectivo', 'tarjeta', 'transferencia', 'link_pago')),
+  payment_method VARCHAR(30) CHECK (payment_method IN ('efectivo', 'debito', 'credito', 'transferencia', 'link_pago')),
   transferencia_verificada BOOLEAN DEFAULT false,
   precio_producto DECIMAL(10, 2),
   precio_envio DECIMAL(10, 2),

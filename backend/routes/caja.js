@@ -5,7 +5,7 @@ const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 
-const PAYMENT_METHODS = ['efectivo', 'tarjeta', 'transferencia', 'link_pago'];
+const PAYMENT_METHODS = ['efectivo', 'debito', 'credito', 'transferencia', 'link_pago'];
 
 // ============================================
 // POST - Crear venta desde Caja (tienda o envío prepagado)

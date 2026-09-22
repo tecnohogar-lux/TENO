@@ -292,6 +292,11 @@ tbody tr:hover {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  /* En mobile, 100vh puede ser más alto que el viewport visible (barra de
+     direcciones del navegador), empujando el botón de cerrar sesión del footer
+     fuera de la pantalla sin forma de hacer scroll hasta él. 100dvh usa el
+     alto real visible; se declara después como mejora progresiva. */
+  height: 100dvh;
   position: sticky;
   top: 0;
   border-right: 1px solid var(--color-sidebar-border);

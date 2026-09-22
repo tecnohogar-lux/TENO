@@ -63,9 +63,9 @@ export default function SalesPage() {
     <Layout>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: 22, margin: 0 }}>Ventas</h1>
+          <h1 style={{ fontSize: 22, margin: 0 }}>Historial de Ventas</h1>
           <p style={{ color: 'var(--color-text-muted)', marginTop: 4, marginBottom: 0, fontSize: 13 }}>
-            Vista general de envíos y ventas en tienda. Para crear una etiqueta de envío ve a Envíos; para una venta en tienda ve a Caja.
+            Vista general de envíos y ventas en tienda. Para crear una etiqueta de envío ve a Delivery Santiago; para una venta en tienda ve a Caja.
           </p>
         </div>
         <input

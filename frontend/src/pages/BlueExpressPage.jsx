@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Badge from '../components/Badge';
 import LabelPrint from '../components/LabelPrint';
@@ -21,6 +20,7 @@ const emptyCreateForm = {
   newClient: emptyNewClient,
   product_name: '',
   quantity: '',
+  region: '',
   comuna: '',
   precio_producto: '',
   precio_envio: '',
@@ -29,13 +29,14 @@ const emptyCreateForm = {
   notes: '',
 };
 
-export default function ShippingPage() {
+// Envíos BlueExpress: mismo módulo que Delivery Santiago, pero para despachos
+// fuera de la Región Metropolitana a través del courier BlueExpress (por eso
+// el campo de región, además de dirección/comuna). Los vendedores pueden
+// crearlos igual que en Delivery Santiago.
+export default function BlueExpressPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const canManage = user.role === 'operador' || user.role === 'admin';
   const isAdmin = user.role === 'admin';
-  const canCreate = user.role !== 'escaneo';
-  const canScanButton = canManage || user.role === 'escaneo';
 
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search);
@@ -46,7 +47,7 @@ export default function ShippingPage() {
   );
   const { data: usersData } = useFetch('/api/users', { enabled: canManage });
   const { data: clientsData } = useFetch('/api/clients');
-  const { data: shippingCostsData } = useFetch('/api/shipping-costs');
+  const { data: regionShippingData } = useFetch('/api/region-shipping');
   const { post, put, del, loading: saving, error: saveError } = useApi();
   const { confirm, dialog: confirmDialog } = useConfirm();
 
@@ -66,9 +67,11 @@ export default function ShippingPage() {
   const vendedores = (usersData?.users || []).filter((u) => u.role === 'vendedor' && u.is_active);
   const vendorOptions = useMemo(() => vendedores.map((v) => ({ value: v.id, label: v.name })), [vendedores]);
   const clientOptions = useMemo(() => (clientsData?.clients || []).map((c) => ({ value: c.id, label: c.name })), [clientsData]);
+  const regiones = [...new Set((regionShippingData?.costos || []).map((c) => c.region))].sort();
+  const comunasDeRegion = (regionShippingData?.costos || []).filter((c) => c.region === createForm.region);
 
   const shipments = useMemo(() => {
-    const all = (data?.sales || []).filter((s) => ['ENVIO', 'ENVIO_PREPAGADO'].includes(s.tipo_venta));
+    const all = (data?.sales || []).filter((s) => s.tipo_venta === 'ENVIO_REGION');
     if (statusFilter === 'todos') return all;
     return all.filter((s) => s.delivery_status === statusFilter);
   }, [data, statusFilter]);
@@ -105,7 +108,7 @@ export default function ShippingPage() {
 
   async function handleDelete(sale) {
     setActionError('');
-    const ok = await confirm(`¿Eliminar el envío "${sale.product_name}" de ${sale.client_name}? Podrás recuperarlo desde la Papelera.`, {
+    const ok = await confirm(`¿Eliminar el envío BlueExpress "${sale.product_name}" de ${sale.client_name}? Podrás recuperarlo desde la Papelera.`, {
       title: 'Eliminar envío',
       confirmLabel: 'Eliminar',
       danger: true,
@@ -161,8 +164,8 @@ export default function ShippingPage() {
     }
   }
 
-  function handleComunaChange(comuna) {
-    const match = (shippingCostsData?.costos || []).find((c) => c.comuna === comuna);
+  function handleRegionComunaChange(comuna) {
+    const match = comunasDeRegion.find((c) => c.comuna === comuna);
     setCreateForm({ ...createForm, comuna, precio_envio: match ? String(match.precio) : createForm.precio_envio });
   }
 
@@ -175,7 +178,7 @@ export default function ShippingPage() {
     // El backend calcula total = cantidad * price; despejamos el precio unitario para que coincida.
     const price = total / quantity;
     const payload = {
-      tipo_venta: 'ENVIO',
+      tipo_venta: 'ENVIO_REGION',
       product_name: createForm.product_name,
       quantity,
       price,
@@ -183,6 +186,7 @@ export default function ShippingPage() {
       precio_envio: precioEnvio,
       address: createForm.address,
       comuna: createForm.comuna,
+      region: createForm.region,
       phone: createForm.phone,
       notes: createForm.notes,
     };
@@ -201,7 +205,12 @@ export default function ShippingPage() {
   return (
     <Layout>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
-        <h1 style={{ fontSize: 22, margin: 0 }}>Delivery Santiago</h1>
+        <div>
+          <h1 style={{ fontSize: 22, margin: 0 }}>Envíos BlueExpress</h1>
+          <p style={{ color: 'var(--color-text-muted)', marginTop: 4, marginBottom: 0, fontSize: 13 }}>
+            Despachos a regiones fuera de la Región Metropolitana.
+          </p>
+        </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             placeholder="Buscar por vendedor, cliente, producto, comuna..."
@@ -216,65 +225,55 @@ export default function ShippingPage() {
             ))}
           </select>
 
-          {canScanButton && (
-            <button className="btn btn-secondary" onClick={() => navigate('/scan')}>
-              Escanear
-            </button>
-          )}
-
           {canManage && (
-            <>
-              <div style={{ position: 'relative' }}>
-                <button
-                  className="btn btn-secondary"
-                  disabled={selectedIds.length === 0}
-                  onClick={() => setActionsOpen((v) => !v)}
-                >
-                  Acciones ({selectedIds.length}) ▾
-                </button>
-                {actionsOpen && selectedIds.length > 0 && (
-                  <div className="card" style={{ position: 'absolute', top: '110%', right: 0, padding: 8, width: 220, zIndex: 20 }}>
-                    <button
-                      className="btn btn-secondary"
-                      style={{ width: '100%', justifyContent: 'flex-start', marginBottom: 4 }}
-                      onClick={() => setBulkStatusPanel((v) => !v)}
-                    >
-                      Editar estado
-                    </button>
-                    {bulkStatusPanel && (
-                      <div style={{ display: 'flex', gap: 6, padding: '6px 4px 10px' }}>
-                        <select
-                          value={bulkStatusValue}
-                          onChange={(e) => setBulkStatusValue(e.target.value)}
-                          style={{ flex: 1, fontSize: 12, padding: '4px 6px', borderRadius: 4, border: '1px solid var(--color-border)' }}
-                        >
-                          {DELIVERY_STATUS_OPTIONS.map((opt) => (
-                            <option key={opt} value={opt}>{deliveryStatusLabel(opt)}</option>
-                          ))}
-                        </select>
-                        <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={handleBulkStatus}>
-                          Aplicar
-                        </button>
-                      </div>
-                    )}
-                    <button
-                      className="btn btn-secondary"
-                      style={{ width: '100%', justifyContent: 'flex-start' }}
-                      onClick={openBulkPrint}
-                    >
-                      Imprimir etiquetas
-                    </button>
-                  </div>
-                )}
-              </div>
-            </>
+            <div style={{ position: 'relative' }}>
+              <button
+                className="btn btn-secondary"
+                disabled={selectedIds.length === 0}
+                onClick={() => setActionsOpen((v) => !v)}
+              >
+                Acciones ({selectedIds.length}) ▾
+              </button>
+              {actionsOpen && selectedIds.length > 0 && (
+                <div className="card" style={{ position: 'absolute', top: '110%', right: 0, padding: 8, width: 220, zIndex: 20 }}>
+                  <button
+                    className="btn btn-secondary"
+                    style={{ width: '100%', justifyContent: 'flex-start', marginBottom: 4 }}
+                    onClick={() => setBulkStatusPanel((v) => !v)}
+                  >
+                    Editar estado
+                  </button>
+                  {bulkStatusPanel && (
+                    <div style={{ display: 'flex', gap: 6, padding: '6px 4px 10px' }}>
+                      <select
+                        value={bulkStatusValue}
+                        onChange={(e) => setBulkStatusValue(e.target.value)}
+                        style={{ flex: 1, fontSize: 12, padding: '4px 6px', borderRadius: 4, border: '1px solid var(--color-border)' }}
+                      >
+                        {DELIVERY_STATUS_OPTIONS.map((opt) => (
+                          <option key={opt} value={opt}>{deliveryStatusLabel(opt)}</option>
+                        ))}
+                      </select>
+                      <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={handleBulkStatus}>
+                        Aplicar
+                      </button>
+                    </div>
+                  )}
+                  <button
+                    className="btn btn-secondary"
+                    style={{ width: '100%', justifyContent: 'flex-start' }}
+                    onClick={openBulkPrint}
+                  >
+                    Imprimir etiquetas
+                  </button>
+                </div>
+              )}
+            </div>
           )}
 
-          {canCreate && (
-            <button className="btn btn-primary" onClick={() => setShowCreateForm((v) => !v)}>
-              {showCreateForm ? 'Cancelar' : 'Nueva etiqueta'}
-            </button>
-          )}
+          <button className="btn btn-primary" onClick={() => setShowCreateForm((v) => !v)}>
+            {showCreateForm ? 'Cancelar' : 'Nueva etiqueta'}
+          </button>
         </div>
       </div>
 
@@ -337,15 +336,23 @@ export default function ShippingPage() {
             </div>
 
             <div className="form-field">
+              <label>Región</label>
+              <select value={createForm.region} onChange={(e) => setCreateForm({ ...createForm, region: e.target.value, comuna: '', precio_envio: '' })} required>
+                <option value="">Selecciona una región</option>
+                {regiones.map((r) => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-field">
               <label>Comuna</label>
-              <select value={createForm.comuna} onChange={(e) => handleComunaChange(e.target.value)} required>
+              <select value={createForm.comuna} onChange={(e) => handleRegionComunaChange(e.target.value)} required disabled={!createForm.region}>
                 <option value="">Selecciona una comuna</option>
-                {(shippingCostsData?.costos || []).map((c) => (
+                {comunasDeRegion.map((c) => (
                   <option key={c.id} value={c.comuna}>{c.comuna} · {formatCurrency(c.precio)}</option>
                 ))}
               </select>
             </div>
-            <div />
 
             <div className="form-field">
               <label>Precio producto</label>
@@ -387,6 +394,7 @@ export default function ShippingPage() {
 
       {data && (
         <div className="card" style={{ padding: 20 }}>
+          <div style={{ overflowX: 'auto' }}>
           <table className="responsive-stack">
             <thead>
               <tr>
@@ -398,8 +406,9 @@ export default function ShippingPage() {
                 <th>Producto</th>
                 <th>Cliente</th>
                 <th>Vendedor</th>
-                <th>Dirección</th>
+                <th>Región</th>
                 <th>Comuna</th>
+                <th>Dirección</th>
                 <th>Total</th>
                 <th>Estado</th>
                 <th>Fecha</th>
@@ -409,7 +418,7 @@ export default function ShippingPage() {
             <tbody>
               {shipments.length === 0 ? (
                 <tr>
-                  <td colSpan={canManage ? 10 : 8} style={{ color: 'var(--color-text-muted)' }}>Sin envíos que coincidan con el filtro</td>
+                  <td colSpan={canManage ? 11 : 9} style={{ color: 'var(--color-text-muted)' }}>Sin envíos BlueExpress que coincidan con el filtro</td>
                 </tr>
               ) : (
                 shipments.map((s) => (
@@ -422,8 +431,9 @@ export default function ShippingPage() {
                     <td data-label="Producto">{s.product_name}</td>
                     <td data-label="Cliente">{s.client_name}</td>
                     <td data-label="Vendedor">{s.vendor_name}</td>
-                    <td data-label="Dirección">{s.address || '-'}</td>
+                    <td data-label="Región">{s.region || '-'}</td>
                     <td data-label="Comuna">{s.comuna || '-'}</td>
+                    <td data-label="Dirección">{s.address || '-'}</td>
                     <td data-label="Total">{formatCurrency(s.total)}</td>
                     <td data-label="Estado">
                       {canManage ? (
@@ -470,6 +480,7 @@ export default function ShippingPage() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -479,7 +490,7 @@ export default function ShippingPage() {
       {editingSale && editForm && (
         <div className="modal-overlay">
           <form className="modal-panel" style={{ width: 460, maxHeight: '85vh', overflowY: 'auto' }} onSubmit={handleEditSubmit}>
-            <h3 style={{ margin: '0 0 16px', fontSize: 16 }}>Editar envío</h3>
+            <h3 style={{ margin: '0 0 16px', fontSize: 16 }}>Editar envío BlueExpress</h3>
             {saveError && <div className="alert alert-error">{saveError}</div>}
 
             {canManage && (

@@ -10,6 +10,20 @@ const DELIVERY_STATUSES = [
   'solo_envio_pagado', 'solo_entrega_incompleto', 'cambio_producto',
 ];
 const requireAdmin = (message) => requireRole(['admin'], message);
+const requireManage = (message) => requireRole(['admin', 'operador'], message);
+
+// Busca la comisión de venta unitaria del producto por nombre exacto (sin
+// distinguir mayúsculas/minúsculas). Si no hay coincidencia en el catálogo
+// (ej. "Producto libre") o el producto no tiene costo cargado, no hay comisión.
+async function lookupComisionUnitaria(dbClient, productName) {
+  if (!productName) return null;
+  const result = await dbClient.query(
+    'SELECT comision_venta FROM products WHERE LOWER(title) = LOWER($1) LIMIT 1',
+    [productName]
+  );
+  const valor = result.rows[0]?.comision_venta;
+  return valor !== undefined && valor !== null ? parseFloat(valor) : null;
+}
 
 // ============================================
 // GET - Papelera (ventas/envíos eliminados, solo admin)
@@ -106,6 +120,60 @@ router.get('/summary', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error al obtener resumen de ventas:', err);
     res.status(500).json({ error: 'Error al obtener resumen de ventas' });
+  }
+});
+
+// ============================================
+// GET - Comisiones a pagar por vendedor en un rango de fechas (admin/operador).
+// Solo cuenta ventas ya "cerradas": tienda/retiro completado, o envío entregado,
+// y transferencias sin verificar no cuentan (aún no se confirma el pago recibido).
+// ============================================
+router.get('/comisiones', authenticateToken, requireManage('No tienes permiso para ver las comisiones'), async (req, res) => {
+  try {
+    const { desde, hasta } = req.query;
+    if (!desde || !hasta) {
+      return res.status(400).json({ error: 'Debes indicar fecha desde y hasta' });
+    }
+
+    const conditions = [
+      's.deleted_at IS NULL',
+      `s.status = 'completado'`,
+      `(s.tipo_venta = 'TIENDA' OR s.delivery_status = 'entregado')`,
+      `(COALESCE(s.payment_method, '') != 'transferencia' OR s.transferencia_verificada = true)`,
+      's.created_at >= $1',
+      's.created_at < ($2::date + INTERVAL \'1 day\')',
+    ];
+    const params = [desde, hasta];
+
+    const result = await pool.query(
+      `SELECT u.id as vendor_id, u.name as vendor_name,
+              COUNT(*) as cantidad_ventas,
+              COALESCE(SUM(s.comision), 0) as total_comision
+       FROM sales s
+       JOIN users u ON s.vendor_id = u.id
+       WHERE ${conditions.join(' AND ')}
+       GROUP BY u.id, u.name
+       ORDER BY u.name ASC`,
+      params
+    );
+
+    const vendedores = result.rows.map((r) => ({
+      vendor_id: r.vendor_id,
+      vendor_name: r.vendor_name,
+      cantidad_ventas: parseInt(r.cantidad_ventas),
+      total_comision: parseFloat(r.total_comision),
+    }));
+
+    res.json({
+      desde,
+      hasta,
+      vendedores,
+      total_general: vendedores.reduce((acc, v) => acc + v.total_comision, 0),
+    });
+
+  } catch (err) {
+    console.error('Error al calcular comisiones:', err);
+    res.status(500).json({ error: 'Error al calcular comisiones' });
   }
 });
 
@@ -273,12 +341,22 @@ router.post('/', authenticateToken, async (req, res) => {
     }
 
     const total = quantity * price;
+    const comisionUnitaria = await lookupComisionUnitaria(dbClient, product_name);
+    const comision = comisionUnitaria !== null ? comisionUnitaria * quantity : null;
+
+    // Courier predeterminado (configurable en Configuración) para que todo envío
+    // nuevo de Delivery Santiago nazca con un courier asignado; se puede cambiar
+    // después desde la tabla de Envíos.
+    const defaultCourier = await dbClient.query(
+      `SELECT c.id FROM app_settings s JOIN couriers c ON c.id::text = s.value WHERE s.key = 'default_courier_id'`
+    );
+    const courierId = defaultCourier.rows[0]?.id || null;
 
     const inserted = await dbClient.query(
-      `INSERT INTO sales (vendor_id, client_id, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region, precio_producto, precio_envio)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      `INSERT INTO sales (vendor_id, client_id, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region, precio_producto, precio_envio, comision, courier_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        RETURNING *`,
-      [vendor_id, finalClientId, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region || null, precio_producto || null, precio_envio || null]
+      [vendor_id, finalClientId, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region || null, precio_producto || null, precio_envio || null, comision, courierId]
     );
 
     const sale = inserted.rows[0];
@@ -441,6 +519,15 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const recalcTotal = quantity !== undefined || price !== undefined;
     const total = recalcTotal ? newQuantity * newPrice : null;
 
+    // La comisión se recalcula si cambia el producto o la cantidad (usando la
+    // comisión vigente del producto en ese momento, pudiendo quedar en null si
+    // el nuevo producto no tiene comisión cargada); si no cambian, se conserva.
+    let comision = sale.comision;
+    if (product_name !== undefined || quantity !== undefined) {
+      const comisionUnitaria = await lookupComisionUnitaria(pool, product_name || sale.product_name);
+      comision = comisionUnitaria !== null ? comisionUnitaria * newQuantity : null;
+    }
+
     const deliveringNow = delivery_status === 'entregado' && sale.delivery_status !== 'entregado';
     const undeliveringNow = delivery_status !== undefined && delivery_status !== 'entregado' && sale.delivery_status === 'entregado';
     const newStatus = status || (deliveringNow ? 'completado' : (undeliveringNow ? 'pendiente' : null));
@@ -463,6 +550,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
            phone = COALESCE($12, phone),
            delivered_at = CASE WHEN $16 THEN NULL ELSE COALESCE($13, delivered_at) END,
            transferencia_verificada = COALESCE($14, transferencia_verificada),
+           comision = $17,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $15
        RETURNING *`,
@@ -471,7 +559,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
         product_name, quantity !== undefined ? newQuantity : null, price !== undefined ? newPrice : null, total,
         vendor_id, client_id, address, comuna, phone,
         deliveredAt, transferencia_verificada !== undefined ? !!transferencia_verificada : null, id,
-        clearDeliveredAt,
+        clearDeliveredAt, comision,
       ]
     );
 

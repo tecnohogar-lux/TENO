@@ -7,9 +7,13 @@ const emptyHoras = { semana: '18:00', sabado: '18:00', domingo: '18:00' };
 
 export default function SettingsPage() {
   const { data, loading, error, refetch } = useFetch('/api/settings');
+  const { data: couriersData } = useFetch('/api/couriers');
   const { put, loading: saving, error: saveError } = useApi();
+  const { put: putCourier, loading: savingCourier, error: courierError } = useApi();
   const [horas, setHoras] = useState(emptyHoras);
   const [saved, setSaved] = useState(false);
+  const [defaultCourierId, setDefaultCourierId] = useState('');
+  const [courierSaved, setCourierSaved] = useState(false);
 
   useEffect(() => {
     if (!data) return;
@@ -19,7 +23,18 @@ export default function SettingsPage() {
       sabado: data.envio_deadline_hora_sabado || data.envio_deadline_hora || emptyHoras.sabado,
       domingo: data.envio_deadline_hora_domingo || data.envio_deadline_hora || emptyHoras.domingo,
     });
+    setDefaultCourierId(data.default_courier_id || '');
   }, [data]);
+
+  async function handleCourierSubmit(e) {
+    e.preventDefault();
+    setCourierSaved(false);
+    const result = await putCourier('/api/settings/default_courier_id', { value: defaultCourierId });
+    if (result.success) {
+      refetch();
+      setCourierSaved(true);
+    }
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -78,6 +93,33 @@ export default function SettingsPage() {
             </button>
           </form>
           {saved && !saveError && (
+            <div style={{ color: 'var(--color-success)', fontSize: 13, marginTop: 12 }}>Guardado correctamente</div>
+          )}
+        </div>
+      )}
+
+      {data && (
+        <div className="card" style={{ padding: 20, maxWidth: 480, marginTop: 24 }}>
+          <h3 style={{ margin: '0 0 6px', fontSize: 15 }}>Courier predeterminado</h3>
+          <p style={{ color: 'var(--color-text-muted)', marginTop: 0, marginBottom: 16, fontSize: 13 }}>
+            Courier que se asigna automáticamente a todo envío nuevo que se cree en Delivery Santiago. Se puede cambiar después para cada envío desde ese módulo.
+          </p>
+          <form onSubmit={handleCourierSubmit}>
+            {courierError && <div className="alert alert-error">{courierError}</div>}
+            <div className="form-field">
+              <label>Courier</label>
+              <select value={defaultCourierId} onChange={(e) => setDefaultCourierId(e.target.value)} required>
+                <option value="">Sin courier predeterminado</option>
+                {(couriersData?.couriers || []).map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <button type="submit" className="btn btn-primary" disabled={savingCourier}>
+              {savingCourier ? 'Guardando...' : 'Guardar'}
+            </button>
+          </form>
+          {courierSaved && !courierError && (
             <div style={{ color: 'var(--color-success)', fontSize: 13, marginTop: 12 }}>Guardado correctamente</div>
           )}
         </div>

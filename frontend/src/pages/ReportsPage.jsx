@@ -3,6 +3,8 @@ import * as XLSX from 'xlsx';
 import Layout from '../components/Layout';
 import Badge from '../components/Badge';
 import useFetch from '../hooks/useFetch';
+import useApi from '../hooks/useApi';
+import useAuth from '../hooks/useAuth';
 import { formatCurrency, formatDate } from '../utils/format';
 import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, TIPO_VENTA_LABELS, saleStatusLabel, deliveryStatusLabel, tipoVentaLabel } from '../utils/labels';
 
@@ -22,9 +24,22 @@ function parseLocalDayBoundary(value, endOfDay = false) {
 }
 
 export default function ReportsPage() {
+  const { user } = useAuth();
+  const canManage = user.role === 'operador' || user.role === 'admin';
   const { data, loading, error } = useFetch('/api/sales');
   const [filters, setFilters] = useState(emptyFilters);
   const [exporting, setExporting] = useState(false);
+
+  const { get: getComisiones, loading: loadingComisiones, error: comisionesError } = useApi();
+  const today = new Date().toISOString().slice(0, 10);
+  const [comisionesRango, setComisionesRango] = useState({ desde: today, hasta: today });
+  const [comisionesResult, setComisionesResult] = useState(null);
+
+  async function handleCalcularComisiones() {
+    setComisionesResult(null);
+    const result = await getComisiones(`/api/sales/comisiones?desde=${comisionesRango.desde}&hasta=${comisionesRango.hasta}`);
+    if (result.success) setComisionesResult(result.data);
+  }
 
   const productos = useMemo(() => [...new Set((data?.sales || []).map((s) => s.product_name))].sort(), [data]);
   const vendedores = useMemo(() => [...new Set((data?.sales || []).map((s) => s.vendor_name))].sort(), [data]);
@@ -63,6 +78,11 @@ export default function ReportsPage() {
     setFilters({ ...filters, dateFrom: value, dateTo: value });
   }
 
+  const totalComisionPreview = useMemo(
+    () => filteredSales.reduce((acc, s) => acc + (s.comision !== null && s.comision !== undefined ? Number(s.comision) : 0), 0),
+    [filteredSales]
+  );
+
   const hasActiveFilters = Object.values(filters).some((v) => v !== '');
 
   function clearFilters() {
@@ -81,6 +101,7 @@ export default function ReportsPage() {
         'Precio producto': s.precio_producto !== null && s.precio_producto !== undefined ? Number(s.precio_producto) : '',
         'Precio envío': s.precio_envio !== null && s.precio_envio !== undefined ? Number(s.precio_envio) : '',
         Total: Number(s.total),
+        Comisión: s.comision !== null && s.comision !== undefined ? Number(s.comision) : '',
         Estado: saleStatusLabel(s.status),
         Envío: ['ENVIO', 'ENVIO_PREPAGADO', 'ENVIO_REGION'].includes(s.tipo_venta) ? deliveryStatusLabel(s.delivery_status) : '-',
         Fecha: formatDate(s.created_at),
@@ -92,6 +113,7 @@ export default function ReportsPage() {
       // pierdan dinero: total productos + total envíos siempre da el total real.
       let totalProductos = 0;
       let totalEnvios = 0;
+      let totalComision = 0;
       for (const s of filteredSales) {
         const envio = s.precio_envio !== null && s.precio_envio !== undefined ? Number(s.precio_envio) : 0;
         const producto = s.precio_producto !== null && s.precio_producto !== undefined
@@ -99,6 +121,7 @@ export default function ReportsPage() {
           : Number(s.total) - envio;
         totalProductos += producto;
         totalEnvios += envio;
+        totalComision += s.comision !== null && s.comision !== undefined ? Number(s.comision) : 0;
       }
       const totalGeneral = totalProductos + totalEnvios;
 
@@ -112,6 +135,7 @@ export default function ReportsPage() {
             totalProductos || '',
             totalEnvios || '',
             totalGeneral || '',
+            totalComision || '',
           ],
         ],
         { origin: -1 }
@@ -132,6 +156,62 @@ export default function ReportsPage() {
       <p style={{ color: 'var(--color-text-muted)', marginTop: 0, marginBottom: 24 }}>
         Filtra las ventas, revisa la vista previa y exporta a Excel solo lo que necesites.
       </p>
+
+      {canManage && (
+        <div className="card" style={{ padding: 20, marginBottom: 24 }}>
+          <h3 style={{ margin: '0 0 4px', fontSize: 15 }}>Comisiones a pagar por vendedor</h3>
+          <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 0, marginBottom: 16 }}>
+            Solo cuenta ventas ya cerradas (tienda/retiro completado, o envío entregado) con el pago confirmado.
+          </p>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16 }}>
+            <div className="form-field" style={{ marginBottom: 0 }}>
+              <label>Desde</label>
+              <input type="date" value={comisionesRango.desde} onChange={(e) => setComisionesRango({ ...comisionesRango, desde: e.target.value })} />
+            </div>
+            <div className="form-field" style={{ marginBottom: 0 }}>
+              <label>Hasta</label>
+              <input type="date" value={comisionesRango.hasta} onChange={(e) => setComisionesRango({ ...comisionesRango, hasta: e.target.value })} />
+            </div>
+            <button className="btn btn-primary" onClick={handleCalcularComisiones} disabled={loadingComisiones}>
+              {loadingComisiones ? 'Calculando...' : 'Calcular'}
+            </button>
+          </div>
+          {comisionesError && <div className="alert alert-error">{comisionesError}</div>}
+          {comisionesResult && (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="responsive-stack">
+                <thead>
+                  <tr>
+                    <th>Vendedor</th>
+                    <th>Ventas</th>
+                    <th>Total a pagar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {comisionesResult.vendedores.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} style={{ color: 'var(--color-text-muted)' }}>Sin comisiones en ese rango de fechas</td>
+                    </tr>
+                  ) : (
+                    comisionesResult.vendedores.map((v) => (
+                      <tr key={v.vendor_id}>
+                        <td data-label="Vendedor">{v.vendor_name}</td>
+                        <td data-label="Ventas">{v.cantidad_ventas}</td>
+                        <td data-label="Total a pagar">{formatCurrency(v.total_comision)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+              {comisionesResult.vendedores.length > 0 && (
+                <div style={{ marginTop: 12, fontSize: 14, textAlign: 'right' }}>
+                  Total general: <strong>{formatCurrency(comisionesResult.total_general)}</strong>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="card" style={{ padding: 20, marginBottom: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -206,11 +286,14 @@ export default function ReportsPage() {
 
       {data && (
         <div className="card" style={{ padding: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, flexWrap: 'wrap', gap: 12 }}>
             <h3 style={{ margin: 0, fontSize: 15 }}>Vista previa · {filteredSales.length} venta(s)</h3>
             <button className="btn btn-primary" onClick={handleExport} disabled={exporting || filteredSales.length === 0}>
               {exporting ? 'Generando...' : 'Exportar a Excel'}
             </button>
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 16 }}>
+            Comisión total del filtro actual: <strong style={{ color: 'var(--color-text)' }}>{formatCurrency(totalComisionPreview)}</strong>
           </div>
 
           <div style={{ overflowX: 'auto' }}>
@@ -225,6 +308,7 @@ export default function ReportsPage() {
                   <th>Precio producto</th>
                   <th>Precio envío</th>
                   <th>Total</th>
+                  <th>Comisión</th>
                   <th>Estado</th>
                   <th>Envío</th>
                   <th>Fecha</th>
@@ -233,7 +317,7 @@ export default function ReportsPage() {
               <tbody>
                 {filteredSales.length === 0 ? (
                   <tr>
-                    <td colSpan={11} style={{ color: 'var(--color-text-muted)' }}>Sin ventas que coincidan con los filtros</td>
+                    <td colSpan={12} style={{ color: 'var(--color-text-muted)' }}>Sin ventas que coincidan con los filtros</td>
                   </tr>
                 ) : (
                   filteredSales.map((s) => (
@@ -248,6 +332,7 @@ export default function ReportsPage() {
                       <td data-label="Precio producto">{s.precio_producto !== null && s.precio_producto !== undefined ? formatCurrency(s.precio_producto) : '-'}</td>
                       <td data-label="Precio envío">{s.precio_envio !== null && s.precio_envio !== undefined ? formatCurrency(s.precio_envio) : '-'}</td>
                       <td data-label="Total">{formatCurrency(s.total)}</td>
+                      <td data-label="Comisión">{s.comision !== null && s.comision !== undefined ? formatCurrency(s.comision) : '-'}</td>
                       <td data-label="Estado">
                         <Badge label={saleStatusLabel(s.status)} color={SALE_STATUS_LABELS[s.status]?.color} />
                       </td>

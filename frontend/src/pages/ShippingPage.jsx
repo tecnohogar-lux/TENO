@@ -460,6 +460,7 @@ export default function ShippingPage() {
                 <th>Dirección</th>
                 <th>Comuna</th>
                 <th>Total</th>
+                <th>Comisión</th>
                 <th>Courier</th>
                 <th>Estado</th>
                 <th>Fecha</th>
@@ -469,7 +470,7 @@ export default function ShippingPage() {
             <tbody>
               {shipments.length === 0 ? (
                 <tr>
-                  <td colSpan={canManage ? 11 : 9} style={{ color: 'var(--color-text-muted)' }}>Sin envíos que coincidan con el filtro</td>
+                  <td colSpan={canManage ? 12 : 10} style={{ color: 'var(--color-text-muted)' }}>Sin envíos que coincidan con el filtro</td>
                 </tr>
               ) : (
                 shipments.map((s) => (
@@ -485,6 +486,7 @@ export default function ShippingPage() {
                     <td data-label="Dirección">{s.address || '-'}</td>
                     <td data-label="Comuna">{s.comuna || '-'}</td>
                     <td data-label="Total">{formatCurrency(s.total)}</td>
+                    <td data-label="Comisión">{s.comision !== null && s.comision !== undefined ? formatCurrency(s.comision) : '-'}</td>
                     <td data-label="Courier">
                       {canManage ? (
                         <select

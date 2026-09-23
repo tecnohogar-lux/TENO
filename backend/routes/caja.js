@@ -7,6 +7,19 @@ const { logAudit } = require('../utils/auditLog');
 
 const PAYMENT_METHODS = ['efectivo', 'debito', 'credito', 'transferencia', 'link_pago'];
 
+// Busca la comisión de venta unitaria del producto por nombre exacto (sin
+// distinguir mayúsculas/minúsculas). Si no hay coincidencia en el catálogo o
+// el producto no tiene costo cargado, no hay comisión.
+async function lookupComisionUnitaria(dbClient, productName) {
+  if (!productName) return null;
+  const result = await dbClient.query(
+    'SELECT comision_venta FROM products WHERE LOWER(title) = LOWER($1) LIMIT 1',
+    [productName]
+  );
+  const valor = result.rows[0]?.comision_venta;
+  return valor !== undefined && valor !== null ? parseFloat(valor) : null;
+}
+
 // ============================================
 // POST - Crear venta desde Caja (tienda o envío prepagado)
 // ============================================
@@ -101,18 +114,20 @@ router.post('/sale', authenticateToken, requireRole(['operador', 'admin'], 'Solo
       const item = items[0];
       const precioProducto = item.quantity * item.price;
       const total = precioProducto + precioEnvio;
+      const comisionUnitaria = await lookupComisionUnitaria(dbClient, item.product_name);
+      const comision = comisionUnitaria !== null ? comisionUnitaria * item.quantity : null;
 
       const inserted = await dbClient.query(
         `INSERT INTO sales
            (vendor_id, client_id, product_name, quantity, price, total, address, comuna, phone, notes,
-            status, delivery_status, tipo_venta, payment_method, transferencia_verificada, precio_producto, precio_envio)
+            status, delivery_status, tipo_venta, payment_method, transferencia_verificada, precio_producto, precio_envio, comision)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                 'pendiente', 'listo_para_imprimir', 'ENVIO_PREPAGADO', $11, $12, $13, $14)
+                 'pendiente', 'listo_para_imprimir', 'ENVIO_PREPAGADO', $11, $12, $13, $14, $15)
          RETURNING *`,
         [
           vendor_id, finalClientId, item.product_name, item.quantity, item.price, total,
           address, comuna, phone || null, notes || null,
-          payment_method, !!transferencia_verificada, precioProducto, precioEnvio,
+          payment_method, !!transferencia_verificada, precioProducto, precioEnvio, comision,
         ]
       );
 
@@ -124,13 +139,15 @@ router.post('/sale', authenticateToken, requireRole(['operador', 'admin'], 'Solo
     } else {
       for (const item of items) {
         const total = item.quantity * item.price;
+        const comisionUnitaria = await lookupComisionUnitaria(dbClient, item.product_name);
+        const comision = comisionUnitaria !== null ? comisionUnitaria * item.quantity : null;
         const inserted = await dbClient.query(
           `INSERT INTO sales
              (vendor_id, client_id, product_name, quantity, price, total, status, delivery_status, tipo_venta,
-              payment_method, transferencia_verificada, notes, precio_producto)
-           VALUES ($1, $2, $3, $4, $5, $6, 'completado', NULL, 'TIENDA', $7, $8, $9, $6)
+              payment_method, transferencia_verificada, notes, precio_producto, comision)
+           VALUES ($1, $2, $3, $4, $5, $6, 'completado', NULL, 'TIENDA', $7, $8, $9, $6, $10)
            RETURNING *`,
-          [vendor_id, finalClientId, item.product_name, item.quantity, item.price, total, payment_method, !!transferencia_verificada, notes || null]
+          [vendor_id, finalClientId, item.product_name, item.quantity, item.price, total, payment_method, !!transferencia_verificada, notes || null, comision]
         );
         createdSales.push(inserted.rows[0]);
       }

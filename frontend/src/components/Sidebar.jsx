@@ -52,7 +52,7 @@ const MODULE_GROUPS = [
     label: 'Análisis',
     color: 'analisis',
     items: [
-      { path: '/reports', label: 'Reportes', roles: ['operador', 'admin'] },
+      { path: '/reports', label: 'Reportes', roles: ['vendedor', 'operador', 'admin'] },
       { path: '/audit', label: 'Auditoría', roles: ['admin'] },
     ],
   },

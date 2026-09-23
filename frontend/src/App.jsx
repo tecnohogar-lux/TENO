@@ -63,7 +63,7 @@ export default function App() {
         <Route path="/scan" element={<ProtectedRoute roles={['operador', 'admin', 'escaneo']}><ScanPage /></ProtectedRoute>} />
         <Route path="/clients" element={<ProtectedRoute roles={STAFF_ROLES}><ClientsPage /></ProtectedRoute>} />
         <Route path="/products" element={<ProtectedRoute roles={STAFF_ROLES}><ProductsPage /></ProtectedRoute>} />
-        <Route path="/reports" element={<ProtectedRoute roles={ADMIN_OPERADOR}><ReportsPage /></ProtectedRoute>} />
+        <Route path="/reports" element={<ProtectedRoute roles={STAFF_ROLES}><ReportsPage /></ProtectedRoute>} />
         <Route path="/noticias" element={<ProtectedRoute roles={STAFF_ROLES}><NoticiasPage /></ProtectedRoute>} />
         <Route path="/anotaciones" element={<ProtectedRoute roles={ADMIN_OPERADOR}><AnotacionesPage /></ProtectedRoute>} />
         <Route path="/shipping-costs" element={<ProtectedRoute roles={STAFF_ROLES}><ShippingCostsPage /></ProtectedRoute>} />

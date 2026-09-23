@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS sales (
   transferencia_verificada BOOLEAN DEFAULT false,
   precio_producto DECIMAL(10, 2),
   precio_envio DECIMAL(10, 2),
+  comision DECIMAL(10, 2),
   qr_code VARCHAR(500),
   notes TEXT,
   delivered_at TIMESTAMP,
@@ -264,3 +265,8 @@ INSERT INTO couriers (name) VALUES
   ('Angel'),
   ('Rodolfo')
 ON CONFLICT (name) DO NOTHING;
+
+-- Courier predeterminado para envíos nuevos de Delivery Santiago (editable en Configuración).
+INSERT INTO app_settings (key, value)
+SELECT 'default_courier_id', id::text FROM couriers WHERE name = 'Mattos'
+ON CONFLICT (key) DO NOTHING;

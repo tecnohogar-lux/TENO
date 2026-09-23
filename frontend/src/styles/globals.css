@@ -307,6 +307,54 @@ tbody tr:hover {
   display: none;
 }
 
+.sidebar-group-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  padding: 6px 14px;
+  margin-bottom: 4px;
+  border-radius: var(--radius-sm);
+  transition: background-color 0.15s ease;
+}
+
+.sidebar-group-header:hover {
+  background: var(--color-sidebar-hover);
+}
+
+.sidebar-group-chevron {
+  margin-left: auto;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.sidebar-group-chevron.sidebar-group-chevron-open {
+  transform: rotate(90deg);
+}
+
+/* Truco de grid-template-rows 0fr -> 1fr para animar una altura "auto" sin
+   medir el contenido en JS. */
+.sidebar-group-items {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease;
+}
+
+.sidebar-group-items.sidebar-group-items-open {
+  grid-template-rows: 1fr;
+}
+
+.sidebar-group-items-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
 .mobile-topbar {
   display: none;
 }
@@ -384,6 +432,39 @@ tbody tr:hover {
     padding: 20px 16px;
     padding-top: calc(52px + 20px);
     width: 100%;
+  }
+
+  /* Formularios: cada página arma sus grillas de campos con style={} en línea
+     (columnas fijas como "1fr 1fr", "200px 1fr", "repeat(3, 1fr)", etc.).
+     En mobile todas pasan a una sola columna para que los campos queden en
+     lista vertical en vez de apretados uno al lado del otro. Un !important en
+     hoja de estilos sí puede pisar un style en línea que no lo trae. */
+  [style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Texto y campos más grandes y con más aire para que se lean cómodos en el
+     teléfono, sin llegar a verse exagerados. */
+  .form-field {
+    margin-bottom: 18px;
+  }
+
+  .form-field label {
+    font-size: 14px;
+  }
+
+  .form-field input,
+  .form-field select,
+  .form-field textarea,
+  .searchable-select-trigger,
+  .searchable-select-search-input {
+    font-size: 16px;
+    padding: 12px 14px;
+  }
+
+  .btn {
+    font-size: 15px;
+    padding: 12px 18px;
   }
 
   /* Tablas: en vez de scroll horizontal, cada fila se apila como una tarjeta

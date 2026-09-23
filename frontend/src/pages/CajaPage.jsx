@@ -19,7 +19,10 @@ export default function CajaPage() {
   const { data: clientsData } = useFetch('/api/clients');
   const { data: productsData } = useFetch('/api/products');
   const { data: shippingCostsData } = useFetch('/api/shipping-costs');
+  const { data: cajaActualData, loading: loadingCajaActual } = useFetch('/api/cash-register/current');
   const { post, loading: saving, error: saveError } = useApi();
+
+  const cajaAbierta = !!cajaActualData?.caja;
 
   const vendedores = (usersData?.users || []).filter((u) => u.role === 'vendedor' && u.is_active);
   const vendorOptions = useMemo(() => vendedores.map((v) => ({ value: v.id, label: v.name })), [vendedores]);
@@ -153,6 +156,26 @@ export default function CajaPage() {
         <button className="btn btn-secondary" onClick={() => navigate('/sales')}>Ver ventas</button>
       </div>
 
+      {loadingCajaActual && (
+        <div className="page-loading">
+          <div className="spinner" />
+        </div>
+      )}
+
+      {!loadingCajaActual && !cajaAbierta && (
+        <div className="card" style={{ padding: 24, maxWidth: 480, borderLeft: '4px solid var(--color-warning)' }}>
+          <h3 style={{ margin: '0 0 8px', fontSize: 16 }}>No hay una caja abierta</h3>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: 13, marginTop: 0, marginBottom: 16 }}>
+            Para registrar ventas en Caja primero debes abrir la caja del día desde Apertura/Cierre de Caja.
+          </p>
+          <button className="btn btn-primary" onClick={() => navigate('/cash-register')}>
+            Ir a Apertura/Cierre de Caja
+          </button>
+        </div>
+      )}
+
+      {!loadingCajaActual && cajaAbierta && (
+      <>
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, maxWidth: 420 }}>
         <button type="button" className={tipo === 'TIENDA' ? 'btn btn-primary' : 'btn btn-secondary'} style={{ flex: 1 }} onClick={() => handleTipoChange('TIENDA')}>
           Tienda
@@ -358,6 +381,8 @@ export default function CajaPage() {
           </div>
         </div>
       </form>
+      </>
+      )}
     </Layout>
   );
 }

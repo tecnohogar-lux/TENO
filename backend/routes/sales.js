@@ -17,10 +17,11 @@ const requireAdmin = (message) => requireRole(['admin'], message);
 router.get('/trash', authenticateToken, requireAdmin('Solo un admin puede ver la papelera'), async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT s.*, u.name as vendor_name, c.name as client_name
+      `SELECT s.*, u.name as vendor_name, c.name as client_name, co.name as courier_name
        FROM sales s
        JOIN users u ON s.vendor_id = u.id
        JOIN clients c ON s.client_id = c.id
+       LEFT JOIN couriers co ON s.courier_id = co.id
        WHERE s.deleted_at IS NOT NULL
        ORDER BY s.deleted_at DESC`
     );
@@ -39,10 +40,11 @@ router.get('/trash', authenticateToken, requireAdmin('Solo un admin puede ver la
 router.get('/pending-delivery', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT s.*, u.name as vendor_name, c.name as client_name
+      `SELECT s.*, u.name as vendor_name, c.name as client_name, co.name as courier_name
        FROM sales s
        JOIN users u ON s.vendor_id = u.id
        JOIN clients c ON s.client_id = c.id
+       LEFT JOIN couriers co ON s.courier_id = co.id
        WHERE s.tipo_venta = 'ENVIO' AND s.delivery_status NOT IN ('entregado', 'cancelado') AND s.deleted_at IS NULL
        ORDER BY s.created_at ASC`
     );
@@ -77,7 +79,7 @@ router.get('/summary', authenticateToken, async (req, res) => {
     if (search) {
       params.push(`%${search}%`);
       const idx = params.length;
-      conditions.push(`(u.name ILIKE $${idx} OR c.name ILIKE $${idx} OR s.product_name ILIKE $${idx} OR s.address ILIKE $${idx} OR s.comuna ILIKE $${idx})`);
+      conditions.push(`(u.name ILIKE $${idx} OR c.name ILIKE $${idx} OR s.product_name ILIKE $${idx} OR s.address ILIKE $${idx} OR s.comuna ILIKE $${idx} OR co.name ILIKE $${idx})`);
     }
 
     const result = await pool.query(
@@ -88,6 +90,7 @@ router.get('/summary', authenticateToken, async (req, res) => {
        FROM sales s
        JOIN users u ON s.vendor_id = u.id
        JOIN clients c ON s.client_id = c.id
+       LEFT JOIN couriers co ON s.courier_id = co.id
        WHERE ${conditions.join(' AND ')}`,
       params
     );
@@ -126,7 +129,7 @@ router.get('/', authenticateToken, async (req, res) => {
     if (search) {
       params.push(`%${search}%`);
       const idx = params.length;
-      conditions.push(`(u.name ILIKE $${idx} OR c.name ILIKE $${idx} OR s.product_name ILIKE $${idx} OR s.address ILIKE $${idx} OR s.comuna ILIKE $${idx})`);
+      conditions.push(`(u.name ILIKE $${idx} OR c.name ILIKE $${idx} OR s.product_name ILIKE $${idx} OR s.address ILIKE $${idx} OR s.comuna ILIKE $${idx} OR co.name ILIKE $${idx})`);
     }
 
     const whereClause = `WHERE ${conditions.join(' AND ')}`;
@@ -136,16 +139,18 @@ router.get('/', authenticateToken, async (req, res) => {
        FROM sales s
        JOIN users u ON s.vendor_id = u.id
        JOIN clients c ON s.client_id = c.id
+       LEFT JOIN couriers co ON s.courier_id = co.id
        ${whereClause}`,
       params
     );
     const total = parseInt(countResult.rows[0].count);
 
     let query = `
-      SELECT s.*, u.name as vendor_name, c.name as client_name
+      SELECT s.*, u.name as vendor_name, c.name as client_name, co.name as courier_name
       FROM sales s
       JOIN users u ON s.vendor_id = u.id
       JOIN clients c ON s.client_id = c.id
+      LEFT JOIN couriers co ON s.courier_id = co.id
       ${whereClause}
       ORDER BY s.created_at DESC
     `;
@@ -183,10 +188,11 @@ router.get('/:id', authenticateToken, async (req, res) => {
     const user = req.user;
 
     const result = await pool.query(
-      `SELECT s.*, u.name as vendor_name, c.name as client_name
+      `SELECT s.*, u.name as vendor_name, c.name as client_name, co.name as courier_name
        FROM sales s
        JOIN users u ON s.vendor_id = u.id
        JOIN clients c ON s.client_id = c.id
+       LEFT JOIN couriers co ON s.courier_id = co.id
        WHERE s.id = $1 AND s.deleted_at IS NULL`,
       [id]
     );
@@ -550,6 +556,56 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error al actualizar estado del paquete:', err);
     res.status(500).json({ error: 'Error al actualizar estado del paquete' });
+  }
+});
+
+// ============================================
+// PUT - Asignar courier (Delivery Santiago; solo admin/operador)
+// ============================================
+router.put('/:id/courier', authenticateToken, requireRole(['admin', 'operador'], 'No tienes permiso para asignar courier'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user;
+    const { courier_id } = req.body;
+
+    const saleResult = await pool.query('SELECT * FROM sales WHERE id = $1 AND deleted_at IS NULL', [id]);
+    if (saleResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Venta no encontrada' });
+    }
+    const sale = saleResult.rows[0];
+
+    if (!['ENVIO', 'ENVIO_PREPAGADO'].includes(sale.tipo_venta)) {
+      return res.status(400).json({ error: 'Solo los envíos de Delivery Santiago pueden tener courier asignado' });
+    }
+
+    let courierId = null;
+    if (courier_id !== null && courier_id !== undefined && courier_id !== '') {
+      const courierCheck = await pool.query('SELECT id FROM couriers WHERE id = $1', [courier_id]);
+      if (courierCheck.rows.length === 0) {
+        return res.status(400).json({ error: 'Courier inválido' });
+      }
+      courierId = courierCheck.rows[0].id;
+    }
+
+    const result = await pool.query(
+      `UPDATE sales SET courier_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+      [courierId, id]
+    );
+
+    await logAudit({
+      userId: user.id,
+      action: 'asignar_courier',
+      tableName: 'sales',
+      recordId: Number(id),
+      oldValues: { courier_id: sale.courier_id },
+      newValues: { courier_id: courierId }
+    });
+
+    res.json({ message: 'Courier actualizado', sale: result.rows[0] });
+
+  } catch (err) {
+    console.error('Error al asignar courier:', err);
+    res.status(500).json({ error: 'Error al asignar courier' });
   }
 });
 

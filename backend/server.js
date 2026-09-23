@@ -22,6 +22,7 @@ const cashRegisterRoutes = require('./routes/cashRegister');
 const gastosRoutes = require('./routes/gastos');
 const settingsRoutes = require('./routes/settings');
 const retirosTiendaRoutes = require('./routes/retirosTienda');
+const couriersRoutes = require('./routes/couriers');
 
 // Crear aplicación
 const app = express();
@@ -54,6 +55,7 @@ app.use('/api/cash-register', cashRegisterRoutes);
 app.use('/api/gastos', gastosRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/retiros-tienda', retirosTiendaRoutes);
+app.use('/api/couriers', couriersRoutes);
 
 // ============================================
 // RUTAS DE PRUEBA

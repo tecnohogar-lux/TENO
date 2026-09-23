@@ -91,7 +91,7 @@ export default function CashRegisterPage() {
 
   return (
     <Layout>
-      <h1 style={{ fontSize: 22, marginBottom: 4 }}>Cierre de Caja</h1>
+      <h1 style={{ fontSize: 22, marginBottom: 4 }}>Apertura/Cierre de Caja</h1>
       <p style={{ color: 'var(--color-text-muted)', marginTop: 0, marginBottom: 24 }}>
         Una sola caja global por día. Cualquier Operador o Admin puede abrirla y cerrarla.
       </p>

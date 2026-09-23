@@ -30,15 +30,28 @@ CREATE TABLE IF NOT EXISTS products (
   cover_image_url VARCHAR(500),
   caracteristicas TEXT,
   agotado BOOLEAN DEFAULT false,
+  costo DECIMAL(10, 2),
+  rentabilidad DECIMAL(10, 2),
+  margen_75 DECIMAL(10, 2),
+  comision_venta DECIMAL(10, 2),
   created_by INTEGER NOT NULL REFERENCES users(id),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Couriers que retiran los paquetes de Delivery Santiago (módulo solo admin/operador).
+CREATE TABLE IF NOT EXISTS couriers (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) UNIQUE NOT NULL,
+  created_by INTEGER REFERENCES users(id),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS sales (
   id SERIAL PRIMARY KEY,
   vendor_id INTEGER NOT NULL REFERENCES users(id),
   client_id INTEGER NOT NULL REFERENCES clients(id),
+  courier_id INTEGER REFERENCES couriers(id) ON DELETE SET NULL,
   product_name VARCHAR(255) NOT NULL,
   quantity INTEGER NOT NULL DEFAULT 1,
   price DECIMAL(10, 2) NOT NULL,
@@ -174,6 +187,7 @@ CREATE INDEX idx_sales_status ON sales(status);
 CREATE INDEX idx_sales_tipo_venta ON sales(tipo_venta);
 CREATE INDEX idx_sales_delivery_status ON sales(delivery_status);
 CREATE INDEX idx_sales_deleted_at ON sales(deleted_at);
+CREATE INDEX idx_sales_courier_id ON sales(courier_id);
 CREATE INDEX idx_clients_created_by ON clients(created_by);
 CREATE INDEX idx_products_created_by ON products(created_by);
 CREATE INDEX idx_users_email ON users(email);
@@ -235,3 +249,18 @@ ON CONFLICT (comuna) DO NOTHING;
 
 INSERT INTO app_settings (key, value) VALUES ('envio_deadline_hora', '18:00')
 ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO app_settings (key, value) VALUES ('envio_deadline_hora_sabado', '18:00')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO app_settings (key, value) VALUES ('envio_deadline_hora_domingo', '18:00')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO couriers (name) VALUES
+  ('Mattos'),
+  ('Driver Po'),
+  ('Kike'),
+  ('Yilberth'),
+  ('Angel'),
+  ('Rodolfo')
+ON CONFLICT (name) DO NOTHING;

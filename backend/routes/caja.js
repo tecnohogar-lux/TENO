@@ -47,6 +47,12 @@ router.post('/sale', authenticateToken, requireRole(['operador', 'admin'], 'Solo
   try {
     await dbClient.query('BEGIN');
 
+    // Caja solo puede usarse mientras haya una caja abierta desde Apertura/Cierre de Caja.
+    const cajaAbierta = await dbClient.query(`SELECT id FROM cierre_caja WHERE closed_at IS NULL LIMIT 1`);
+    if (cajaAbierta.rows.length === 0) {
+      throw { status: 409, message: 'No hay una caja abierta. Ve a Apertura/Cierre de Caja para abrir una antes de registrar ventas.' };
+    }
+
     const vendorResult = await dbClient.query(
       `SELECT id FROM users WHERE id = $1 AND role = 'vendedor' AND is_active = true`,
       [vendor_id]

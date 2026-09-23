@@ -13,12 +13,15 @@ import useDebouncedValue from '../hooks/useDebouncedValue';
 import { formatCurrency, formatDate } from '../utils/format';
 import { DELIVERY_STATUS_LABELS, DELIVERY_STATUS_OPTIONS, deliveryStatusLabel } from '../utils/labels';
 
+const FREE_PRODUCT_OPTION = [{ value: '__free__', label: 'Producto libre (no registrado)' }];
+
 const emptyNewClient = { name: '', address: '', phone: '', email: '' };
 const emptyCreateForm = {
   vendor_id: '',
   useExistingClient: true,
   client_id: '',
   newClient: emptyNewClient,
+  productSelection: '',
   product_name: '',
   quantity: '',
   comuna: '',
@@ -46,7 +49,9 @@ export default function ShippingPage() {
   );
   const { data: usersData } = useFetch('/api/users', { enabled: canManage });
   const { data: clientsData } = useFetch('/api/clients');
+  const { data: productsData } = useFetch('/api/products');
   const { data: shippingCostsData } = useFetch('/api/shipping-costs');
+  const { data: couriersData } = useFetch('/api/couriers', { enabled: canManage });
   const { post, put, del, loading: saving, error: saveError } = useApi();
   const { confirm, dialog: confirmDialog } = useConfirm();
 
@@ -66,6 +71,10 @@ export default function ShippingPage() {
   const vendedores = (usersData?.users || []).filter((u) => u.role === 'vendedor' && u.is_active);
   const vendorOptions = useMemo(() => vendedores.map((v) => ({ value: v.id, label: v.name })), [vendedores]);
   const clientOptions = useMemo(() => (clientsData?.clients || []).map((c) => ({ value: c.id, label: c.name })), [clientsData]);
+  const productOptions = useMemo(
+    () => (productsData?.products || []).map((p) => ({ value: p.id, label: `${p.title} · ${formatCurrency(p.price)}${p.agotado ? ' (agotado)' : ''}` })),
+    [productsData]
+  );
 
   const shipments = useMemo(() => {
     const all = (data?.sales || []).filter((s) => ['ENVIO', 'ENVIO_PREPAGADO'].includes(s.tipo_venta));
@@ -86,6 +95,13 @@ export default function ShippingPage() {
   async function handleStatusChange(sale, newStatus) {
     setActionError('');
     const result = await put(`/api/sales/${sale.id}/status`, { status: newStatus });
+    if (result.success) refetch();
+    else if (result.error) setActionError(result.error);
+  }
+
+  async function handleCourierChange(sale, courierId) {
+    setActionError('');
+    const result = await put(`/api/sales/${sale.id}/courier`, { courier_id: courierId || null });
     if (result.success) refetch();
     else if (result.error) setActionError(result.error);
   }
@@ -124,9 +140,13 @@ export default function ShippingPage() {
 
   function openEdit(sale) {
     setEditingSale(sale);
+    // Si el nombre del producto coincide con uno del catálogo se preselecciona;
+    // si no, se trata como producto libre (nombre escrito a mano).
+    const matchingProduct = (productsData?.products || []).find((p) => p.title === sale.product_name);
     setEditForm({
       vendor_id: String(sale.vendor_id),
       client_id: String(sale.client_id),
+      productSelection: matchingProduct ? String(matchingProduct.id) : '__free__',
       product_name: sale.product_name,
       quantity: sale.quantity,
       price: sale.total,
@@ -164,6 +184,29 @@ export default function ShippingPage() {
   function handleComunaChange(comuna) {
     const match = (shippingCostsData?.costos || []).find((c) => c.comuna === comuna);
     setCreateForm({ ...createForm, comuna, precio_envio: match ? String(match.precio) : createForm.precio_envio });
+  }
+
+  function handleProductSelect(value) {
+    if (value === '__free__') {
+      setCreateForm({ ...createForm, productSelection: value, product_name: '' });
+      return;
+    }
+    const product = (productsData?.products || []).find((p) => String(p.id) === value);
+    setCreateForm({
+      ...createForm,
+      productSelection: value,
+      product_name: product ? product.title : '',
+      precio_producto: product ? String(product.price) : createForm.precio_producto,
+    });
+  }
+
+  function handleEditProductSelect(value) {
+    if (value === '__free__') {
+      setEditForm({ ...editForm, productSelection: value, product_name: '' });
+      return;
+    }
+    const product = (productsData?.products || []).find((p) => String(p.id) === value);
+    setEditForm({ ...editForm, productSelection: value, product_name: product ? product.title : '' });
   }
 
   async function handleCreateSubmit(e) {
@@ -329,7 +372,23 @@ export default function ShippingPage() {
 
             <div className="form-field">
               <label>Producto</label>
-              <input value={createForm.product_name} onChange={(e) => setCreateForm({ ...createForm, product_name: e.target.value })} required />
+              <SearchableSelect
+                value={createForm.productSelection}
+                onChange={handleProductSelect}
+                options={productOptions}
+                pinnedOptions={FREE_PRODUCT_OPTION}
+                placeholder="Selecciona un producto"
+                required
+              />
+              {createForm.productSelection === '__free__' && (
+                <input
+                  placeholder="Nombre del producto"
+                  value={createForm.product_name}
+                  onChange={(e) => setCreateForm({ ...createForm, product_name: e.target.value })}
+                  style={{ marginTop: 8 }}
+                  required
+                />
+              )}
             </div>
             <div className="form-field">
               <label>Cantidad</label>
@@ -401,6 +460,7 @@ export default function ShippingPage() {
                 <th>Dirección</th>
                 <th>Comuna</th>
                 <th>Total</th>
+                <th>Courier</th>
                 <th>Estado</th>
                 <th>Fecha</th>
                 {canManage && <th>Acciones</th>}
@@ -409,7 +469,7 @@ export default function ShippingPage() {
             <tbody>
               {shipments.length === 0 ? (
                 <tr>
-                  <td colSpan={canManage ? 10 : 8} style={{ color: 'var(--color-text-muted)' }}>Sin envíos que coincidan con el filtro</td>
+                  <td colSpan={canManage ? 11 : 9} style={{ color: 'var(--color-text-muted)' }}>Sin envíos que coincidan con el filtro</td>
                 </tr>
               ) : (
                 shipments.map((s) => (
@@ -425,6 +485,22 @@ export default function ShippingPage() {
                     <td data-label="Dirección">{s.address || '-'}</td>
                     <td data-label="Comuna">{s.comuna || '-'}</td>
                     <td data-label="Total">{formatCurrency(s.total)}</td>
+                    <td data-label="Courier">
+                      {canManage ? (
+                        <select
+                          value={s.courier_id || ''}
+                          onChange={(e) => handleCourierChange(s, e.target.value)}
+                          style={{ fontSize: 12, padding: '4px 6px', borderRadius: 4, border: '1px solid var(--color-border)' }}
+                        >
+                          <option value="">Sin asignar</option>
+                          {(couriersData?.couriers || []).map((c) => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        s.courier_name || '-'
+                      )}
+                    </td>
                     <td data-label="Estado">
                       {canManage ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
@@ -506,7 +582,23 @@ export default function ShippingPage() {
             </div>
             <div className="form-field">
               <label>Producto</label>
-              <input value={editForm.product_name} onChange={(e) => setEditForm({ ...editForm, product_name: e.target.value })} required />
+              <SearchableSelect
+                value={editForm.productSelection}
+                onChange={handleEditProductSelect}
+                options={productOptions}
+                pinnedOptions={FREE_PRODUCT_OPTION}
+                placeholder="Selecciona un producto"
+                required
+              />
+              {editForm.productSelection === '__free__' && (
+                <input
+                  placeholder="Nombre del producto"
+                  value={editForm.product_name}
+                  onChange={(e) => setEditForm({ ...editForm, product_name: e.target.value })}
+                  style={{ marginTop: 8 }}
+                  required
+                />
+              )}
             </div>
             <div className="form-field">
               <label>Cantidad</label>

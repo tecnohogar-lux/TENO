@@ -1,5 +1,5 @@
 // backend/routes/gastos.js
-// Gastos y egresos. Solo Admin/Operador. Se restan en el Cierre de Caja.
+// Gastos y egresos. Solo Admin/Operador. Se restan en Apertura/Cierre de Caja.
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');

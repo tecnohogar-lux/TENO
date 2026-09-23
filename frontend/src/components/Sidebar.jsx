@@ -1,4 +1,5 @@
-import { NavLink } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
 import Logo from './Logo';
 
@@ -16,7 +17,7 @@ const MODULE_GROUPS = [
       { path: '/sales', label: 'Historial de Ventas', roles: ['vendedor', 'operador', 'admin'] },
       { path: '/retiro-tienda', label: 'Retiro en Tienda', roles: ['vendedor', 'operador', 'admin'] },
       { path: '/caja', label: 'Caja', roles: ['operador', 'admin'] },
-      { path: '/cash-register', label: 'Cierre de Caja', roles: ['operador', 'admin'] },
+      { path: '/cash-register', label: 'Apertura/Cierre de Caja', roles: ['operador', 'admin'] },
       { path: '/gastos', label: 'Gastos y egresos', roles: ['operador', 'admin'] },
     ],
   },
@@ -25,6 +26,7 @@ const MODULE_GROUPS = [
     color: 'envios',
     items: [
       { path: '/shipping', label: 'Delivery Santiago', roles: ['vendedor', 'operador', 'admin', 'escaneo'] },
+      { path: '/couriers', label: 'Couriers', roles: ['operador', 'admin'] },
       { path: '/envios-bluexpress', label: 'Envíos BlueExpress', roles: ['vendedor', 'operador', 'admin'] },
       { path: '/shipping-costs', label: 'Costos de envío', roles: ['vendedor', 'operador', 'admin'] },
       { path: '/region-shipping', label: 'Envíos a Regiones', roles: ['vendedor', 'operador', 'admin'] },
@@ -102,11 +104,50 @@ function NavItem({ m, onNavigate, color }) {
   );
 }
 
+function Chevron({ open }) {
+  return (
+    <svg
+      className={`sidebar-group-chevron${open ? ' sidebar-group-chevron-open' : ''}`}
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+    >
+      <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export default function Sidebar({ mobileOpen = false, onNavigate }) {
   const { user, logout } = useAuth();
+  const location = useLocation();
   const visibleGroups = MODULE_GROUPS
     .map((g) => ({ ...g, items: g.items.filter((m) => m.roles.includes(user?.role)) }))
     .filter((g) => g.items.length > 0);
+
+  // El grupo que contiene la ruta activa siempre parte (y se mantiene) abierto;
+  // el resto de las categorías cargan compactas por defecto.
+  const activeGroupLabel = useMemo(() => {
+    const match = visibleGroups.find((g) => g.items.some((m) => location.pathname.startsWith(m.path)));
+    return match?.label || null;
+  }, [visibleGroups, location.pathname]);
+
+  const [openGroups, setOpenGroups] = useState(() => new Set(activeGroupLabel ? [activeGroupLabel] : []));
+
+  useEffect(() => {
+    if (activeGroupLabel) {
+      setOpenGroups((prev) => (prev.has(activeGroupLabel) ? prev : new Set(prev).add(activeGroupLabel)));
+    }
+  }, [activeGroupLabel]);
+
+  function toggleGroup(label) {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  }
 
   return (
     <aside className={`sidebar${mobileOpen ? ' sidebar-open' : ''}`}>
@@ -134,42 +175,53 @@ export default function Sidebar({ mobileOpen = false, onNavigate }) {
               borderTop: i === 0 ? 'none' : '1px solid var(--color-sidebar-border)',
             }}
           >
-            {g.label && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 7,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                  color: g.color ? `var(--color-group-${g.color})` : 'var(--color-text-muted)',
-                  padding: '0 14px',
-                  marginBottom: 6,
-                }}
-              >
-                {g.color && (
-                  <span
+            {g.label ? (() => {
+              const isOpen = openGroups.has(g.label);
+              return (
+                <>
+                  <button
+                    type="button"
+                    className="sidebar-group-header"
+                    onClick={() => toggleGroup(g.label)}
+                    aria-expanded={isOpen}
                     style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: '50%',
-                      background: `var(--color-group-${g.color})`,
-                      flexShrink: 0,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      color: g.color ? `var(--color-group-${g.color})` : 'var(--color-text-muted)',
                     }}
-                  />
-                )}
-                {g.label}
-              </div>
-            )}
-            <div
-              style={g.color ? { borderLeft: `2px solid var(--color-group-${g.color})`, paddingLeft: 6, marginLeft: 8 } : undefined}
-            >
-              {g.items.map((m) => (
+                  >
+                    {g.color && (
+                      <span
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: '50%',
+                          background: `var(--color-group-${g.color})`,
+                          flexShrink: 0,
+                        }}
+                      />
+                    )}
+                    {g.label}
+                    <Chevron open={isOpen} />
+                  </button>
+                  <div className={`sidebar-group-items${isOpen ? ' sidebar-group-items-open' : ''}`}>
+                    <div className="sidebar-group-items-inner">
+                      <div style={{ borderLeft: `2px solid var(--color-group-${g.color})`, paddingLeft: 6, marginLeft: 8 }}>
+                        {g.items.map((m) => (
+                          <NavItem key={m.path} m={m} onNavigate={onNavigate} color={g.color} />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              );
+            })() : (
+              g.items.map((m) => (
                 <NavItem key={m.path} m={m} onNavigate={onNavigate} color={g.color} />
-              ))}
-            </div>
+              ))
+            )}
           </div>
         ))}
       </nav>

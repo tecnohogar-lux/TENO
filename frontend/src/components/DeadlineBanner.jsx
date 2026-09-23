@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react';
 import useFetch from '../hooks/useFetch';
 
+const DIA_LABEL = { 0: 'domingo', 6: 'sábado' };
+
+function getHoraLimiteDeHoy(settings) {
+  if (!settings) return null;
+  const dow = new Date().getDay(); // 0 = domingo, 6 = sábado
+  if (dow === 0) return settings.envio_deadline_hora_domingo || settings.envio_deadline_hora;
+  if (dow === 6) return settings.envio_deadline_hora_sabado || settings.envio_deadline_hora;
+  return settings.envio_deadline_hora;
+}
+
 function getRemaining(horaLimite) {
   if (!horaLimite) return null;
   const [h, m] = horaLimite.split(':').map(Number);
@@ -26,10 +36,13 @@ export default function DeadlineBanner() {
     return () => clearInterval(interval);
   }, []);
 
-  if (!data?.envio_deadline_hora) return null;
+  const horaLimite = getHoraLimiteDeHoy(data);
+  if (!horaLimite) return null;
 
-  const remaining = getRemaining(data.envio_deadline_hora);
+  const remaining = getRemaining(horaLimite);
   if (!remaining) return null;
+
+  const diaLabel = DIA_LABEL[new Date().getDay()];
 
   return (
     <div
@@ -46,7 +59,7 @@ export default function DeadlineBanner() {
       }}
     >
       <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-        Hora límite de envíos: {data.envio_deadline_hora}
+        Hora límite de envíos{diaLabel ? ` (${diaLabel})` : ''}: {horaLimite}
       </span>
       <span style={{ fontSize: 14, fontWeight: 700, color: remaining.closed ? 'var(--color-danger)' : 'var(--color-text)' }}>
         {remaining.closed

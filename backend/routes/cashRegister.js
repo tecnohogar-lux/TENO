@@ -1,12 +1,13 @@
 // backend/routes/cashRegister.js
-// Cierre de Caja: una sola caja global por día. Admin/Operador abren y cierran.
+// Apertura/Cierre de Caja: una sola caja global por día. Admin/Operador abren y cierran.
+// El módulo de Caja (ventas) requiere que haya una caja abierta aquí (ver routes/caja.js).
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 
-const requireAdminOperador = requireRole(['admin', 'operador'], 'No tienes permiso para acceder a Cierre de Caja');
+const requireAdminOperador = requireRole(['admin', 'operador'], 'No tienes permiso para acceder a Apertura/Cierre de Caja');
 const FORMAS_PAGO = ['efectivo', 'debito', 'credito', 'transferencia', 'link_pago'];
 
 // Cuánto dinero debería existir por cada forma de pago en el período (para

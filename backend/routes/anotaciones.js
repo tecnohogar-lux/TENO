@@ -6,7 +6,7 @@ const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 
-const requireAdminOperador = requireRole(['admin', 'operador'], 'No tienes permiso para acceder a las anotaciones diarias');
+const requireAdminOperador = requireRole(['admin', 'operador', 'caja'], 'No tienes permiso para acceder a las anotaciones diarias');
 
 // ============================================
 // GET - Listar anotaciones (paginado, más recientes primero)

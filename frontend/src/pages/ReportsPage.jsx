@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import * as XLSX from 'xlsx';
 import Layout from '../components/Layout';
 import Badge from '../components/Badge';
 import useFetch from '../hooks/useFetch';
@@ -7,8 +6,9 @@ import useApi from '../hooks/useApi';
 import useAuth from '../hooks/useAuth';
 import { formatCurrency, formatDate } from '../utils/format';
 import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, TIPO_VENTA_LABELS, saleStatusLabel, deliveryStatusLabel, tipoVentaLabel } from '../utils/labels';
+import { PRICE_TYPE_LABELS, priceTypeLabel } from '../utils/priceType';
 
-const emptyFilters = { dateFrom: '', dateTo: '', nombre: '', producto: '', vendedor: '', cliente: '', canal: '' };
+const emptyFilters = { dateFrom: '', dateTo: '', nombre: '', producto: '', vendedor: '', cliente: '', canal: '', tipoPrecio: '' };
 
 // "YYYY-MM-DD" de un <input type="date"> se parsea como medianoche UTC si se usa
 // new Date(str) directamente; mezclarlo con setHours (que opera en hora local)
@@ -25,7 +25,7 @@ function parseLocalDayBoundary(value, endOfDay = false) {
 
 export default function ReportsPage() {
   const { user } = useAuth();
-  const canManage = user.role === 'operador' || user.role === 'admin';
+  const canManage = user.role === 'operador' || user.role === 'admin' || user.role === 'caja';
   const { data, loading, error } = useFetch('/api/sales');
   const [filters, setFilters] = useState(emptyFilters);
   const [exporting, setExporting] = useState(false);
@@ -70,6 +70,7 @@ export default function ReportsPage() {
     if (filters.vendedor) rows = rows.filter((s) => s.vendor_name === filters.vendedor);
     if (filters.cliente) rows = rows.filter((s) => s.client_name === filters.cliente);
     if (filters.canal) rows = rows.filter((s) => s.tipo_venta === filters.canal);
+    if (filters.tipoPrecio) rows = rows.filter((s) => s.price_type === filters.tipoPrecio);
 
     return rows;
   }, [data, filters]);
@@ -89,9 +90,11 @@ export default function ReportsPage() {
     setFilters(emptyFilters);
   }
 
-  function handleExport() {
+  async function handleExport() {
     setExporting(true);
     try {
+      // La librería de Excel es pesada: se descarga recién al exportar, no al abrir Reportes.
+      const XLSX = await import('xlsx');
       const rows = filteredSales.map((s) => ({
         Producto: s.product_name,
         Cliente: s.client_name,
@@ -105,6 +108,7 @@ export default function ReportsPage() {
         Estado: saleStatusLabel(s.status),
         Envío: ['ENVIO', 'ENVIO_PREPAGADO', 'ENVIO_REGION'].includes(s.tipo_venta) ? deliveryStatusLabel(s.delivery_status) : '-',
         Fecha: formatDate(s.created_at),
+        'Tipo de precio': priceTypeLabel(s.price_type),
       }));
 
       // Ventas viejas (previas al desglose precio_producto/precio_envio) solo
@@ -246,6 +250,16 @@ export default function ReportsPage() {
             </select>
           </div>
           <div className="form-field">
+            <label>Tipo de precio</label>
+            <select value={filters.tipoPrecio} onChange={(e) => setFilters({ ...filters, tipoPrecio: e.target.value })}>
+              <option value="">Todos</option>
+              <option value="sol">SOL</option>
+              <option value="marketplace">MARKETPLACE</option>
+              <option value="mayor">MAYOR</option>
+              <option value="mixto">MIXTO</option>
+            </select>
+          </div>
+          <div className="form-field">
             <label>Buscar por nombre</label>
             <input
               placeholder="Producto, cliente o vendedor..."
@@ -304,6 +318,7 @@ export default function ReportsPage() {
                   <th>Cliente</th>
                   <th>Vendedor</th>
                   <th>Tipo</th>
+                  <th>Precios</th>
                   <th>Cantidad</th>
                   <th>Precio producto</th>
                   <th>Precio envío</th>
@@ -317,7 +332,7 @@ export default function ReportsPage() {
               <tbody>
                 {filteredSales.length === 0 ? (
                   <tr>
-                    <td colSpan={12} style={{ color: 'var(--color-text-muted)' }}>Sin ventas que coincidan con los filtros</td>
+                    <td colSpan={13} style={{ color: 'var(--color-text-muted)' }}>Sin ventas que coincidan con los filtros</td>
                   </tr>
                 ) : (
                   filteredSales.map((s) => (
@@ -328,6 +343,7 @@ export default function ReportsPage() {
                       <td data-label="Tipo">
                         <Badge label={tipoVentaLabel(s.tipo_venta)} color={TIPO_VENTA_LABELS[s.tipo_venta]?.color} />
                       </td>
+                      <td data-label="Precios"><Badge label={priceTypeLabel(s.price_type)} color={PRICE_TYPE_LABELS[s.price_type]?.color} /></td>
                       <td data-label="Cantidad">{s.quantity}</td>
                       <td data-label="Precio producto">{s.precio_producto !== null && s.precio_producto !== undefined ? formatCurrency(s.precio_producto) : '-'}</td>
                       <td data-label="Precio envío">{s.precio_envio !== null && s.precio_envio !== undefined ? formatCurrency(s.precio_envio) : '-'}</td>

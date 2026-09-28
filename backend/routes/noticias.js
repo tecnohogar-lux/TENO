@@ -5,7 +5,7 @@ const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 
-const requireManage = (message) => requireRole(['admin', 'operador'], message);
+const requireManage = (message) => requireRole(['admin', 'operador', 'caja'], message);
 
 // Crea una noticia. Se usa tanto desde las rutas de abajo como desde products.js
 // para publicar automáticamente cada cambio de producto.

@@ -1,31 +1,27 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Badge from '../components/Badge';
 import LabelPrint from '../components/LabelPrint';
 import LabelPrintBatch from '../components/LabelPrintBatch';
 import SearchableSelect from '../components/SearchableSelect';
+import ShipmentItemsInput from '../components/ShipmentItemsInput';
 import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
 import useAuth from '../hooks/useAuth';
 import useConfirm from '../hooks/useConfirm';
 import useDebouncedValue from '../hooks/useDebouncedValue';
 import { formatCurrency, formatDate } from '../utils/format';
+import { productPrice } from '../utils/priceType';
 import { DELIVERY_STATUS_LABELS, DELIVERY_STATUS_OPTIONS, deliveryStatusLabel } from '../utils/labels';
 
 const FREE_PRODUCT_OPTION = [{ value: '__free__', label: 'Producto libre (no registrado)' }];
 
-const emptyNewClient = { name: '', address: '', phone: '', email: '' };
 const emptyCreateForm = {
   vendor_id: '',
-  useExistingClient: true,
-  client_id: '',
-  newClient: emptyNewClient,
-  productSelection: '',
-  product_name: '',
-  quantity: '',
+  nombre: '',
+  apellido: '',
+  items: [],
   comuna: '',
-  precio_producto: '',
   precio_envio: '',
   address: '',
   phone: '',
@@ -34,22 +30,19 @@ const emptyCreateForm = {
 
 export default function ShippingPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
-  const canManage = user.role === 'operador' || user.role === 'admin';
+  const canManage = user.role === 'operador' || user.role === 'admin' || user.role === 'caja';
   const isAdmin = user.role === 'admin';
   const canCreate = user.role !== 'escaneo';
-  const canScanButton = canManage || user.role === 'escaneo';
 
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search);
 
   const { data, loading, error, refetch } = useFetch(
-    `/api/sales?search=${encodeURIComponent(debouncedSearch)}`,
+    `/api/sales?tipo_venta=ENVIO,ENVIO_PREPAGADO&search=${encodeURIComponent(debouncedSearch)}`,
     { deps: [debouncedSearch] }
   );
   const { data: usersData } = useFetch('/api/users', { enabled: canManage });
-  const { data: clientsData } = useFetch('/api/clients');
-  const { data: productsData } = useFetch('/api/products');
+  const { data: productsData } = useFetch('/api/products/catalog');
   const { data: shippingCostsData } = useFetch('/api/shipping-costs');
   const { data: couriersData } = useFetch('/api/couriers', { enabled: canManage });
   const { post, put, del, loading: saving, error: saveError } = useApi();
@@ -70,10 +63,9 @@ export default function ShippingPage() {
 
   const vendedores = (usersData?.users || []).filter((u) => u.role === 'vendedor' && u.is_active);
   const vendorOptions = useMemo(() => vendedores.map((v) => ({ value: v.id, label: v.name })), [vendedores]);
-  const clientOptions = useMemo(() => (clientsData?.clients || []).map((c) => ({ value: c.id, label: c.name })), [clientsData]);
-  const productOptions = useMemo(
-    () => (productsData?.products || []).map((p) => ({ value: p.id, label: `${p.title} · ${formatCurrency(p.price)}${p.agotado ? ' (agotado)' : ''}` })),
-    [productsData]
+  const editProductOptions = useMemo(
+    () => (productsData?.products || []).map((p) => ({ value: p.id, label: `${p.title} · ${formatCurrency(productPrice(p, editingSale?.price_type))}${p.agotado ? ' (agotado)' : ''}` })),
+    [productsData, editingSale]
   );
 
   const shipments = useMemo(() => {
@@ -145,7 +137,7 @@ export default function ShippingPage() {
     const matchingProduct = (productsData?.products || []).find((p) => p.title === sale.product_name);
     setEditForm({
       vendor_id: String(sale.vendor_id),
-      client_id: String(sale.client_id),
+      client_name: sale.client_name,
       productSelection: matchingProduct ? String(matchingProduct.id) : '__free__',
       product_name: sale.product_name,
       quantity: sale.quantity,
@@ -166,7 +158,6 @@ export default function ShippingPage() {
       product_name: editForm.product_name,
       quantity,
       price,
-      client_id: Number(editForm.client_id),
       address: editForm.address,
       comuna: editForm.comuna,
       phone: editForm.phone,
@@ -186,20 +177,6 @@ export default function ShippingPage() {
     setCreateForm({ ...createForm, comuna, precio_envio: match ? String(match.precio) : createForm.precio_envio });
   }
 
-  function handleProductSelect(value) {
-    if (value === '__free__') {
-      setCreateForm({ ...createForm, productSelection: value, product_name: '' });
-      return;
-    }
-    const product = (productsData?.products || []).find((p) => String(p.id) === value);
-    setCreateForm({
-      ...createForm,
-      productSelection: value,
-      product_name: product ? product.title : '',
-      precio_producto: product ? String(product.price) : createForm.precio_producto,
-    });
-  }
-
   function handleEditProductSelect(value) {
     if (value === '__free__') {
       setEditForm({ ...editForm, productSelection: value, product_name: '' });
@@ -209,29 +186,23 @@ export default function ShippingPage() {
     setEditForm({ ...editForm, productSelection: value, product_name: product ? product.title : '' });
   }
 
+  const precioProductoCreate = createForm.items.reduce((sum, i) => sum + i.quantity * i.price, 0);
+
   async function handleCreateSubmit(e) {
     e.preventDefault();
-    const quantity = Number(createForm.quantity);
-    const precioProducto = Number(createForm.precio_producto);
-    const precioEnvio = Number(createForm.precio_envio) || 0;
-    const total = precioProducto + precioEnvio;
-    // El backend calcula total = cantidad * price; despejamos el precio unitario para que coincida.
-    const price = total / quantity;
+    if (createForm.items.length === 0) return;
+    if (!createForm.nombre.trim() || !createForm.apellido.trim()) return;
     const payload = {
       tipo_venta: 'ENVIO',
-      product_name: createForm.product_name,
-      quantity,
-      price,
-      precio_producto: precioProducto,
-      precio_envio: precioEnvio,
+      items: createForm.items.map(({ product_name, quantity, price, price_type }) => ({ product_name, quantity, price, price_type })),
+      precio_envio: Number(createForm.precio_envio) || 0,
       address: createForm.address,
       comuna: createForm.comuna,
       phone: createForm.phone,
       notes: createForm.notes,
+      client: { name: `${createForm.nombre.trim()} ${createForm.apellido.trim()}` },
     };
     if (canManage) payload.vendor_id = Number(createForm.vendor_id);
-    if (createForm.useExistingClient) payload.client_id = Number(createForm.client_id);
-    else payload.client = createForm.newClient;
 
     const result = await post('/api/sales', payload);
     if (result.success) {
@@ -258,12 +229,6 @@ export default function ShippingPage() {
               <option key={opt} value={opt}>{deliveryStatusLabel(opt)}</option>
             ))}
           </select>
-
-          {canScanButton && (
-            <button className="btn btn-secondary" onClick={() => navigate('/scan')}>
-              Escanear
-            </button>
-          )}
 
           {canManage && (
             <>
@@ -344,56 +309,19 @@ export default function ShippingPage() {
 
             <div className="form-field">
               <label>Cliente</label>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <button type="button" className={createForm.useExistingClient ? 'btn btn-primary' : 'btn btn-secondary'} style={{ flex: 1, padding: '6px' }} onClick={() => setCreateForm({ ...createForm, useExistingClient: true })}>
-                  Existente
-                </button>
-                <button type="button" className={!createForm.useExistingClient ? 'btn btn-primary' : 'btn btn-secondary'} style={{ flex: 1, padding: '6px' }} onClick={() => setCreateForm({ ...createForm, useExistingClient: false })}>
-                  Nuevo
-                </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input placeholder="Nombre" value={createForm.nombre} onChange={(e) => setCreateForm({ ...createForm, nombre: e.target.value })} required style={{ flex: 1 }} />
+                <input placeholder="Apellido" value={createForm.apellido} onChange={(e) => setCreateForm({ ...createForm, apellido: e.target.value })} required style={{ flex: 1 }} />
               </div>
-              {createForm.useExistingClient ? (
-                <SearchableSelect
-                  value={createForm.client_id}
-                  onChange={(v) => setCreateForm({ ...createForm, client_id: v })}
-                  options={clientOptions}
-                  placeholder="Selecciona un cliente"
-                  required={createForm.useExistingClient}
-                />
-              ) : (
-                <input
-                  placeholder="Nombre del cliente nuevo"
-                  value={createForm.newClient.name}
-                  onChange={(e) => setCreateForm({ ...createForm, newClient: { ...createForm.newClient, name: e.target.value } })}
-                  required={!createForm.useExistingClient}
-                />
-              )}
             </div>
 
-            <div className="form-field">
-              <label>Producto</label>
-              <SearchableSelect
-                value={createForm.productSelection}
-                onChange={handleProductSelect}
-                options={productOptions}
-                pinnedOptions={FREE_PRODUCT_OPTION}
-                placeholder="Selecciona un producto"
-                required
-              />
-              {createForm.productSelection === '__free__' && (
-                <input
-                  placeholder="Nombre del producto"
-                  value={createForm.product_name}
-                  onChange={(e) => setCreateForm({ ...createForm, product_name: e.target.value })}
-                  style={{ marginTop: 8 }}
-                  required
-                />
-              )}
-            </div>
-            <div className="form-field">
-              <label>Cantidad</label>
-              <input type="number" min="1" value={createForm.quantity} onChange={(e) => setCreateForm({ ...createForm, quantity: e.target.value })} required />
-            </div>
+            <ShipmentItemsInput
+              allowMayor
+              hideSol={user.role === 'vendedor'}
+              products={productsData?.products || []}
+              items={createForm.items}
+              onChange={(items) => setCreateForm({ ...createForm, items })}
+            />
 
             <div className="form-field">
               <label>Comuna</label>
@@ -408,7 +336,7 @@ export default function ShippingPage() {
 
             <div className="form-field">
               <label>Precio producto</label>
-              <input type="number" min="0" value={createForm.precio_producto} onChange={(e) => setCreateForm({ ...createForm, precio_producto: e.target.value })} required />
+              <input value={formatCurrency(precioProductoCreate)} readOnly />
             </div>
             <div className="form-field">
               <label>Precio envío</label>
@@ -417,15 +345,15 @@ export default function ShippingPage() {
 
             <div className="form-field">
               <label>Dirección</label>
-              <input value={createForm.address} onChange={(e) => setCreateForm({ ...createForm, address: e.target.value })} />
+              <input value={createForm.address} onChange={(e) => setCreateForm({ ...createForm, address: e.target.value })} required />
             </div>
             <div className="form-field">
               <label>Teléfono</label>
-              <input value={createForm.phone} onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })} />
+              <input value={createForm.phone} onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })} required />
             </div>
           </div>
           <div style={{ textAlign: 'right', fontSize: 13, color: 'var(--color-text-muted)', marginTop: -4, marginBottom: 12 }}>
-            Total: {formatCurrency((Number(createForm.precio_producto) || 0) + (Number(createForm.precio_envio) || 0))}
+            Total: {formatCurrency(precioProductoCreate + (Number(createForm.precio_envio) || 0))}
           </div>
           <div className="form-field">
             <label>Notas</label>
@@ -574,20 +502,24 @@ export default function ShippingPage() {
             )}
             <div className="form-field">
               <label>Cliente</label>
-              <SearchableSelect
-                value={editForm.client_id}
-                onChange={(v) => setEditForm({ ...editForm, client_id: v })}
-                options={clientOptions}
-                placeholder="Selecciona un cliente"
-                required
-              />
+              <input value={editForm.client_name} disabled />
             </div>
+            {editingSale.items ? (
+              <div className="form-field">
+                <label>Productos</label>
+                <div style={{ fontSize: 14, lineHeight: 1.5 }}>{editingSale.product_name}</div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                  Este envío tiene varios productos con su propio tipo de precio; no se pueden editar aquí.
+                </div>
+              </div>
+            ) : (
+              <>
             <div className="form-field">
               <label>Producto</label>
               <SearchableSelect
                 value={editForm.productSelection}
                 onChange={handleEditProductSelect}
-                options={productOptions}
+                options={editProductOptions}
                 pinnedOptions={FREE_PRODUCT_OPTION}
                 placeholder="Selecciona un producto"
                 required
@@ -610,6 +542,8 @@ export default function ShippingPage() {
               <label>Monto total</label>
               <input type="number" min="0" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} required />
             </div>
+              </>
+            )}
             <div className="form-field">
               <label>Dirección</label>
               <input value={editForm.address} onChange={(e) => setEditForm({ ...editForm, address: e.target.value })} />

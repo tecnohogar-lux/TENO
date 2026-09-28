@@ -7,7 +7,7 @@ const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 
-const requireManage = requireRole(['admin', 'operador'], 'No tienes permiso para gestionar couriers');
+const requireManage = requireRole(['admin', 'operador', 'caja'], 'No tienes permiso para gestionar couriers');
 
 // ============================================
 // GET - Listar couriers

@@ -9,8 +9,8 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
 });
 
-// Verificar conexión
-pool.on('connect', () => {
+// Un solo aviso al abrir la primera conexión (el pool abre varias durante el uso).
+pool.once('connect', () => {
   console.log('✓ Conectado a PostgreSQL');
 });
 

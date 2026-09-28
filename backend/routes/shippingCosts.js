@@ -6,7 +6,7 @@ const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 
-const requireManage = (message) => requireRole(['admin', 'operador'], message);
+const requireManage = (message) => requireRole(['admin', 'operador', 'caja'], message);
 
 // ============================================
 // GET - Listar costos por comuna (todos los roles)

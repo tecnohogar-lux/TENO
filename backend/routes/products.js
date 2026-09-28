@@ -7,9 +7,8 @@ const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { crearNoticia } = require('./noticias');
 const fs = require('fs');
-const path = require('path');
 
-const requireManage = (message) => requireRole(['admin', 'operador'], message);
+const requireManage = (message) => requireRole(['admin', 'operador', 'caja'], message);
 
 // Configurar multer para archivos Excel
 const upload = multer({ 
@@ -33,15 +32,38 @@ const upload = multer({
 // Nunca se leen de un Excel: siempre se recalculan aquí, en el servidor.
 // rentabilidad = precio - costo; margen_75 = 75% de eso; comision_venta = 25% de eso.
 function computeDerived(costo, precio) {
-  if (costo === null || costo === undefined || precio === null || precio === undefined) {
-    return { rentabilidad: null, margen_75: null, comision_venta: null };
-  }
-  const rentabilidad = Math.round((precio - costo) * 100) / 100;
+  const r2 = (n) => Math.round(n * 100) / 100;
+  const precioTienda = precio === null || precio === undefined ? null : r2(precio * 1.2);
+  const vacio = {
+    rentabilidad: null, margen_75: null, comision_venta: null,
+    costo_tienda: costo === null || costo === undefined ? null : costo,
+    precio_tienda: precioTienda,
+    rentabilidad_tienda: null, margen_75_tienda: null, comision_venta_tienda: null,
+  };
+  if (costo === null || costo === undefined || precio === null || precio === undefined) return vacio;
+
+  const rentabilidad = r2(precio - costo);
+  // Segundo cálculo ("tienda"): mismo costo, precio con 20% de incremento.
+  const rentabilidadTienda = r2(precioTienda - costo);
   return {
     rentabilidad,
-    margen_75: Math.round(rentabilidad * 0.75 * 100) / 100,
-    comision_venta: Math.round(rentabilidad * 0.25 * 100) / 100,
+    margen_75: r2(rentabilidad * 0.75),
+    comision_venta: r2(rentabilidad * 0.25),
+    costo_tienda: costo,
+    precio_tienda: precioTienda,
+    rentabilidad_tienda: rentabilidadTienda,
+    margen_75_tienda: r2(rentabilidadTienda * 0.75),
+    comision_venta_tienda: r2(rentabilidadTienda * 0.25),
   };
+}
+
+// Costos y márgenes: solo admin y operador. Un vendedor no recibe estos campos en la API.
+const COST_FIELDS = ['costo', 'rentabilidad', 'margen_75', 'costo_tienda', 'rentabilidad_tienda', 'margen_75_tienda'];
+function sanitizeProduct(product, role) {
+  if (role === 'admin' || role === 'operador' || role === 'caja') return product;
+  const copy = { ...product };
+  for (const field of COST_FIELDS) delete copy[field];
+  return copy;
 }
 
 // ============================================
@@ -91,12 +113,28 @@ router.get('/', authenticateToken, async (req, res) => {
       page: pageNum || 1,
       limit: limitNum || total,
       totalPages: limitNum ? Math.max(Math.ceil(total / limitNum), 1) : 1,
-      products: result.rows
+      products: result.rows.map((p) => sanitizeProduct(p, req.user.role))
     });
 
   } catch (err) {
     console.error('Error al obtener productos:', err);
     res.status(500).json({ error: 'Error al obtener productos' });
+  }
+});
+
+// ============================================
+// GET - Catálogo liviano para los buscadores de Caja / Retiro / Envíos: solo lo necesario
+// para elegir un producto y su precio (sin costos ni textos largos). Va antes de /:id.
+// ============================================
+router.get('/catalog', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, title, sku, price, precio_tienda, agotado FROM products ORDER BY title ASC'
+    );
+    res.json({ total: result.rows.length, products: result.rows });
+  } catch (err) {
+    console.error('Error al obtener catálogo:', err);
+    res.status(500).json({ error: 'Error al obtener catálogo' });
   }
 });
 
@@ -119,7 +157,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
 
-    res.json(result.rows[0]);
+    res.json(sanitizeProduct(result.rows[0], req.user.role));
 
   } catch (err) {
     console.error('Error al obtener producto:', err);
@@ -146,10 +184,12 @@ router.post('/', authenticateToken, requireManage('No tienes permiso para crear 
     const derived = computeDerived(costoNum, parseFloat(price));
 
     const result = await pool.query(
-      `INSERT INTO products (title, sku, price, cover_image_url, caracteristicas, costo, rentabilidad, margen_75, comision_venta, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO products (title, sku, price, cover_image_url, caracteristicas, costo, rentabilidad, margen_75, comision_venta,
+         costo_tienda, precio_tienda, rentabilidad_tienda, margen_75_tienda, comision_venta_tienda, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        RETURNING *`,
-      [title, sku || null, price, cover_image_url || null, caracteristicas || null, costoNum, derived.rentabilidad, derived.margen_75, derived.comision_venta, user.id]
+      [title, sku || null, price, cover_image_url || null, caracteristicas || null, costoNum, derived.rentabilidad, derived.margen_75, derived.comision_venta,
+       derived.costo_tienda, derived.precio_tienda, derived.rentabilidad_tienda, derived.margen_75_tienda, derived.comision_venta_tienda, user.id]
     );
 
     const product = result.rows[0];
@@ -171,6 +211,9 @@ router.post('/', authenticateToken, requireManage('No tienes permiso para crear 
 // Rentabilidad / Menos 75% / Menos 25% (Comisión de venta) son columnas
 // informativas: el sistema SIEMPRE las recalcula, nunca las lee del archivo.
 const IMPORT_HEADER = ['Producto', 'SKU', 'Costo', 'Precio', 'Rentabilidad', 'Menos 75%', 'Menos 25% (Comision de venta)', 'URL Imagen', 'Descripcion'];
+
+// Columnas informativas al final del Excel exportado (siempre se recalculan; el importador las ignora).
+const EXPORT_EXTRA_HEADER = ['Costo Tienda', 'Precio Tienda', 'Rentabilidad Tienda', 'Menos 75% Tienda', 'Menos 25% Comision de venta Tienda'];
 
 function normalizarEncabezado(value) {
   return String(value ?? '')
@@ -313,9 +356,11 @@ router.post('/import/excel', authenticateToken, requireManage('No tienes permiso
       for (const fila of filas) {
         const derived = computeDerived(fila.costo, fila.price);
         await dbClient.query(
-          `INSERT INTO products (title, sku, price, cover_image_url, caracteristicas, costo, rentabilidad, margen_75, comision_venta, created_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-          [fila.title, fila.sku || null, fila.price, fila.cover_image_url || null, fila.caracteristicas || null, fila.costo, derived.rentabilidad, derived.margen_75, derived.comision_venta, user.id]
+          `INSERT INTO products (title, sku, price, cover_image_url, caracteristicas, costo, rentabilidad, margen_75, comision_venta,
+             costo_tienda, precio_tienda, rentabilidad_tienda, margen_75_tienda, comision_venta_tienda, created_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+          [fila.title, fila.sku || null, fila.price, fila.cover_image_url || null, fila.caracteristicas || null, fila.costo, derived.rentabilidad, derived.margen_75, derived.comision_venta,
+           derived.costo_tienda, derived.precio_tienda, derived.rentabilidad_tienda, derived.margen_75_tienda, derived.comision_venta_tienda, user.id]
         );
         productsCreated++;
       }
@@ -359,7 +404,7 @@ router.get('/export/excel', authenticateToken, requireManage('No tienes permiso 
   try {
     const result = await pool.query('SELECT * FROM products ORDER BY id ASC');
 
-    const rows = [IMPORT_HEADER];
+    const rows = [[...IMPORT_HEADER, ...EXPORT_EXTRA_HEADER]];
     for (const p of result.rows) {
       rows.push([
         p.title,
@@ -371,6 +416,7 @@ router.get('/export/excel', authenticateToken, requireManage('No tienes permiso 
         p.comision_venta !== null ? Number(p.comision_venta) : '',
         p.cover_image_url || '',
         p.caracteristicas || '',
+        ...['costo_tienda', 'precio_tienda', 'rentabilidad_tienda', 'margen_75_tienda', 'comision_venta_tienda'].map((k) => (p[k] !== null && p[k] !== undefined ? Number(p[k]) : '')),
       ]);
     }
 
@@ -487,9 +533,12 @@ router.post('/bulk-edit/excel', authenticateToken, requireManage('No tienes perm
         await dbClient.query(
           `UPDATE products
            SET title = $1, sku = $2, price = $3, cover_image_url = $4, caracteristicas = $5,
-               costo = $6, rentabilidad = $7, margen_75 = $8, comision_venta = $9, updated_at = CURRENT_TIMESTAMP
+               costo = $6, rentabilidad = $7, margen_75 = $8, comision_venta = $9,
+               costo_tienda = $11, precio_tienda = $12, rentabilidad_tienda = $13, margen_75_tienda = $14, comision_venta_tienda = $15,
+               updated_at = CURRENT_TIMESTAMP
            WHERE id = $10`,
-          [u.title, u.sku, u.price, u.cover_image_url, u.caracteristicas, u.costo, u.rentabilidad, u.margen_75, u.comision_venta, u.id]
+          [u.title, u.sku, u.price, u.cover_image_url, u.caracteristicas, u.costo, u.rentabilidad, u.margen_75, u.comision_venta, u.id,
+           u.costo_tienda, u.precio_tienda, u.rentabilidad_tienda, u.margen_75_tienda, u.comision_venta_tienda]
         );
       }
       await dbClient.query('COMMIT');
@@ -554,10 +603,16 @@ router.put('/:id', authenticateToken, requireManage('No tienes permiso para edit
            rentabilidad = $7,
            margen_75 = $8,
            comision_venta = $9,
+           costo_tienda = $11,
+           precio_tienda = $12,
+           rentabilidad_tienda = $13,
+           margen_75_tienda = $14,
+           comision_venta_tienda = $15,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $10
        RETURNING *`,
-      [title, sku, price, cover_image_url, caracteristicas, costoNum, derived.rentabilidad, derived.margen_75, derived.comision_venta, id]
+      [title, sku, price, cover_image_url, caracteristicas, costoNum, derived.rentabilidad, derived.margen_75, derived.comision_venta, id,
+       derived.costo_tienda, derived.precio_tienda, derived.rentabilidad_tienda, derived.margen_75_tienda, derived.comision_venta_tienda]
     );
 
     if (result.rows.length === 0) {

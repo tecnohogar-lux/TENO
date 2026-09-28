@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS users (
   name VARCHAR(255) NOT NULL,
   email VARCHAR(255) UNIQUE NOT NULL,
   password VARCHAR(255) NOT NULL,
-  role VARCHAR(50) NOT NULL CHECK (role IN ('vendedor', 'operador', 'admin', 'escaneo')),
+  role VARCHAR(50) NOT NULL CHECK (role IN ('vendedor', 'operador', 'admin', 'escaneo', 'caja')),
   is_active BOOLEAN DEFAULT true,
   marketplace_accounts TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -34,6 +34,11 @@ CREATE TABLE IF NOT EXISTS products (
   rentabilidad DECIMAL(10, 2),
   margen_75 DECIMAL(10, 2),
   comision_venta DECIMAL(10, 2),
+  costo_tienda DECIMAL(10, 2),
+  precio_tienda DECIMAL(10, 2),
+  rentabilidad_tienda DECIMAL(10, 2),
+  margen_75_tienda DECIMAL(10, 2),
+  comision_venta_tienda DECIMAL(10, 2),
   created_by INTEGER NOT NULL REFERENCES users(id),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -71,6 +76,8 @@ CREATE TABLE IF NOT EXISTS sales (
   precio_producto DECIMAL(10, 2),
   precio_envio DECIMAL(10, 2),
   comision DECIMAL(10, 2),
+  price_type VARCHAR(12) NOT NULL DEFAULT 'marketplace' CHECK (price_type IN ('sol', 'marketplace', 'mayor', 'mixto')),
+  items JSON,
   qr_code VARCHAR(500),
   notes TEXT,
   delivered_at TIMESTAMP,
@@ -107,6 +114,18 @@ CREATE TABLE IF NOT EXISTS noticias (
   texto TEXT NOT NULL,
   producto_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
   created_by INTEGER REFERENCES users(id),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Preguntas de vendedores a admin/operador/caja. Se borran solas a los 15 días (limpieza perezosa).
+CREATE TABLE IF NOT EXISTS preguntas (
+  id SERIAL PRIMARY KEY,
+  vendedor_id INTEGER NOT NULL REFERENCES users(id),
+  pregunta TEXT NOT NULL,
+  respuesta TEXT,
+  respondida_por INTEGER REFERENCES users(id),
+  respondida_at TIMESTAMP,
+  leida_por_vendedor BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -174,6 +193,7 @@ CREATE TABLE IF NOT EXISTS retiros_tienda (
   items JSON NOT NULL,
   total DECIMAL(10, 2) NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'pendiente' CHECK (status IN ('pendiente', 'entregado')),
+  price_type VARCHAR(12) NOT NULL DEFAULT 'marketplace' CHECK (price_type IN ('sol', 'marketplace', 'mayor', 'mixto')),
   notes TEXT,
   delivered_at TIMESTAMP,
   delivered_by INTEGER REFERENCES users(id),
@@ -194,6 +214,8 @@ CREATE INDEX idx_products_created_by ON products(created_by);
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_role ON users(role);
 CREATE INDEX idx_noticias_created_at ON noticias(created_at DESC);
+CREATE INDEX idx_preguntas_vendedor ON preguntas(vendedor_id);
+CREATE INDEX idx_preguntas_created_at ON preguntas(created_at);
 CREATE INDEX idx_anotaciones_fecha ON anotaciones_diarias(fecha DESC);
 CREATE INDEX idx_envios_regiones_region ON envios_regiones(region);
 CREATE INDEX idx_retiros_tienda_vendor ON retiros_tienda(vendor_id);

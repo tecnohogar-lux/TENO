@@ -2,22 +2,28 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const pool = require('./config/database');
+const helmet = require('helmet');
+const compression = require('compression');
+
+// Sin JWT_SECRET no se pueden firmar/verificar sesiones: mejor no arrancar que fallar en cada request.
+if (!process.env.JWT_SECRET) {
+  console.error('❌ Falta JWT_SECRET en las variables de entorno');
+  process.exit(1);
+}
 
 // Importar rutas
 const authRoutes = require('./routes/auth');
 const usersRoutes = require('./routes/users');
 const salesRoutes = require('./routes/sales');
-const clientsRoutes = require('./routes/clients');
 const dashboardRoutes = require('./routes/dashboard');
 const preferencesRoutes = require('./routes/preferences');
 const productsRoutes = require('./routes/products');
 const cajaRoutes = require('./routes/caja');
 const auditRoutes = require('./routes/audit');
 const noticiasRoutes = require('./routes/noticias');
+const preguntasRoutes = require('./routes/preguntas');
 const anotacionesRoutes = require('./routes/anotaciones');
 const shippingCostsRoutes = require('./routes/shippingCosts');
-const regionShippingRoutes = require('./routes/regionShipping');
 const cashRegisterRoutes = require('./routes/cashRegister');
 const gastosRoutes = require('./routes/gastos');
 const settingsRoutes = require('./routes/settings');
@@ -27,9 +33,17 @@ const couriersRoutes = require('./routes/couriers');
 // Crear aplicación
 const app = express();
 
+// Detrás de un proxy (Render, Railway, nginx...) define TRUST_PROXY=1 para que el límite de
+// intentos de login use la IP real del cliente.
+if (process.env.TRUST_PROXY) app.set('trust proxy', Number(process.env.TRUST_PROXY) || 1);
+
 // Middleware
-app.use(cors());
-app.use(express.json());
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+app.use(compression());
+// CORS_ORIGIN (opcional): dominios del frontend permitidos, separados por coma. Sin definir, se permite cualquiera (desarrollo).
+const allowedOrigins = (process.env.CORS_ORIGIN || '').split(',').map((o) => o.trim()).filter(Boolean);
+app.use(cors(allowedOrigins.length > 0 ? { origin: allowedOrigins } : undefined));
+app.use(express.json({ limit: '1mb' }));
 
 // Variables
 const PORT = process.env.PORT || 3000;
@@ -41,16 +55,15 @@ const PORT = process.env.PORT || 3000;
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/sales', salesRoutes);
-app.use('/api/clients', clientsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/preferences', preferencesRoutes);
 app.use('/api/products', productsRoutes);
 app.use('/api/caja', cajaRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/noticias', noticiasRoutes);
+app.use('/api/preguntas', preguntasRoutes);
 app.use('/api/anotaciones', anotacionesRoutes);
 app.use('/api/shipping-costs', shippingCostsRoutes);
-app.use('/api/region-shipping', regionShippingRoutes);
 app.use('/api/cash-register', cashRegisterRoutes);
 app.use('/api/gastos', gastosRoutes);
 app.use('/api/settings', settingsRoutes);
@@ -62,28 +75,7 @@ app.use('/api/couriers', couriersRoutes);
 // ============================================
 
 app.get('/', (req, res) => {
-  res.json({ 
-    message: 'TENO Backend funcionando ✓',
-    version: '1.0.0',
-    environment: process.env.NODE_ENV,
-    endpoints: {
-      auth: '/api/auth/login',
-      users: '/api/users',
-      sales: '/api/sales',
-      clients: '/api/clients',
-      dashboard: '/api/dashboard',
-      preferences: '/api/preferences',
-      products: '/api/products',
-      caja: '/api/caja/sale',
-      noticias: '/api/noticias',
-      anotaciones: '/api/anotaciones',
-      shippingCosts: '/api/shipping-costs',
-      regionShipping: '/api/region-shipping',
-      cashRegister: '/api/cash-register',
-      gastos: '/api/gastos',
-      settings: '/api/settings'
-    }
-  });
+  res.json({ message: 'TENO Backend funcionando ✓' });
 });
 
 app.get('/api/health', (req, res) => {
@@ -92,21 +84,6 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date(),
     database: 'PostgreSQL conectado'
   });
-});
-
-app.get('/api/db-test', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT NOW()');
-    res.json({ 
-      message: 'Conexión a BD exitosa',
-      time: result.rows[0]
-    });
-  } catch (err) {
-    res.status(500).json({ 
-      error: 'Error al conectar a BD',
-      details: err.message
-    });
-  }
 });
 
 // ============================================
@@ -127,19 +104,5 @@ app.use((req, res) => {
 // ============================================
 
 app.listen(PORT, () => {
-  console.log(`\n✓ TENO Backend - Versión COMPLETA`);
-  console.log(`✓ URL: http://localhost:${PORT}`);
-  console.log(`✓ Endpoints disponibles:`);
-  console.log(`  • POST /api/auth/login`);
-  console.log(`  • GET /api/users`);
-  console.log(`  • POST /api/users`);
-  console.log(`  • GET /api/sales`);
-  console.log(`  • POST /api/sales`);
-  console.log(`  • GET /api/clients`);
-  console.log(`  • POST /api/clients`);
-  console.log(`  • GET /api/products`);
-  console.log(`  • POST /api/products/import`);
-  console.log(`  • GET /api/dashboard`);
-  console.log(`  • GET /api/preferences`);
-  console.log(`  • PUT /api/preferences\n`);
+  console.log(`✓ TENO Backend en http://localhost:${PORT}`);
 });

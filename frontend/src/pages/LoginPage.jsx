@@ -46,13 +46,15 @@ export default function LoginPage() {
         {error && <div className="alert alert-error">{error}</div>}
 
         <div className="form-field">
-          <label htmlFor="email">Correo electrónico</label>
+          <label htmlFor="email">Usuario</label>
           <input
             id="email"
-            type="email"
+            type="text"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="admin@teno.com"
+            onChange={(e) => setEmail(e.target.value.trim())}
+            placeholder="Usuario"
+            autoCapitalize="none"
+            autoCorrect="off"
             required
             autoFocus
           />

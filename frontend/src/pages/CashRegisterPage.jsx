@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Layout from '../components/Layout';
 import MetricsCard from '../components/MetricsCard';
 import Pagination from '../components/Pagination';
@@ -7,6 +7,7 @@ import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
 import { formatCurrency, formatDate } from '../utils/format';
 import { saleStatusLabel, deliveryStatusLabel, tipoVentaLabel, paymentMethodLabel, TIPO_VENTA_LABELS } from '../utils/labels';
+import { PRICE_TYPE_LABELS, priceTypeLabel } from '../utils/priceType';
 
 const emptyFilters = { order_id: '', cliente: '', vendedor: '', fecha: '', producto: '', estado: '', forma_pago: '' };
 const FORMAS_PAGO = ['efectivo', 'debito', 'credito', 'transferencia', 'link_pago'];
@@ -306,6 +307,7 @@ export default function CashRegisterPage() {
                         <th>Cliente</th>
                         <th>Vendedor</th>
                         <th>Tipo</th>
+                        <th>Precios</th>
                         <th>Total</th>
                         <th>Estado</th>
                         <th>Pago</th>
@@ -315,7 +317,7 @@ export default function CashRegisterPage() {
                     <tbody>
                       {detailData.ventas.length === 0 ? (
                         <tr>
-                          <td colSpan={9} style={{ color: 'var(--color-text-muted)' }}>Sin ventas en este período</td>
+                          <td colSpan={10} style={{ color: 'var(--color-text-muted)' }}>Sin ventas en este período</td>
                         </tr>
                       ) : (
                         detailData.ventas.map((s) => (
@@ -325,6 +327,7 @@ export default function CashRegisterPage() {
                             <td data-label="Cliente">{s.client_name}</td>
                             <td data-label="Vendedor">{s.vendor_name}</td>
                             <td data-label="Tipo"><Badge label={tipoVentaLabel(s.tipo_venta)} color={TIPO_VENTA_LABELS[s.tipo_venta]?.color} /></td>
+                            <td data-label="Precios"><Badge label={priceTypeLabel(s.price_type)} color={PRICE_TYPE_LABELS[s.price_type]?.color} /></td>
                             <td data-label="Total">{formatCurrency(s.total)}</td>
                             <td data-label="Estado">{s.tipo_venta === 'TIENDA' ? saleStatusLabel(s.status) : deliveryStatusLabel(s.delivery_status)}</td>
                             <td data-label="Pago">{paymentMethodLabel(s.payment_method)}</td>

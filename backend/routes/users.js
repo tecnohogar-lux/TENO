@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const bcryptjs = require('bcryptjs');
 const pool = require('../config/database');
-const { authenticateToken, requireRole } = require('../middleware/auth');
+const { authenticateToken, requireRole, invalidateUserCache } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 
 // ============================================
@@ -94,14 +94,14 @@ router.post('/', authenticateToken, requireRole(['admin'], 'Solo un admin puede 
       return res.status(400).json({ error: 'Campos requeridos: name, email, password, role' });
     }
 
-    if (!['vendedor', 'operador', 'admin', 'escaneo'].includes(role)) {
+    if (!['vendedor', 'operador', 'admin', 'escaneo', 'caja'].includes(role)) {
       return res.status(400).json({ error: 'Rol inválido' });
     }
 
     // Verificar que el email no exista
     const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
     if (existing.rows.length > 0) {
-      return res.status(400).json({ error: 'Email ya registrado' });
+      return res.status(400).json({ error: 'Usuario ya registrado' });
     }
 
     const hashedPassword = await bcryptjs.hash(password, 10);
@@ -141,7 +141,7 @@ router.put('/:id', authenticateToken, requireRole(['admin'], 'Solo un admin pued
     const { id } = req.params;
     const { name, email, role, is_active, password, marketplace_accounts } = req.body;
 
-    if (role !== undefined && !['vendedor', 'operador', 'admin', 'escaneo'].includes(role)) {
+    if (role !== undefined && !['vendedor', 'operador', 'admin', 'escaneo', 'caja'].includes(role)) {
       return res.status(400).json({ error: 'Rol inválido' });
     }
 
@@ -168,6 +168,7 @@ router.put('/:id', authenticateToken, requireRole(['admin'], 'Solo un admin pued
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
+    invalidateUserCache(id);
 
     if (before.rows.length > 0) {
       await logAudit({
@@ -212,6 +213,8 @@ router.put('/:id/toggle-status', authenticateToken, requireRole(['admin'], 'Solo
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
+    invalidateUserCache(id);
+
     res.json({
       message: `Usuario ${result.rows[0].is_active ? 'activado' : 'desactivado'}`,
       user: result.rows[0]
@@ -236,6 +239,7 @@ router.delete('/:id', authenticateToken, requireRole(['admin'], 'Solo un admin p
     }
 
     const result = await pool.query('DELETE FROM users WHERE id = $1 RETURNING id', [id]);
+    invalidateUserCache(id);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Usuario no encontrado' });

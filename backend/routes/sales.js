@@ -4,26 +4,14 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
+const { MIN_MAYOR, MIN_MAYOR_MESSAGE, lookupComisionUnitaria, validateLines, summarizeLines } = require('../utils/saleLines');
 
 const DELIVERY_STATUSES = [
   'listo_para_imprimir', 'impreso', 'en_camino', 'entregado', 'cancelado', 'reprogramado',
   'solo_envio_pagado', 'solo_entrega_incompleto', 'cambio_producto',
 ];
 const requireAdmin = (message) => requireRole(['admin'], message);
-const requireManage = (message) => requireRole(['admin', 'operador'], message);
-
-// Busca la comisión de venta unitaria del producto por nombre exacto (sin
-// distinguir mayúsculas/minúsculas). Si no hay coincidencia en el catálogo
-// (ej. "Producto libre") o el producto no tiene costo cargado, no hay comisión.
-async function lookupComisionUnitaria(dbClient, productName) {
-  if (!productName) return null;
-  const result = await dbClient.query(
-    'SELECT comision_venta FROM products WHERE LOWER(title) = LOWER($1) LIMIT 1',
-    [productName]
-  );
-  const valor = result.rows[0]?.comision_venta;
-  return valor !== undefined && valor !== null ? parseFloat(valor) : null;
-}
+const requireManage = (message) => requireRole(['admin', 'operador', 'caja'], message);
 
 // ============================================
 // GET - Papelera (ventas/envíos eliminados, solo admin)
@@ -184,7 +172,7 @@ router.get('/comisiones', authenticateToken, requireManage('No tienes permiso pa
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const user = req.user;
-    const { page, limit, search } = req.query;
+    const { page, limit, search, tipo_venta } = req.query;
 
     const conditions = ['s.deleted_at IS NULL'];
     const params = [];
@@ -198,6 +186,14 @@ router.get('/', authenticateToken, async (req, res) => {
       params.push(`%${search}%`);
       const idx = params.length;
       conditions.push(`(u.name ILIKE $${idx} OR c.name ILIKE $${idx} OR s.product_name ILIKE $${idx} OR s.address ILIKE $${idx} OR s.comuna ILIKE $${idx} OR co.name ILIKE $${idx})`);
+    }
+
+    if (tipo_venta) {
+      const tipos = String(tipo_venta).split(',').filter((t) => ['ENVIO', 'TIENDA', 'ENVIO_PREPAGADO', 'ENVIO_REGION'].includes(t));
+      if (tipos.length > 0) {
+        params.push(tipos);
+        conditions.push(`s.tipo_venta = ANY($${params.length})`);
+      }
     }
 
     const whereClause = `WHERE ${conditions.join(' AND ')}`;
@@ -289,9 +285,29 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // ============================================
 router.post('/', authenticateToken, async (req, res) => {
   const user = req.user;
-  const { client_id, client, product_name, quantity, price, address, comuna, phone, notes, region, precio_producto, precio_envio } = req.body;
+  const { client_id, client, address, comuna, phone, notes, region } = req.body;
+  let { product_name, quantity, price, precio_producto, precio_envio } = req.body;
   let { vendor_id } = req.body;
   const tipo_venta = req.body.tipo_venta === 'ENVIO_REGION' ? 'ENVIO_REGION' : 'ENVIO';
+  let price_type = req.body.price_type === 'sol' ? 'sol' : 'marketplace';
+
+  // Forma nueva: items[] con el tipo de precio (sol/marketplace) de cada línea, mezclables
+  // en una misma transacción. Forma antigua: un solo producto (product_name/quantity/price).
+  const lines = Array.isArray(req.body.items) && req.body.items.length > 0
+    ? req.body.items.map((i) => ({
+        product_name: String(i.product_name || '').trim(),
+        quantity: Number(i.quantity),
+        price: Number(i.price),
+        price_type: ['sol', 'mayor'].includes(i.price_type) ? i.price_type : 'marketplace',
+      }))
+    : null;
+  const lineasInvalidas = lines && validateLines(lines);
+  if (lineasInvalidas) {
+    return res.status(400).json({ error: lineasInvalidas });
+  }
+  if (lines && user.role === 'vendedor' && lines.some((l) => l.price_type === 'sol')) {
+    return res.status(400).json({ error: 'Los vendedores no pueden usar precios SOL' });
+  }
 
   if (user.role === 'escaneo') {
     return res.status(403).json({ error: 'El usuario de escaneo no puede crear ventas' });
@@ -299,6 +315,9 @@ router.post('/', authenticateToken, async (req, res) => {
 
   if (tipo_venta === 'ENVIO_REGION' && !region) {
     return res.status(400).json({ error: 'Región requerida para envíos a región' });
+  }
+  if (!address || !phone) {
+    return res.status(400).json({ error: 'Dirección y teléfono requeridos para un envío' });
   }
 
   // Vendedor solo puede crear a su propio nombre; operador/admin puede asignar a cualquier vendedor
@@ -311,7 +330,7 @@ router.post('/', authenticateToken, async (req, res) => {
   if (!client_id && !client?.name) {
     return res.status(400).json({ error: 'Cliente requerido (existente o nuevo)' });
   }
-  if (!product_name || !quantity || !price) {
+  if (!lines && (!product_name || !quantity || !price)) {
     return res.status(400).json({ error: 'Campos requeridos faltantes' });
   }
 
@@ -340,9 +359,27 @@ router.post('/', authenticateToken, async (req, res) => {
       finalClientId = newClient.rows[0].id;
     }
 
-    const total = quantity * price;
-    const comisionUnitaria = await lookupComisionUnitaria(dbClient, product_name);
-    const comision = comisionUnitaria !== null ? comisionUnitaria * quantity : null;
+    let itemsJson = null;
+    let comision = null;
+    let total;
+    if (lines) {
+      const resumen = await summarizeLines(dbClient, lines);
+      const envio = Number(precio_envio) || 0;
+      total = resumen.productosTotal + envio;
+      precio_producto = resumen.productosTotal;
+      precio_envio = envio;
+      quantity = resumen.totalQty;
+      // La columna price guarda el promedio para que total = quantity * price siga cumpliéndose.
+      price = total / resumen.totalQty;
+      product_name = resumen.productName;
+      price_type = resumen.priceType;
+      itemsJson = resumen.itemsJson;
+      comision = resumen.comision;
+    } else {
+      total = quantity * price;
+      const comisionUnitaria = await lookupComisionUnitaria(dbClient, product_name, price_type);
+      comision = comisionUnitaria !== null ? comisionUnitaria * quantity : null;
+    }
 
     // Courier predeterminado (configurable en Configuración) para que todo envío
     // nuevo de Delivery Santiago nazca con un courier asignado; se puede cambiar
@@ -353,10 +390,10 @@ router.post('/', authenticateToken, async (req, res) => {
     const courierId = defaultCourier.rows[0]?.id || null;
 
     const inserted = await dbClient.query(
-      `INSERT INTO sales (vendor_id, client_id, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region, precio_producto, precio_envio, comision, courier_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      `INSERT INTO sales (vendor_id, client_id, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region, precio_producto, precio_envio, comision, courier_id, price_type, items)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
        RETURNING *`,
-      [vendor_id, finalClientId, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region || null, precio_producto || null, precio_envio || null, comision, courierId]
+      [vendor_id, finalClientId, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region || null, precio_producto || null, precio_envio || null, comision, courierId, price_type, itemsJson]
     );
 
     const sale = inserted.rows[0];
@@ -474,10 +511,10 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const user = req.user;
     const {
       status, delivery_status, notes,
-      product_name, quantity, price,
       client_id, address, comuna, phone,
       transferencia_verificada,
     } = req.body;
+    let { product_name, quantity, price } = req.body;
     let { vendor_id } = req.body;
 
     if (user.role === 'escaneo') {
@@ -495,6 +532,14 @@ router.put('/:id', authenticateToken, async (req, res) => {
     }
 
     const sale = saleResult.rows[0];
+
+    // Un envío con varios productos (líneas con su propio tipo de precio) no permite
+    // cambiar producto/cantidad/monto: se ignoran esos campos para no desarmar las líneas.
+    if (sale.items) {
+      product_name = undefined;
+      quantity = undefined;
+      price = undefined;
+    }
 
     // Validar permisos (vendedor solo su venta, operador y admin todas)
     if (user.role === 'vendedor' && sale.vendor_id !== user.id) {
@@ -524,7 +569,11 @@ router.put('/:id', authenticateToken, async (req, res) => {
     // el nuevo producto no tiene comisión cargada); si no cambian, se conserva.
     let comision = sale.comision;
     if (product_name !== undefined || quantity !== undefined) {
-      const comisionUnitaria = await lookupComisionUnitaria(pool, product_name || sale.product_name);
+      if (sale.price_type === 'mayor' && newQuantity < MIN_MAYOR) {
+        return res.status(400).json({ error: MIN_MAYOR_MESSAGE });
+      }
+      const unitProducto = sale.precio_producto !== null && sale.precio_producto !== undefined ? Number(sale.precio_producto) / newQuantity : newPrice;
+      const comisionUnitaria = await lookupComisionUnitaria(pool, product_name || sale.product_name, sale.price_type, unitProducto);
       comision = comisionUnitaria !== null ? comisionUnitaria * newQuantity : null;
     }
 
@@ -650,7 +699,7 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
 // ============================================
 // PUT - Asignar courier (Delivery Santiago; solo admin/operador)
 // ============================================
-router.put('/:id/courier', authenticateToken, requireRole(['admin', 'operador'], 'No tienes permiso para asignar courier'), async (req, res) => {
+router.put('/:id/courier', authenticateToken, requireRole(['admin', 'operador', 'caja'], 'No tienes permiso para asignar courier'), async (req, res) => {
   try {
     const { id } = req.params;
     const user = req.user;

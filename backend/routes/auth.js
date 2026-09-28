@@ -3,18 +3,29 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const bcryptjs = require('bcryptjs');
+const rateLimit = require('express-rate-limit');
 const pool = require('../config/database');
+
+// Frena la fuerza bruta de contraseñas: 10 intentos FALLIDOS cada 15 min por IP (los logins correctos no cuentan).
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiados intentos fallidos. Intenta de nuevo en 15 minutos.' },
+});
 
 // ============================================
 // LOGIN - Obtener token JWT
 // ============================================
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
     // Validar que email y password existan
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email y contraseña requeridos' });
+      return res.status(400).json({ error: 'Usuario y contraseña requeridos' });
     }
 
     // Buscar usuario en BD

@@ -69,7 +69,7 @@ router.get('/', authenticateToken, async (req, res) => {
 
     if (user.role === 'vendedor') {
       return res.json(await getDashboardVendedor(user.id));
-    } else if (user.role === 'operador') {
+    } else if (user.role === 'operador' || user.role === 'caja') {
       return res.json(await getDashboardOperador());
     } else if (user.role === 'admin') {
       return res.json(await getDashboardAdmin());

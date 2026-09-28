@@ -53,3 +53,7 @@ venv/
 # Testing
 coverage/
 .nyc_output/
+# Datos locales / archivos temporales
+backend/uploads/
+*.xlsx
+.claude/

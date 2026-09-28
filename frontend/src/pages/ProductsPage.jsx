@@ -25,7 +25,7 @@ function previewDerived(costo, price) {
 
 export default function ProductsPage() {
   const { user } = useAuth();
-  const canManage = user.role === 'operador' || user.role === 'admin';
+  const canManage = user.role === 'operador' || user.role === 'admin' || user.role === 'caja';
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search);
@@ -231,7 +231,7 @@ export default function ProductsPage() {
               <input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} />
             </div>
             <div className="form-field">
-              <label>Precio</label>
+              <label>Precio marketplace</label>
               <input type="number" min="0" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required />
             </div>
             <div className="form-field">
@@ -252,7 +252,7 @@ export default function ProductsPage() {
           </div>
           {previewDerived(form.costo, form.price) && (
             <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 16 }}>
-              Rentabilidad: {formatCurrency(previewDerived(form.costo, form.price).rentabilidad)} · Comisión de venta: {formatCurrency(previewDerived(form.costo, form.price).comision_venta)}
+              Rentabilidad: {formatCurrency(previewDerived(form.costo, form.price).rentabilidad)} · Comisión marketplace: {formatCurrency(previewDerived(form.costo, form.price).comision_venta)}
             </div>
           )}
           <button type="submit" className="btn btn-primary" disabled={saving}>
@@ -275,9 +275,11 @@ export default function ProductsPage() {
               <tr>
                 <th>Título</th>
                 <th>SKU</th>
-                <th>Precio</th>
+                <th>Precio marketplace</th>
                 {canManage && <th>Costo</th>}
-                <th>Comisión de venta</th>
+                <th>Comisión marketplace</th>
+                <th>Precio tienda</th>
+                <th>Comisión tienda</th>
                 <th>Características</th>
                 <th>Estado</th>
                 {canManage && <th>Acciones</th>}
@@ -286,16 +288,18 @@ export default function ProductsPage() {
             <tbody>
               {data.products.length === 0 ? (
                 <tr>
-                  <td colSpan={canManage ? 8 : 6} style={{ color: 'var(--color-text-muted)' }}>Sin productos que coincidan</td>
+                  <td colSpan={canManage ? 10 : 8} style={{ color: 'var(--color-text-muted)' }}>Sin productos que coincidan</td>
                 </tr>
               ) : (
                 data.products.map((p) => (
                   <tr key={p.id} onClick={() => setViewingProduct(p)} style={{ cursor: 'pointer' }}>
                     <td data-label="Título">{p.title}</td>
                     <td data-label="SKU">{p.sku || '-'}</td>
-                    <td data-label="Precio">{formatCurrency(p.price)}</td>
+                    <td data-label="Precio marketplace">{formatCurrency(p.price)}</td>
                     {canManage && <td data-label="Costo">{p.costo !== null ? formatCurrency(p.costo) : '-'}</td>}
-                    <td data-label="Comisión de venta">{p.comision_venta !== null ? formatCurrency(p.comision_venta) : '-'}</td>
+                    <td data-label="Comisión marketplace">{p.comision_venta !== null ? formatCurrency(p.comision_venta) : '-'}</td>
+                    <td data-label="Precio tienda">{p.precio_tienda !== null && p.precio_tienda !== undefined ? formatCurrency(p.precio_tienda) : '-'}</td>
+                    <td data-label="Comisión tienda">{p.comision_venta_tienda !== null && p.comision_venta_tienda !== undefined ? formatCurrency(p.comision_venta_tienda) : '-'}</td>
                     <td data-label="Características" style={{ fontSize: 13, color: 'var(--color-text-muted)', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.caracteristicas || '-'}</td>
                     <td data-label="Estado">
                       {p.agotado ? <Badge label="Agotado" color="var(--color-danger)" /> : <Badge label="Disponible" color="var(--color-success)" />}
@@ -343,7 +347,7 @@ export default function ProductsPage() {
               <input value={editForm.sku} onChange={(e) => setEditForm({ ...editForm, sku: e.target.value })} />
             </div>
             <div className="form-field">
-              <label>Precio</label>
+              <label>Precio marketplace</label>
               <input type="number" min="0" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} required />
             </div>
             <div className="form-field">
@@ -363,7 +367,7 @@ export default function ProductsPage() {
             </div>
             {previewDerived(editForm.costo, editForm.price) && (
               <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 4 }}>
-                Rentabilidad: {formatCurrency(previewDerived(editForm.costo, editForm.price).rentabilidad)} · Comisión de venta: {formatCurrency(previewDerived(editForm.costo, editForm.price).comision_venta)}
+                Rentabilidad: {formatCurrency(previewDerived(editForm.costo, editForm.price).rentabilidad)} · Comisión marketplace: {formatCurrency(previewDerived(editForm.costo, editForm.price).comision_venta)}
               </div>
             )}
             <div style={{ display: 'flex', gap: 12 }}>
@@ -401,11 +405,20 @@ export default function ProductsPage() {
               </div>
             )}
 
-            <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>{formatCurrency(viewingProduct.price)}</div>
+            <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>{formatCurrency(viewingProduct.price)} <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--color-text-muted)' }}>marketplace</span></div>
             <div style={{ fontSize: 14, color: 'var(--color-text-muted)', marginBottom: 16 }}>
-              Comisión de venta: <strong style={{ color: 'var(--color-text)' }}>{viewingProduct.comision_venta !== null ? formatCurrency(viewingProduct.comision_venta) : 'No calculada (falta costo)'}</strong>
+              Comisión marketplace: <strong style={{ color: 'var(--color-text)' }}>{viewingProduct.comision_venta !== null ? formatCurrency(viewingProduct.comision_venta) : 'No calculada (falta costo)'}</strong>
               {canManage && viewingProduct.costo !== null && (
                 <div>Costo: {formatCurrency(viewingProduct.costo)} · Rentabilidad: {formatCurrency(viewingProduct.rentabilidad)}</div>
+              )}
+            </div>
+            <div style={{ fontSize: 14, color: 'var(--color-text-muted)', marginBottom: 16, paddingTop: 12, borderTop: '1px solid var(--color-border)' }}>
+              Precio tienda: <strong style={{ color: 'var(--color-text)' }}>{viewingProduct.precio_tienda !== null && viewingProduct.precio_tienda !== undefined ? formatCurrency(viewingProduct.precio_tienda) : '-'}</strong>
+              <div>
+                Comisión tienda: <strong style={{ color: 'var(--color-text)' }}>{viewingProduct.comision_venta_tienda !== null && viewingProduct.comision_venta_tienda !== undefined ? formatCurrency(viewingProduct.comision_venta_tienda) : 'No calculada (falta costo)'}</strong>
+              </div>
+              {canManage && viewingProduct.costo_tienda !== null && viewingProduct.costo_tienda !== undefined && (
+                <div>Costo tienda: {formatCurrency(viewingProduct.costo_tienda)} · Rentabilidad tienda: {formatCurrency(viewingProduct.rentabilidad_tienda)}</div>
               )}
             </div>
 
@@ -479,8 +492,9 @@ export default function ProductsPage() {
             <ul style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: '0 0 20px', paddingLeft: 20, lineHeight: 1.6 }}>
               <li><strong>Producto</strong>: obligatorio.</li>
               <li><strong>SKU, URL Imagen, Descripción</strong>: opcionales.</li>
-              <li><strong>Costo y Precio</strong>: obligatorios, números mayores a 0 (Precio no puede ser menor que Costo).</li>
+              <li><strong>Costo y Precio (marketplace)</strong>: obligatorios, números mayores a 0 (Precio no puede ser menor que Costo).</li>
               <li><strong>Rentabilidad, Menos 75%, Menos 25% (Comisión de venta)</strong>: déjalas vacías, el sistema las calcula solas a partir de Costo y Precio.</li>
+              <li>El precio tienda (precio + 20%) y su rentabilidad y comisión también se calculan solos.</li>
               <li>Las filas completamente vacías se ignoran.</li>
             </ul>
             <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: -8 }}>

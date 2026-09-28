@@ -4,7 +4,6 @@ import Pagination from '../components/Pagination';
 import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
 import useConfirm from '../hooks/useConfirm';
-import { formatDate } from '../utils/format';
 
 const PAGE_SIZE = 25;
 const todayISO = () => new Date().toISOString().slice(0, 10);

@@ -18,7 +18,7 @@ const TIPO_LABELS = {
 
 export default function NoticiasPage() {
   const { user } = useAuth();
-  const canManage = user.role === 'admin' || user.role === 'operador';
+  const canManage = user.role === 'admin' || user.role === 'operador' || user.role === 'caja';
   const [limit, setLimit] = useState(10);
   const { data, loading, error, refetch } = useFetch(`/api/noticias?limit=${limit}`, { deps: [limit] });
   const { post, put, del, loading: saving, error: saveError } = useApi();

@@ -8,7 +8,7 @@ import { formatCurrency } from '../utils/format';
 
 export default function ShippingCostsPage() {
   const { user } = useAuth();
-  const canManage = user.role === 'admin' || user.role === 'operador';
+  const canManage = user.role === 'admin' || user.role === 'operador' || user.role === 'caja';
   const { data, loading, error, refetch } = useFetch('/api/shipping-costs');
   const { post, put, del, loading: saving, error: saveError } = useApi();
   const { confirm, dialog: confirmDialog } = useConfirm();

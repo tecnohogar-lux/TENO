@@ -83,8 +83,8 @@ export default function UsersPage() {
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
             </div>
             <div className="form-field">
-              <label>Email</label>
-              <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+              <label>Usuario</label>
+              <input type="text" autoCapitalize="none" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
             </div>
             <div className="form-field">
               <label>Contraseña</label>
@@ -97,6 +97,7 @@ export default function UsersPage() {
                 <option value="operador">Operador</option>
                 <option value="admin">Admin</option>
                 <option value="escaneo">Escaneo</option>
+                <option value="caja">Caja</option>
               </select>
             </div>
             <div className="form-field" style={{ gridColumn: '1 / -1' }}>
@@ -127,7 +128,7 @@ export default function UsersPage() {
             <thead>
               <tr>
                 <th>Nombre</th>
-                <th>Email</th>
+                <th>Usuario</th>
                 <th>Rol</th>
                 <th>Estado</th>
                 <th>Cuentas de Marketplace</th>
@@ -143,7 +144,7 @@ export default function UsersPage() {
                 data.users.map((u) => (
                   <tr key={u.id}>
                     <td data-label="Nombre">{u.name}</td>
-                    <td data-label="Email">{u.email}</td>
+                    <td data-label="Usuario">{u.email}</td>
                     <td data-label="Rol">{u.role}</td>
                     <td data-label="Estado">{u.is_active ? 'Activo' : 'Inactivo'}</td>
                     <td data-label="Marketplace">{u.marketplace_accounts || '-'}</td>
@@ -180,8 +181,8 @@ export default function UsersPage() {
               <input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
             </div>
             <div className="form-field">
-              <label>Email</label>
-              <input type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} required />
+              <label>Usuario</label>
+              <input type="text" autoCapitalize="none" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} required />
             </div>
             <div className="form-field">
               <label>Nueva contraseña (opcional)</label>
@@ -194,6 +195,7 @@ export default function UsersPage() {
                 <option value="operador">Operador</option>
                 <option value="admin">Admin</option>
                 <option value="escaneo">Escaneo</option>
+                <option value="caja">Caja</option>
               </select>
             </div>
             <div className="form-field">

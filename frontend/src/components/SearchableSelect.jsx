@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+// Con catálogos grandes (1800+ productos) solo se dibujan las primeras coincidencias; el resto se alcanza escribiendo.
+const MAX_VISIBLE = 100;
+const NO_PINNED = [];
+
 export default function SearchableSelect({
   value,
   onChange,
   options,
-  pinnedOptions = [],
+  pinnedOptions = NO_PINNED,
   placeholder = 'Selecciona...',
   disabled = false,
   required = false,
@@ -88,11 +92,14 @@ export default function SearchableSelect({
           {filtered.length === 0 ? (
             <div className="searchable-select-empty">Sin resultados</div>
           ) : (
-            filtered.map((opt) => (
+            filtered.slice(0, MAX_VISIBLE).map((opt) => (
               <div key={opt.value} className="searchable-select-option" onClick={() => handleSelect(opt)}>
                 {opt.label}
               </div>
             ))
+          )}
+          {filtered.length > MAX_VISIBLE && (
+            <div className="searchable-select-empty">Mostrando {MAX_VISIBLE} de {filtered.length}. Escribe para filtrar.</div>
           )}
         </div>
       )}

@@ -7,7 +7,7 @@ const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 
-const requireAdminOperador = requireRole(['admin', 'operador'], 'No tienes permiso para acceder a Apertura/Cierre de Caja');
+const requireAdminOperador = requireRole(['admin', 'operador', 'caja'], 'No tienes permiso para acceder a Apertura/Cierre de Caja');
 const FORMAS_PAGO = ['efectivo', 'debito', 'credito', 'transferencia', 'link_pago'];
 
 // Cuánto dinero debería existir por cada forma de pago en el período (para

@@ -6,7 +6,7 @@ const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 
-const requireAdminOperador = requireRole(['admin', 'operador'], 'No tienes permiso para acceder a gastos y egresos');
+const requireAdminOperador = requireRole(['admin', 'operador', 'caja'], 'No tienes permiso para acceder a gastos y egresos');
 
 // ============================================
 // GET - Listar gastos (paginado, más recientes primero). Soporta ?from=&to= (ISO) para acotar por fecha

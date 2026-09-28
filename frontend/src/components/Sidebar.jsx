@@ -1,58 +1,60 @@
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
+import usePreguntasUnreadCount from '../hooks/usePreguntasUnreadCount';
 import Logo from './Logo';
+
+const PREGUNTAS_ROLES = ['vendedor', 'operador', 'admin', 'caja'];
 
 const MODULE_GROUPS = [
   {
     label: null,
     items: [
-      { path: '/dashboard', label: 'Dashboard', roles: ['vendedor', 'operador', 'admin'] },
+      { path: '/dashboard', label: 'Dashboard', roles: ['vendedor', 'operador', 'admin', 'caja'] },
     ],
   },
   {
     label: 'Ventas',
     color: 'ventas',
     items: [
-      { path: '/sales', label: 'Historial de Ventas', roles: ['vendedor', 'operador', 'admin'] },
-      { path: '/retiro-tienda', label: 'Retiro en Tienda', roles: ['vendedor', 'operador', 'admin'] },
-      { path: '/caja', label: 'Caja', roles: ['operador', 'admin'] },
-      { path: '/cash-register', label: 'Apertura/Cierre de Caja', roles: ['operador', 'admin'] },
-      { path: '/gastos', label: 'Gastos y egresos', roles: ['operador', 'admin'] },
+      { path: '/sales', label: 'Historial de Ventas', roles: ['vendedor', 'operador', 'admin', 'caja'] },
+      { path: '/retiro-tienda', label: 'Retiro en Tienda', roles: ['vendedor', 'operador', 'admin', 'caja'] },
+      { path: '/caja', label: 'Caja', roles: ['operador', 'admin', 'caja'] },
+      { path: '/cash-register', label: 'Apertura/Cierre de Caja', roles: ['operador', 'admin', 'caja'] },
+      { path: '/gastos', label: 'Gastos y egresos', roles: ['operador', 'admin', 'caja'] },
     ],
   },
   {
     label: 'Envíos',
     color: 'envios',
     items: [
-      { path: '/shipping', label: 'Delivery Santiago', roles: ['vendedor', 'operador', 'admin', 'escaneo'] },
-      { path: '/couriers', label: 'Couriers', roles: ['operador', 'admin'] },
-      { path: '/envios-bluexpress', label: 'Envíos BlueExpress', roles: ['vendedor', 'operador', 'admin'] },
-      { path: '/shipping-costs', label: 'Costos de envío', roles: ['vendedor', 'operador', 'admin'] },
-      { path: '/region-shipping', label: 'Envíos a Regiones', roles: ['vendedor', 'operador', 'admin'] },
+      { path: '/shipping', label: 'Delivery Santiago', roles: ['vendedor', 'operador', 'admin', 'escaneo', 'caja'] },
+      { path: '/couriers', label: 'Couriers', roles: ['operador', 'admin', 'caja'] },
+      { path: '/envios-regiones', label: 'Envíos Regiones', roles: ['vendedor', 'operador', 'admin', 'caja'] },
+      { path: '/shipping-costs', label: 'Costos de envío', roles: ['vendedor', 'operador', 'admin', 'caja'] },
     ],
   },
   {
     label: 'Catálogo',
     color: 'catalogo',
     items: [
-      { path: '/products', label: 'Productos', roles: ['vendedor', 'operador', 'admin'] },
-      { path: '/clients', label: 'Clientes', roles: ['vendedor', 'operador', 'admin'] },
+      { path: '/products', label: 'Productos', roles: ['vendedor', 'operador', 'admin', 'caja'] },
     ],
   },
   {
     label: 'Comunicación',
     color: 'comunicacion',
     items: [
-      { path: '/noticias', label: 'Noticias', roles: ['vendedor', 'operador', 'admin'] },
-      { path: '/anotaciones', label: 'Anotaciones diarias', roles: ['operador', 'admin'] },
+      { path: '/noticias', label: 'Noticias', roles: ['vendedor', 'operador', 'admin', 'caja'] },
+      { path: '/anotaciones', label: 'Anotaciones diarias', roles: ['operador', 'admin', 'caja'] },
+      { path: '/reglas', label: 'Reglas', roles: ['vendedor', 'operador', 'admin', 'caja'] },
     ],
   },
   {
     label: 'Análisis',
     color: 'analisis',
     items: [
-      { path: '/reports', label: 'Reportes', roles: ['vendedor', 'operador', 'admin'] },
+      { path: '/reports', label: 'Reportes', roles: ['vendedor', 'operador', 'admin', 'caja'] },
       { path: '/audit', label: 'Auditoría', roles: ['admin'] },
     ],
   },
@@ -68,7 +70,7 @@ const MODULE_GROUPS = [
   {
     label: null,
     items: [
-      { path: '/preferences', label: 'Preferencias', roles: ['vendedor', 'operador', 'admin'] },
+      { path: '/preferences', label: 'Preferencias', roles: ['vendedor', 'operador', 'admin', 'caja'] },
     ],
   },
 ];
@@ -104,6 +106,60 @@ function NavItem({ m, onNavigate, color }) {
   );
 }
 
+// Enlace a Preguntas: fuera de las categorías (siempre visible, aunque todo esté
+// colapsado), con un círculo azul que muestra en rojo la cantidad de preguntas sin leer.
+function PreguntasNavItem({ onNavigate, count }) {
+  return (
+    <NavLink
+      to="/preguntas"
+      onClick={onNavigate}
+      style={({ isActive }) => ({
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '11px 14px',
+        borderRadius: 'var(--radius-sm)',
+        fontSize: 14,
+        fontWeight: 700,
+        marginBottom: 4,
+        transition: 'background-color 0.15s ease, color 0.15s ease',
+        color: isActive ? 'var(--color-sidebar-text-active)' : 'var(--color-sidebar-text)',
+        background: isActive ? 'var(--color-sidebar-active-bg)' : 'transparent',
+      })}
+      onMouseEnter={(e) => {
+        if (e.currentTarget.getAttribute('aria-current') !== 'page') e.currentTarget.style.background = 'var(--color-sidebar-hover)';
+      }}
+      onMouseLeave={(e) => {
+        if (e.currentTarget.getAttribute('aria-current') !== 'page') e.currentTarget.style.background = 'transparent';
+      }}
+    >
+      <span
+        style={{
+          width: 24,
+          height: 24,
+          flexShrink: 0,
+          borderRadius: '50%',
+          background: 'var(--color-primary)',
+          color: count > 0 ? '#ff5a4e' : '#fff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: count > 9 ? 10 : 12,
+          fontWeight: 800,
+          lineHeight: 1,
+        }}
+      >
+        {count > 0 ? (count > 99 ? '99+' : count) : (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </span>
+      Preguntas
+    </NavLink>
+  );
+}
+
 function Chevron({ open }) {
   return (
     <svg
@@ -121,6 +177,8 @@ function Chevron({ open }) {
 export default function Sidebar({ mobileOpen = false, onNavigate }) {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const showPreguntas = PREGUNTAS_ROLES.includes(user?.role);
+  const { count: preguntasUnread } = usePreguntasUnreadCount(showPreguntas);
   const visibleGroups = MODULE_GROUPS
     .map((g) => ({ ...g, items: g.items.filter((m) => m.roles.includes(user?.role)) }))
     .filter((g) => g.items.length > 0);
@@ -222,6 +280,7 @@ export default function Sidebar({ mobileOpen = false, onNavigate }) {
                 <NavItem key={m.path} m={m} onNavigate={onNavigate} color={g.color} />
               ))
             )}
+            {i === 0 && showPreguntas && <PreguntasNavItem onNavigate={onNavigate} count={preguntasUnread} />}
           </div>
         ))}
       </nav>

@@ -2,13 +2,16 @@ import { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import SearchableSelect from '../components/SearchableSelect';
+import PriceTypeToggle from '../components/PriceTypeToggle';
+import PriceTypeBadge from '../components/PriceTypeBadge';
 import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
 import { formatCurrency } from '../utils/format';
+import { MIN_MAYOR, productPrice } from '../utils/priceType';
 
 const FREE_PRODUCT_OPTION = [{ value: '__free__', label: 'Producto libre (no registrado)' }];
 
-const emptyNewClient = { name: '', address: '', phone: '', email: '' };
+const emptyNewClient = { nombre: '', apellido: '' };
 
 export default function CajaPage() {
   const navigate = useNavigate();
@@ -16,8 +19,7 @@ export default function CajaPage() {
   const retiro = location.state?.retiroId ? location.state : null;
 
   const { data: usersData } = useFetch('/api/users');
-  const { data: clientsData } = useFetch('/api/clients');
-  const { data: productsData } = useFetch('/api/products');
+  const { data: productsData } = useFetch('/api/products/catalog');
   const { data: shippingCostsData } = useFetch('/api/shipping-costs');
   const { data: cajaActualData, loading: loadingCajaActual } = useFetch('/api/cash-register/current');
   const { post, loading: saving, error: saveError } = useApi();
@@ -26,24 +28,24 @@ export default function CajaPage() {
 
   const vendedores = (usersData?.users || []).filter((u) => u.role === 'vendedor' && u.is_active);
   const vendorOptions = useMemo(() => vendedores.map((v) => ({ value: v.id, label: v.name })), [vendedores]);
-  const clientOptions = useMemo(() => (clientsData?.clients || []).map((c) => ({ value: c.id, label: c.name })), [clientsData]);
+  // Tipo de precio del próximo producto que se agregue (cada línea guarda el suyo).
+  const [priceType, setPriceType] = useState('sol');
+  const [mayorPrice, setMayorPrice] = useState('');
   const productOptions = useMemo(
-    () => (productsData?.products || []).map((p) => ({ value: p.id, label: `${p.title} · ${formatCurrency(p.price)}${p.agotado ? ' (agotado)' : ''}` })),
-    [productsData]
+    () => (productsData?.products || []).map((p) => ({ value: p.id, label: priceType === 'mayor' ? `${p.title}${p.agotado ? ' (agotado)' : ''}` : `${p.title} · ${formatCurrency(productPrice(p, priceType))}${p.agotado ? ' (agotado)' : ''}` })),
+    [productsData, priceType]
   );
 
   const [retiroId, setRetiroId] = useState(retiro?.retiroId || null);
   const [tipo, setTipo] = useState('TIENDA');
   const [vendorId, setVendorId] = useState(retiro?.vendorId ? String(retiro.vendorId) : '');
-  const [useExistingClient, setUseExistingClient] = useState(true);
-  const [clientId, setClientId] = useState(retiro?.clientId ? String(retiro.clientId) : '');
   const [newClient, setNewClient] = useState(emptyNewClient);
   const [selectedProductId, setSelectedProductId] = useState('');
   const [selectedQty, setSelectedQty] = useState(1);
   const [freeProduct, setFreeProduct] = useState({ name: '', price: '', quantity: 1 });
   const [cart, setCart] = useState(
     retiro?.items
-      ? retiro.items.map((item) => ({ key: `retiro-${item.product_id}`, product_name: item.product_name, price: Number(item.price), quantity: Number(item.quantity) }))
+      ? retiro.items.map((item, idx) => ({ key: `retiro-${idx}`, product_id: item.product_id, product_name: item.product_name, price: Number(item.price), quantity: Number(item.quantity), price_type: item.price_type || retiro.priceType || 'marketplace' }))
       : []
   );
   const [paymentMethod, setPaymentMethod] = useState('efectivo');
@@ -59,14 +61,23 @@ export default function CajaPage() {
   const precioProductos = cart.reduce((sum, item) => sum + item.quantity * item.price, 0);
   const total = precioProductos + (isEnvioPrepagado ? Number(precioEnvio) : 0);
 
+  function handlePriceTypeChange(next) {
+    setPriceType(next);
+    if (next === 'mayor') {
+      setSelectedQty((q) => Math.max(Number(q) || 0, MIN_MAYOR));
+      setFreeProduct((f) => ({ ...f, quantity: Math.max(Number(f.quantity) || 0, MIN_MAYOR) }));
+    }
+  }
+
   function addToCart() {
     if (isEnvioPrepagado && cart.length >= 1) return;
 
     if (selectedProductId === '__free__') {
       if (!freeProduct.name || !freeProduct.price || freeProduct.quantity < 1) return;
+      if (priceType === 'mayor' && Number(freeProduct.quantity) < MIN_MAYOR) return;
       setCart((prev) => [
         ...prev,
-        { key: Date.now(), product_name: freeProduct.name, price: Number(freeProduct.price), quantity: Number(freeProduct.quantity) },
+        { key: Date.now(), product_name: freeProduct.name, price: Number(freeProduct.price), quantity: Number(freeProduct.quantity), price_type: priceType },
       ]);
       setFreeProduct({ name: '', price: '', quantity: 1 });
       setSelectedProductId('');
@@ -75,15 +86,20 @@ export default function CajaPage() {
 
     const product = productsData?.products.find((p) => String(p.id) === selectedProductId);
     if (!product || selectedQty < 1) return;
+    if (priceType === 'mayor' && (Number(selectedQty) < MIN_MAYOR || !(Number(mayorPrice) > 0))) return;
     setCart((prev) => [
       ...prev,
-      { key: Date.now(), product_name: product.title, price: Number(product.price), quantity: Number(selectedQty) },
+      { key: Date.now(), product_id: product.id, product_name: product.title, price: priceType === 'mayor' ? Number(mayorPrice) : productPrice(product, priceType), quantity: Number(selectedQty), price_type: priceType },
     ]);
     setSelectedProductId('');
-    setSelectedQty(1);
+    setSelectedQty(priceType === 'mayor' ? MIN_MAYOR : 1);
+    setMayorPrice('');
   }
 
-  const canAddToCart = (isEnvioPrepagado ? cart.length < 1 : true) && (
+  const mayorOk = priceType !== 'mayor' || (selectedProductId === '__free__'
+    ? Number(freeProduct.quantity) >= MIN_MAYOR
+    : Number(selectedQty) >= MIN_MAYOR && Number(mayorPrice) > 0);
+  const canAddToCart = (isEnvioPrepagado ? cart.length < 1 : true) && mayorOk && (
     selectedProductId === '__free__' ? freeProduct.name && freeProduct.price : !!selectedProductId
   );
 
@@ -103,12 +119,13 @@ export default function CajaPage() {
     setSuccessMsg('');
 
     if (!vendorId || cart.length === 0) return;
-    if (isEnvioPrepagado && (!address || !comuna)) return;
+    if (isEnvioPrepagado && (!address || !comuna || !phone)) return;
+    if (!retiroId && (!newClient.nombre.trim() || !newClient.apellido.trim())) return;
 
     const payload = {
       tipo,
       vendor_id: Number(vendorId),
-      items: cart.map(({ product_name, price, quantity }) => ({ product_name, price, quantity })),
+      items: cart.map(({ product_name, price, quantity, price_type }) => ({ product_name, price, quantity, price_type })),
       payment_method: paymentMethod,
       transferencia_verificada: paymentMethod === 'transferencia' ? transferenciaVerificada : false,
       notes,
@@ -120,14 +137,11 @@ export default function CajaPage() {
       payload.phone = phone;
     }
 
-    if (useExistingClient) {
-      payload.client_id = Number(clientId);
-    } else {
-      payload.client = newClient;
-    }
-
     if (retiroId) {
+      payload.client_id = Number(retiro.clientId);
       payload.retiro_id = retiroId;
+    } else {
+      payload.client = { name: `${newClient.nombre.trim()} ${newClient.apellido.trim()}` };
     }
 
     const result = await post('/api/caja/sale', payload);
@@ -135,11 +149,10 @@ export default function CajaPage() {
       setSuccessMsg(
         isEnvioPrepagado
           ? `Envío prepagado registrado. Total ${formatCurrency(total)}`
-          : `Venta registrada: ${result.data.sales.length} producto(s), total ${formatCurrency(total)}`
+          : `Venta registrada: ${cart.length} producto(s), total ${formatCurrency(total)}`
       );
       setCart([]);
       setNewClient(emptyNewClient);
-      setClientId('');
       setNotes('');
       setAddress('');
       setComuna('');
@@ -209,33 +222,20 @@ export default function CajaPage() {
             />
           </div>
 
-          <div className="form-field">
-            <label>Cliente</label>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-              <button type="button" className={useExistingClient ? 'btn btn-primary' : 'btn btn-secondary'} style={{ flex: 1, padding: '8px' }} onClick={() => setUseExistingClient(true)}>
-                Existente
-              </button>
-              <button type="button" className={!useExistingClient ? 'btn btn-primary' : 'btn btn-secondary'} style={{ flex: 1, padding: '8px' }} onClick={() => setUseExistingClient(false)}>
-                Nuevo
-              </button>
+          {retiroId ? (
+            <div className="form-field">
+              <label>Cliente</label>
+              <input value={retiro.clientName} disabled />
             </div>
-
-            {useExistingClient ? (
-              <SearchableSelect
-                value={clientId}
-                onChange={setClientId}
-                options={clientOptions}
-                placeholder="Selecciona un cliente"
-                required={useExistingClient}
-              />
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <input placeholder="Nombre" value={newClient.name} onChange={(e) => setNewClient({ ...newClient, name: e.target.value })} required={!useExistingClient} />
-                <input placeholder="Teléfono" value={newClient.phone} onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })} />
-                <input placeholder="Dirección" value={newClient.address} onChange={(e) => setNewClient({ ...newClient, address: e.target.value })} />
+          ) : (
+            <div className="form-field">
+              <label>Cliente</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input placeholder="Nombre" value={newClient.nombre} onChange={(e) => setNewClient({ ...newClient, nombre: e.target.value })} required style={{ flex: 1 }} />
+                <input placeholder="Apellido" value={newClient.apellido} onChange={(e) => setNewClient({ ...newClient, apellido: e.target.value })} required style={{ flex: 1 }} />
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {isEnvioPrepagado && (
             <>
@@ -254,7 +254,7 @@ export default function CajaPage() {
               </div>
               <div className="form-field">
                 <label>Teléfono</label>
-                <input value={phone} onChange={(e) => setPhone(e.target.value)} />
+                <input value={phone} onChange={(e) => setPhone(e.target.value)} required />
               </div>
             </>
           )}
@@ -289,8 +289,12 @@ export default function CajaPage() {
 
         <div className="card" style={{ padding: 20 }}>
           <h3 style={{ margin: '0 0 16px', fontSize: 15 }}>Productos</h3>
-          {isEnvioPrepagado && <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 0 }}>Un envío prepagado admite un solo producto.</p>}
-
+          <PriceTypeToggle value={priceType} onChange={handlePriceTypeChange} allowMayor />
+          {priceType === 'mayor' && (
+            <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: -4 }}>
+              Venta al mayor: mínimo {MIN_MAYOR} unidades por producto y precio libre.
+            </p>
+          )}
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: 'flex', gap: 8, marginBottom: selectedProductId === '__free__' ? 8 : 0 }}>
               <div style={{ flex: 1 }}>
@@ -304,12 +308,23 @@ export default function CajaPage() {
                 />
               </div>
               {selectedProductId !== '__free__' && (
-                <input type="number" min="1" value={selectedQty} onChange={(e) => setSelectedQty(e.target.value)} style={{ width: 70 }} disabled={isEnvioPrepagado && cart.length >= 1} />
+                <input type="number" min={priceType === 'mayor' ? MIN_MAYOR : 1} value={selectedQty} onChange={(e) => setSelectedQty(e.target.value)} style={{ width: 70 }} disabled={isEnvioPrepagado && cart.length >= 1} />
               )}
               <button type="button" className="btn btn-secondary" onClick={addToCart} disabled={!canAddToCart}>
                 Agregar
               </button>
             </div>
+
+            {priceType === 'mayor' && selectedProductId && selectedProductId !== '__free__' && (
+              <input
+                type="number"
+                min="0"
+                placeholder="Precio unitario (libre)"
+                value={mayorPrice}
+                onChange={(e) => setMayorPrice(e.target.value)}
+                style={{ marginTop: 8, width: '100%' }}
+              />
+            )}
 
             {selectedProductId === '__free__' && (
               <div style={{ display: 'flex', gap: 8 }}>
@@ -329,7 +344,7 @@ export default function CajaPage() {
                 />
                 <input
                   type="number"
-                  min="1"
+                  min={priceType === 'mayor' ? MIN_MAYOR : 1}
                   placeholder="Cant."
                   value={freeProduct.quantity}
                   onChange={(e) => setFreeProduct({ ...freeProduct, quantity: e.target.value })}
@@ -356,7 +371,7 @@ export default function CajaPage() {
               ) : (
                 cart.map((item) => (
                   <tr key={item.key}>
-                    <td data-label="Producto">{item.product_name}</td>
+                    <td data-label="Producto">{item.product_name} <PriceTypeBadge type={item.price_type} /></td>
                     <td data-label="Cant.">{item.quantity}</td>
                     <td data-label="Subtotal">{formatCurrency(item.quantity * item.price)}</td>
                     <td data-label="Quitar">

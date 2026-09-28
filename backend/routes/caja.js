@@ -4,30 +4,22 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
+const { MIN_MAYOR, MIN_MAYOR_MESSAGE, comisionDeLineas, summarizeLines } = require('../utils/saleLines');
 
 const PAYMENT_METHODS = ['efectivo', 'debito', 'credito', 'transferencia', 'link_pago'];
-
-// Busca la comisión de venta unitaria del producto por nombre exacto (sin
-// distinguir mayúsculas/minúsculas). Si no hay coincidencia en el catálogo o
-// el producto no tiene costo cargado, no hay comisión.
-async function lookupComisionUnitaria(dbClient, productName) {
-  if (!productName) return null;
-  const result = await dbClient.query(
-    'SELECT comision_venta FROM products WHERE LOWER(title) = LOWER($1) LIMIT 1',
-    [productName]
-  );
-  const valor = result.rows[0]?.comision_venta;
-  return valor !== undefined && valor !== null ? parseFloat(valor) : null;
-}
 
 // ============================================
 // POST - Crear venta desde Caja (tienda o envío prepagado)
 // ============================================
-router.post('/sale', authenticateToken, requireRole(['operador', 'admin'], 'Solo operadores y admins pueden usar Caja'), async (req, res) => {
+router.post('/sale', authenticateToken, requireRole(['operador', 'admin', 'caja'], 'Solo operadores, admins o caja pueden usar Caja'), async (req, res) => {
   const user = req.user;
 
   const { vendor_id, client_id, client, items, payment_method, notes, transferencia_verificada, retiro_id } = req.body;
   const tipo = req.body.tipo === 'ENVIO_PREPAGADO' ? 'ENVIO_PREPAGADO' : 'TIENDA';
+  // En Caja el tipo de precio por defecto es SOL (precios tienda).
+  const defaultPriceType = req.body.price_type === 'marketplace' ? 'marketplace' : 'sol';
+  // Cada producto (línea) trae su propio tipo de precio; si no lo trae se usa el de la venta.
+  const itemPriceType = (item) => (['sol', 'marketplace', 'mayor'].includes(item.price_type) ? item.price_type : defaultPriceType);
   const { address, comuna, phone } = req.body;
 
   if (!vendor_id) {
@@ -46,13 +38,16 @@ router.post('/sale', authenticateToken, requireRole(['operador', 'admin'], 'Solo
     if (!item.product_name || !item.quantity || !item.price) {
       return res.status(400).json({ error: 'Cada producto necesita nombre, cantidad y precio' });
     }
+    if (itemPriceType(item) === 'mayor' && Number(item.quantity) < MIN_MAYOR) {
+      return res.status(400).json({ error: MIN_MAYOR_MESSAGE });
+    }
   }
   if (tipo === 'ENVIO_PREPAGADO') {
     if (items.length > 1) {
       return res.status(400).json({ error: 'Un envío prepagado admite un solo producto por venta' });
     }
-    if (!address || !comuna) {
-      return res.status(400).json({ error: 'Dirección y comuna requeridas para envío prepagado' });
+    if (!address || !comuna || !phone) {
+      return res.status(400).json({ error: 'Dirección, comuna y teléfono requeridos para envío prepagado' });
     }
   }
 
@@ -78,7 +73,7 @@ router.post('/sale', authenticateToken, requireRole(['operador', 'admin'], 'Solo
     // que dos solicitudes lo procesen a la vez y se duplique la venta.
     if (retiro_id) {
       const retiroLock = await dbClient.query(
-        `SELECT id, status FROM retiros_tienda WHERE id = $1 FOR UPDATE`,
+        `SELECT id, status, price_type FROM retiros_tienda WHERE id = $1 FOR UPDATE`,
         [retiro_id]
       );
       if (retiroLock.rows.length === 0) {
@@ -114,20 +109,19 @@ router.post('/sale', authenticateToken, requireRole(['operador', 'admin'], 'Solo
       const item = items[0];
       const precioProducto = item.quantity * item.price;
       const total = precioProducto + precioEnvio;
-      const comisionUnitaria = await lookupComisionUnitaria(dbClient, item.product_name);
-      const comision = comisionUnitaria !== null ? comisionUnitaria * item.quantity : null;
+      const comision = await comisionDeLineas(dbClient, [{ product_name: item.product_name, quantity: Number(item.quantity), price: Number(item.price), price_type: itemPriceType(item) }]);
 
       const inserted = await dbClient.query(
         `INSERT INTO sales
            (vendor_id, client_id, product_name, quantity, price, total, address, comuna, phone, notes,
-            status, delivery_status, tipo_venta, payment_method, transferencia_verificada, precio_producto, precio_envio, comision)
+            status, delivery_status, tipo_venta, payment_method, transferencia_verificada, precio_producto, precio_envio, comision, price_type)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                 'pendiente', 'listo_para_imprimir', 'ENVIO_PREPAGADO', $11, $12, $13, $14, $15)
+                 'pendiente', 'listo_para_imprimir', 'ENVIO_PREPAGADO', $11, $12, $13, $14, $15, $16)
          RETURNING *`,
         [
           vendor_id, finalClientId, item.product_name, item.quantity, item.price, total,
           address, comuna, phone || null, notes || null,
-          payment_method, !!transferencia_verificada, precioProducto, precioEnvio, comision,
+          payment_method, !!transferencia_verificada, precioProducto, precioEnvio, comision, itemPriceType(item),
         ]
       );
 
@@ -137,20 +131,26 @@ router.post('/sale', authenticateToken, requireRole(['operador', 'admin'], 'Solo
       );
       createdSales.push(withQr.rows[0]);
     } else {
-      for (const item of items) {
-        const total = item.quantity * item.price;
-        const comisionUnitaria = await lookupComisionUnitaria(dbClient, item.product_name);
-        const comision = comisionUnitaria !== null ? comisionUnitaria * item.quantity : null;
-        const inserted = await dbClient.query(
-          `INSERT INTO sales
-             (vendor_id, client_id, product_name, quantity, price, total, status, delivery_status, tipo_venta,
-              payment_method, transferencia_verificada, notes, precio_producto, comision)
-           VALUES ($1, $2, $3, $4, $5, $6, 'completado', NULL, 'TIENDA', $7, $8, $9, $6, $10)
-           RETURNING *`,
-          [vendor_id, finalClientId, item.product_name, item.quantity, item.price, total, payment_method, !!transferencia_verificada, notes || null, comision]
-        );
-        createdSales.push(inserted.rows[0]);
-      }
+      // Una venta de tienda es UNA sola venta aunque tenga varios productos (con SOL y/o
+      // MARKETPLACE mezclados): una fila; si hay más de un producto, las líneas van en items.
+      const lines = items.map((item) => ({
+        product_name: String(item.product_name).trim(),
+        quantity: Number(item.quantity),
+        price: Number(item.price),
+        price_type: itemPriceType(item),
+      }));
+      const resumen = await summarizeLines(dbClient, lines);
+      const total = resumen.productosTotal;
+
+      const inserted = await dbClient.query(
+        `INSERT INTO sales
+           (vendor_id, client_id, product_name, quantity, price, total, status, delivery_status, tipo_venta,
+            payment_method, transferencia_verificada, notes, precio_producto, comision, price_type, items)
+         VALUES ($1, $2, $3, $4, $5, $6, 'completado', NULL, 'TIENDA', $7, $8, $9, $6, $10, $11, $12)
+         RETURNING *`,
+        [vendor_id, finalClientId, resumen.productName, resumen.totalQty, total / resumen.totalQty, total, payment_method, !!transferencia_verificada, notes || null, resumen.comision, resumen.priceType, resumen.itemsJson]
+      );
+      createdSales.push(inserted.rows[0]);
     }
 
     if (retiro_id) {

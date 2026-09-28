@@ -4,50 +4,49 @@ import Badge from '../components/Badge';
 import LabelPrint from '../components/LabelPrint';
 import LabelPrintBatch from '../components/LabelPrintBatch';
 import SearchableSelect from '../components/SearchableSelect';
+import ShipmentItemsInput from '../components/ShipmentItemsInput';
 import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
 import useAuth from '../hooks/useAuth';
 import useConfirm from '../hooks/useConfirm';
 import useDebouncedValue from '../hooks/useDebouncedValue';
 import { formatCurrency, formatDate } from '../utils/format';
+import { productPrice } from '../utils/priceType';
 import { DELIVERY_STATUS_LABELS, DELIVERY_STATUS_OPTIONS, deliveryStatusLabel } from '../utils/labels';
 
-const emptyNewClient = { name: '', address: '', phone: '', email: '' };
+const FREE_PRODUCT_OPTION = [{ value: '__free__', label: 'Producto libre (no registrado)' }];
+
 const emptyCreateForm = {
   vendor_id: '',
-  useExistingClient: true,
-  client_id: '',
-  newClient: emptyNewClient,
-  product_name: '',
-  quantity: '',
+  nombre: '',
+  apellido: '',
+  items: [],
   region: '',
   comuna: '',
-  precio_producto: '',
   precio_envio: '',
   address: '',
   phone: '',
   notes: '',
 };
 
-// Envíos BlueExpress: mismo módulo que Delivery Santiago, pero para despachos
+// Envíos Regiones: mismo módulo que Delivery Santiago, pero para despachos
 // fuera de la Región Metropolitana a través del courier BlueExpress (por eso
 // el campo de región, además de dirección/comuna). Los vendedores pueden
 // crearlos igual que en Delivery Santiago.
 export default function BlueExpressPage() {
   const { user } = useAuth();
-  const canManage = user.role === 'operador' || user.role === 'admin';
+  const canManage = user.role === 'operador' || user.role === 'admin' || user.role === 'caja';
   const isAdmin = user.role === 'admin';
 
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search);
 
   const { data, loading, error, refetch } = useFetch(
-    `/api/sales?search=${encodeURIComponent(debouncedSearch)}`,
+    `/api/sales?tipo_venta=ENVIO_REGION&search=${encodeURIComponent(debouncedSearch)}`,
     { deps: [debouncedSearch] }
   );
   const { data: usersData } = useFetch('/api/users', { enabled: canManage });
-  const { data: clientsData } = useFetch('/api/clients');
-  const { data: regionShippingData } = useFetch('/api/region-shipping');
+  const { data: productsData } = useFetch('/api/products/catalog');
   const { post, put, del, loading: saving, error: saveError } = useApi();
   const { confirm, dialog: confirmDialog } = useConfirm();
 
@@ -66,9 +65,10 @@ export default function BlueExpressPage() {
 
   const vendedores = (usersData?.users || []).filter((u) => u.role === 'vendedor' && u.is_active);
   const vendorOptions = useMemo(() => vendedores.map((v) => ({ value: v.id, label: v.name })), [vendedores]);
-  const clientOptions = useMemo(() => (clientsData?.clients || []).map((c) => ({ value: c.id, label: c.name })), [clientsData]);
-  const regiones = [...new Set((regionShippingData?.costos || []).map((c) => c.region))].sort();
-  const comunasDeRegion = (regionShippingData?.costos || []).filter((c) => c.region === createForm.region);
+  const editProductOptions = useMemo(
+    () => (productsData?.products || []).map((p) => ({ value: p.id, label: `${p.title} · ${formatCurrency(productPrice(p, editingSale?.price_type))}${p.agotado ? ' (agotado)' : ''}` })),
+    [productsData, editingSale]
+  );
 
   const shipments = useMemo(() => {
     const all = (data?.sales || []).filter((s) => s.tipo_venta === 'ENVIO_REGION');
@@ -108,7 +108,7 @@ export default function BlueExpressPage() {
 
   async function handleDelete(sale) {
     setActionError('');
-    const ok = await confirm(`¿Eliminar el envío BlueExpress "${sale.product_name}" de ${sale.client_name}? Podrás recuperarlo desde la Papelera.`, {
+    const ok = await confirm(`¿Eliminar el envío a región "${sale.product_name}" de ${sale.client_name}? Podrás recuperarlo desde la Papelera.`, {
       title: 'Eliminar envío',
       confirmLabel: 'Eliminar',
       danger: true,
@@ -127,9 +127,11 @@ export default function BlueExpressPage() {
 
   function openEdit(sale) {
     setEditingSale(sale);
+    const matchingProduct = (productsData?.products || []).find((p) => p.title === sale.product_name);
     setEditForm({
       vendor_id: String(sale.vendor_id),
-      client_id: String(sale.client_id),
+      client_name: sale.client_name,
+      productSelection: matchingProduct ? String(matchingProduct.id) : '__free__',
       product_name: sale.product_name,
       quantity: sale.quantity,
       price: sale.total,
@@ -149,7 +151,6 @@ export default function BlueExpressPage() {
       product_name: editForm.product_name,
       quantity,
       price,
-      client_id: Number(editForm.client_id),
       address: editForm.address,
       comuna: editForm.comuna,
       phone: editForm.phone,
@@ -164,35 +165,33 @@ export default function BlueExpressPage() {
     }
   }
 
-  function handleRegionComunaChange(comuna) {
-    const match = comunasDeRegion.find((c) => c.comuna === comuna);
-    setCreateForm({ ...createForm, comuna, precio_envio: match ? String(match.precio) : createForm.precio_envio });
+  function handleEditProductSelect(value) {
+    if (value === '__free__') {
+      setEditForm({ ...editForm, productSelection: value, product_name: '' });
+      return;
+    }
+    const product = (productsData?.products || []).find((p) => String(p.id) === value);
+    setEditForm({ ...editForm, productSelection: value, product_name: product ? product.title : '' });
   }
+
+  const precioProductoCreate = createForm.items.reduce((sum, i) => sum + i.quantity * i.price, 0);
 
   async function handleCreateSubmit(e) {
     e.preventDefault();
-    const quantity = Number(createForm.quantity);
-    const precioProducto = Number(createForm.precio_producto);
-    const precioEnvio = Number(createForm.precio_envio) || 0;
-    const total = precioProducto + precioEnvio;
-    // El backend calcula total = cantidad * price; despejamos el precio unitario para que coincida.
-    const price = total / quantity;
+    if (createForm.items.length === 0) return;
+    if (!createForm.nombre.trim() || !createForm.apellido.trim()) return;
     const payload = {
       tipo_venta: 'ENVIO_REGION',
-      product_name: createForm.product_name,
-      quantity,
-      price,
-      precio_producto: precioProducto,
-      precio_envio: precioEnvio,
+      items: createForm.items.map(({ product_name, quantity, price, price_type }) => ({ product_name, quantity, price, price_type })),
+      precio_envio: Number(createForm.precio_envio) || 0,
       address: createForm.address,
       comuna: createForm.comuna,
       region: createForm.region,
       phone: createForm.phone,
       notes: createForm.notes,
+      client: { name: `${createForm.nombre.trim()} ${createForm.apellido.trim()}` },
     };
     if (canManage) payload.vendor_id = Number(createForm.vendor_id);
-    if (createForm.useExistingClient) payload.client_id = Number(createForm.client_id);
-    else payload.client = createForm.newClient;
 
     const result = await post('/api/sales', payload);
     if (result.success) {
@@ -204,9 +203,27 @@ export default function BlueExpressPage() {
 
   return (
     <Layout>
+      <div className="card" style={{ padding: 20, marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h3 style={{ margin: '0 0 4px', fontSize: 15 }}>Cotizador de Blue Express</h3>
+          <p style={{ color: 'var(--color-text-muted)', margin: 0, fontSize: 13 }}>
+            Cotiza el envío por origen, destino y talla.
+          </p>
+        </div>
+        <a
+          className="btn btn-primary"
+          href="https://www.blue.cl/"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ textDecoration: 'none' }}
+        >
+          Abrir cotizador
+        </a>
+      </div>
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: 22, margin: 0 }}>Envíos BlueExpress</h1>
+          <h1 style={{ fontSize: 22, margin: 0 }}>Envíos Regiones</h1>
           <p style={{ color: 'var(--color-text-muted)', marginTop: 4, marginBottom: 0, fontSize: 13 }}>
             Despachos a regiones fuera de la Región Metropolitana.
           </p>
@@ -300,63 +317,31 @@ export default function BlueExpressPage() {
 
             <div className="form-field">
               <label>Cliente</label>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <button type="button" className={createForm.useExistingClient ? 'btn btn-primary' : 'btn btn-secondary'} style={{ flex: 1, padding: '6px' }} onClick={() => setCreateForm({ ...createForm, useExistingClient: true })}>
-                  Existente
-                </button>
-                <button type="button" className={!createForm.useExistingClient ? 'btn btn-primary' : 'btn btn-secondary'} style={{ flex: 1, padding: '6px' }} onClick={() => setCreateForm({ ...createForm, useExistingClient: false })}>
-                  Nuevo
-                </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input placeholder="Nombre" value={createForm.nombre} onChange={(e) => setCreateForm({ ...createForm, nombre: e.target.value })} required style={{ flex: 1 }} />
+                <input placeholder="Apellido" value={createForm.apellido} onChange={(e) => setCreateForm({ ...createForm, apellido: e.target.value })} required style={{ flex: 1 }} />
               </div>
-              {createForm.useExistingClient ? (
-                <SearchableSelect
-                  value={createForm.client_id}
-                  onChange={(v) => setCreateForm({ ...createForm, client_id: v })}
-                  options={clientOptions}
-                  placeholder="Selecciona un cliente"
-                  required={createForm.useExistingClient}
-                />
-              ) : (
-                <input
-                  placeholder="Nombre del cliente nuevo"
-                  value={createForm.newClient.name}
-                  onChange={(e) => setCreateForm({ ...createForm, newClient: { ...createForm.newClient, name: e.target.value } })}
-                  required={!createForm.useExistingClient}
-                />
-              )}
             </div>
 
-            <div className="form-field">
-              <label>Producto</label>
-              <input value={createForm.product_name} onChange={(e) => setCreateForm({ ...createForm, product_name: e.target.value })} required />
-            </div>
-            <div className="form-field">
-              <label>Cantidad</label>
-              <input type="number" min="1" value={createForm.quantity} onChange={(e) => setCreateForm({ ...createForm, quantity: e.target.value })} required />
-            </div>
+            <ShipmentItemsInput
+              hideSol={user.role === 'vendedor'}
+              products={productsData?.products || []}
+              items={createForm.items}
+              onChange={(items) => setCreateForm({ ...createForm, items })}
+            />
 
             <div className="form-field">
               <label>Región</label>
-              <select value={createForm.region} onChange={(e) => setCreateForm({ ...createForm, region: e.target.value, comuna: '', precio_envio: '' })} required>
-                <option value="">Selecciona una región</option>
-                {regiones.map((r) => (
-                  <option key={r} value={r}>{r}</option>
-                ))}
-              </select>
+              <input value={createForm.region} onChange={(e) => setCreateForm({ ...createForm, region: e.target.value })} required />
             </div>
             <div className="form-field">
               <label>Comuna</label>
-              <select value={createForm.comuna} onChange={(e) => handleRegionComunaChange(e.target.value)} required disabled={!createForm.region}>
-                <option value="">Selecciona una comuna</option>
-                {comunasDeRegion.map((c) => (
-                  <option key={c.id} value={c.comuna}>{c.comuna} · {formatCurrency(c.precio)}</option>
-                ))}
-              </select>
+              <input value={createForm.comuna} onChange={(e) => setCreateForm({ ...createForm, comuna: e.target.value })} required />
             </div>
 
             <div className="form-field">
               <label>Precio producto</label>
-              <input type="number" min="0" value={createForm.precio_producto} onChange={(e) => setCreateForm({ ...createForm, precio_producto: e.target.value })} required />
+              <input value={formatCurrency(precioProductoCreate)} readOnly />
             </div>
             <div className="form-field">
               <label>Precio envío</label>
@@ -365,15 +350,15 @@ export default function BlueExpressPage() {
 
             <div className="form-field">
               <label>Dirección</label>
-              <input value={createForm.address} onChange={(e) => setCreateForm({ ...createForm, address: e.target.value })} />
+              <input value={createForm.address} onChange={(e) => setCreateForm({ ...createForm, address: e.target.value })} required />
             </div>
             <div className="form-field">
               <label>Teléfono</label>
-              <input value={createForm.phone} onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })} />
+              <input value={createForm.phone} onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })} required />
             </div>
           </div>
           <div style={{ textAlign: 'right', fontSize: 13, color: 'var(--color-text-muted)', marginTop: -4, marginBottom: 12 }}>
-            Total: {formatCurrency((Number(createForm.precio_producto) || 0) + (Number(createForm.precio_envio) || 0))}
+            Total: {formatCurrency(precioProductoCreate + (Number(createForm.precio_envio) || 0))}
           </div>
           <div className="form-field">
             <label>Notas</label>
@@ -418,7 +403,7 @@ export default function BlueExpressPage() {
             <tbody>
               {shipments.length === 0 ? (
                 <tr>
-                  <td colSpan={canManage ? 11 : 9} style={{ color: 'var(--color-text-muted)' }}>Sin envíos BlueExpress que coincidan con el filtro</td>
+                  <td colSpan={canManage ? 11 : 9} style={{ color: 'var(--color-text-muted)' }}>Sin envíos a regiones que coincidan con el filtro</td>
                 </tr>
               ) : (
                 shipments.map((s) => (
@@ -490,7 +475,7 @@ export default function BlueExpressPage() {
       {editingSale && editForm && (
         <div className="modal-overlay">
           <form className="modal-panel" style={{ width: 460, maxHeight: '85vh', overflowY: 'auto' }} onSubmit={handleEditSubmit}>
-            <h3 style={{ margin: '0 0 16px', fontSize: 16 }}>Editar envío BlueExpress</h3>
+            <h3 style={{ margin: '0 0 16px', fontSize: 16 }}>Editar envío a región</h3>
             {saveError && <div className="alert alert-error">{saveError}</div>}
 
             {canManage && (
@@ -507,17 +492,37 @@ export default function BlueExpressPage() {
             )}
             <div className="form-field">
               <label>Cliente</label>
-              <SearchableSelect
-                value={editForm.client_id}
-                onChange={(v) => setEditForm({ ...editForm, client_id: v })}
-                options={clientOptions}
-                placeholder="Selecciona un cliente"
-                required
-              />
+              <input value={editForm.client_name} disabled />
             </div>
+            {editingSale.items ? (
+              <div className="form-field">
+                <label>Productos</label>
+                <div style={{ fontSize: 14, lineHeight: 1.5 }}>{editingSale.product_name}</div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                  Este envío tiene varios productos con su propio tipo de precio; no se pueden editar aquí.
+                </div>
+              </div>
+            ) : (
+              <>
             <div className="form-field">
               <label>Producto</label>
-              <input value={editForm.product_name} onChange={(e) => setEditForm({ ...editForm, product_name: e.target.value })} required />
+              <SearchableSelect
+                value={editForm.productSelection}
+                onChange={handleEditProductSelect}
+                options={editProductOptions}
+                pinnedOptions={FREE_PRODUCT_OPTION}
+                placeholder="Selecciona un producto"
+                required
+              />
+              {editForm.productSelection === '__free__' && (
+                <input
+                  placeholder="Nombre del producto"
+                  value={editForm.product_name}
+                  onChange={(e) => setEditForm({ ...editForm, product_name: e.target.value })}
+                  style={{ marginTop: 8 }}
+                  required
+                />
+              )}
             </div>
             <div className="form-field">
               <label>Cantidad</label>
@@ -527,6 +532,8 @@ export default function BlueExpressPage() {
               <label>Monto total</label>
               <input type="number" min="0" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} required />
             </div>
+              </>
+            )}
             <div className="form-field">
               <label>Dirección</label>
               <input value={editForm.address} onChange={(e) => setEditForm({ ...editForm, address: e.target.value })} />

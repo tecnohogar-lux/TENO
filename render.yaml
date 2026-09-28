@@ -1,0 +1,48 @@
+databases:
+  - name: teno-db
+    databaseName: teno
+    user: teno
+    plan: free
+
+services:
+  - type: web
+    name: teno-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRATION
+        value: 24h
+      - key: TRUST_PROXY
+        value: "1"
+      # Se completa a mano en el panel de Render, después de crear el proyecto en
+      # Vercel (recién ahí se conoce esa URL). Sin esto, el navegador bloquea las
+      # peticiones del frontend al backend.
+      - key: CORS_ORIGIN
+        sync: false
+      - key: DB_HOST
+        fromDatabase:
+          name: teno-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: teno-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: teno-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: teno-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: teno-db
+          property: password

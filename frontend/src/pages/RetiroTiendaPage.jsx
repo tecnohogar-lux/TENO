@@ -154,7 +154,7 @@ export default function RetiroTiendaPage() {
             Propuestas de venta para clientes que pasarán a retirar. No cuentan como venta hasta que se procesan en Caja al entregar.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <input
             placeholder="Buscar por cliente, vendedor o producto..."
             value={search}
@@ -176,7 +176,7 @@ export default function RetiroTiendaPage() {
             <div className="alert alert-error">Este retiro ya fue entregado: los cambios no modifican la venta ya registrada en Caja.</div>
           )}
           {saveError && <div className="alert alert-error">{saveError}</div>}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+          <div className="form-grid-2" style={{ gap: 20 }}>
             <div>
               <div className="form-field">
                 <label>Vendedor</label>
@@ -185,8 +185,8 @@ export default function RetiroTiendaPage() {
               <div className="form-field">
                 <label>Cliente</label>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <input placeholder="Nombre" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} required style={{ flex: 1 }} />
-                  <input placeholder="Apellido" value={form.apellido} onChange={(e) => setForm({ ...form, apellido: e.target.value })} required style={{ flex: 1 }} />
+                  <input placeholder="Nombre" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} required style={{ flex: 1, minWidth: 0 }} />
+                  <input placeholder="Apellido" value={form.apellido} onChange={(e) => setForm({ ...form, apellido: e.target.value })} required style={{ flex: 1, minWidth: 0 }} />
                 </div>
               </div>
               <div className="form-field">

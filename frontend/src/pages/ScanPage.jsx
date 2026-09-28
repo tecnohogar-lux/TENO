@@ -72,7 +72,7 @@ export default function ScanPage() {
         Escanea todos los paquetes que llevarás y presiona "Entregar" al final para marcarlos como "En camino"
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+      <div className="form-grid-2" style={{ gap: 20 }}>
         <div className="card" style={{ padding: 20 }}>
           <div id="qr-reader" />
           {scanFeedback && (

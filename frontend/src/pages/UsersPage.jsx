@@ -77,7 +77,7 @@ export default function UsersPage() {
       {showForm && (
         <form onSubmit={handleSubmit} className="card" style={{ padding: 20, marginBottom: 24 }}>
           {saveError && <div className="alert alert-error">{saveError}</div>}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div className="form-grid-2" style={{ gap: 16 }}>
             <div className="form-field">
               <label>Nombre</label>
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />

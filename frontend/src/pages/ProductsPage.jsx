@@ -221,7 +221,7 @@ export default function ProductsPage() {
       {showForm && (
         <form onSubmit={handleSubmit} className="card" style={{ padding: 20, marginBottom: 24 }}>
           {saveError && <div className="alert alert-error">{saveError}</div>}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div className="form-grid-2" style={{ gap: 16 }}>
             <div className="form-field">
               <label>Título</label>
               <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />

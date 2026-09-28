@@ -299,7 +299,7 @@ export default function BlueExpressPage() {
       {showCreateForm && (
         <form onSubmit={handleCreateSubmit} className="card" style={{ padding: 20, marginBottom: 24 }}>
           {saveError && <div className="alert alert-error">{saveError}</div>}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div className="form-grid-2" style={{ gap: 16 }}>
             <div className="form-field">
               <label>Vendedor</label>
               {canManage ? (
@@ -318,8 +318,8 @@ export default function BlueExpressPage() {
             <div className="form-field">
               <label>Cliente</label>
               <div style={{ display: 'flex', gap: 8 }}>
-                <input placeholder="Nombre" value={createForm.nombre} onChange={(e) => setCreateForm({ ...createForm, nombre: e.target.value })} required style={{ flex: 1 }} />
-                <input placeholder="Apellido" value={createForm.apellido} onChange={(e) => setCreateForm({ ...createForm, apellido: e.target.value })} required style={{ flex: 1 }} />
+                <input placeholder="Nombre" value={createForm.nombre} onChange={(e) => setCreateForm({ ...createForm, nombre: e.target.value })} required style={{ flex: 1, minWidth: 0 }} />
+                <input placeholder="Apellido" value={createForm.apellido} onChange={(e) => setCreateForm({ ...createForm, apellido: e.target.value })} required style={{ flex: 1, minWidth: 0 }} />
               </div>
             </div>
 

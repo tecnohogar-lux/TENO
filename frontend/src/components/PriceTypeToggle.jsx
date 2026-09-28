@@ -4,7 +4,7 @@ export default function PriceTypeToggle({ value, onChange, allowMayor = false, h
   return (
     <div className="form-field" style={{ marginBottom: 12 }}>
       <label>Tipo de precio del producto que vas a agregar</label>
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {!hideSol && (
         <button
           type="button"

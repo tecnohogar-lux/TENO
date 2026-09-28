@@ -207,7 +207,7 @@ export default function CajaPage() {
       {successMsg && <div className="card" style={{ padding: 16, marginBottom: 20, color: 'var(--color-success)' }}>{successMsg}</div>}
       {saveError && <div className="alert alert-error">{saveError}</div>}
 
-      <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+      <form onSubmit={handleSubmit} className="form-grid-2" style={{ gap: 20 }}>
         <div className="card" style={{ padding: 20 }}>
           <h3 style={{ margin: '0 0 16px', fontSize: 15 }}>Datos de la venta</h3>
 
@@ -231,8 +231,8 @@ export default function CajaPage() {
             <div className="form-field">
               <label>Cliente</label>
               <div style={{ display: 'flex', gap: 8 }}>
-                <input placeholder="Nombre" value={newClient.nombre} onChange={(e) => setNewClient({ ...newClient, nombre: e.target.value })} required style={{ flex: 1 }} />
-                <input placeholder="Apellido" value={newClient.apellido} onChange={(e) => setNewClient({ ...newClient, apellido: e.target.value })} required style={{ flex: 1 }} />
+                <input placeholder="Nombre" value={newClient.nombre} onChange={(e) => setNewClient({ ...newClient, nombre: e.target.value })} required style={{ flex: 1, minWidth: 0 }} />
+                <input placeholder="Apellido" value={newClient.apellido} onChange={(e) => setNewClient({ ...newClient, apellido: e.target.value })} required style={{ flex: 1, minWidth: 0 }} />
               </div>
             </div>
           )}

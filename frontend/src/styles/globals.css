@@ -760,3 +760,18 @@ tbody tr:hover {
   .help-panel { inset: 0; width: 100%; max-width: 100%; border-radius: 0; border: none; }
   .help-search input { font-size: 16px; }
 }
+
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.form-grid-2 > * {
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .form-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}

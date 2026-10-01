@@ -4,6 +4,7 @@ import { saleLines } from '../utils/saleLines';
 import { deliveryTypeLabel } from '../utils/labels';
 
 const IG_CAPTION = 'Síguenos en IG y descubre miles de productos';
+const IG_URL = 'https://www.instagram.com/tecnohogar.cl/';
 
 export default function LabelCard({ sale }) {
   const lines = saleLines(sale);
@@ -61,7 +62,7 @@ export default function LabelCard({ sale }) {
         </div>
         <div style={{ textAlign: 'center', flexShrink: 0, width: 90 }}>
           <div style={{ fontSize: 9, fontWeight: 700, lineHeight: 1.2, marginBottom: 4 }}>{IG_CAPTION}</div>
-          <QRCodeSVG value={sale.qr_code || 'https://www.instagram.com/tecnohogar.cl/'} size={80} />
+          <QRCodeSVG value={IG_URL} size={80} />
         </div>
       </div>
 

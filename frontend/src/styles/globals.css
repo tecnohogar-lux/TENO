@@ -530,45 +530,6 @@ tbody tr:hover {
   }
 }
 
-@media print {
-  @page {
-    size: letter landscape;
-    margin: 0.25in;
-  }
-
-  body * {
-    visibility: hidden;
-  }
-  .print-label,
-  .print-label * {
-    visibility: visible;
-  }
-  .print-label {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    overflow: visible !important;
-    max-height: none !important;
-  }
-  .label-page {
-    display: grid !important;
-    grid-template-columns: repeat(3, 1fr);
-    grid-template-rows: repeat(2, 1fr);
-    gap: 0.15in;
-    width: 10.5in;
-    height: 8in;
-    margin-bottom: 0 !important;
-    page-break-after: always;
-  }
-  .label-page:last-child {
-    page-break-after: auto;
-  }
-  .label-card {
-    width: 100%;
-    height: 100%;
-  }
-}
 
 
 /* ---------- Centro de ayuda (botón flotante) ---------- */

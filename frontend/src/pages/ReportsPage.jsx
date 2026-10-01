@@ -5,10 +5,10 @@ import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
 import useAuth from '../hooks/useAuth';
 import { formatCurrency, formatDate } from '../utils/format';
-import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, TIPO_VENTA_LABELS, saleStatusLabel, deliveryStatusLabel, tipoVentaLabel } from '../utils/labels';
+import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, TIPO_VENTA_LABELS, saleStatusLabel, deliveryStatusLabel, tipoVentaLabel, paymentMethodLabel, paymentBreakdownLines, PAYMENT_METHODS } from '../utils/labels';
 import { PRICE_TYPE_LABELS, priceTypeLabel } from '../utils/priceType';
 
-const emptyFilters = { dateFrom: '', dateTo: '', nombre: '', producto: '', vendedor: '', cliente: '', canal: '', tipoPrecio: '' };
+const emptyFilters = { dateFrom: '', dateTo: '', nombre: '', producto: '', vendedor: '', cliente: '', canal: '', tipoPrecio: '', formaPago: '' };
 
 // "YYYY-MM-DD" de un <input type="date"> se parsea como medianoche UTC si se usa
 // new Date(str) directamente; mezclarlo con setHours (que opera en hora local)
@@ -75,6 +75,29 @@ export default function ReportsPage() {
     return rows;
   }, [data, filters]);
 
+  // Sin filtro de forma de pago: una fila por venta (con el resumen del pago,
+  // mixto o no). Con filtro: una fila por venta que haya usado esa forma de
+  // pago, mostrando solo el monto de esa línea — así una venta con pago mixto
+  // (ej. parte efectivo + parte transferencia) aparece en ambos reportes, cada
+  // uno con su monto correspondiente, sin inventar un tipo de venta nuevo.
+  const displayRows = useMemo(() => {
+    if (!filters.formaPago) {
+      return filteredSales.map((s) => ({
+        ...s,
+        _displayTotal: Number(s.total),
+        _pagoLabel: s.payment_method === 'mixto'
+          ? paymentBreakdownLines(s).map((l) => `${paymentMethodLabel(l.method)} ${formatCurrency(l.amount)}`).join(' + ')
+          : paymentMethodLabel(s.payment_method),
+      }));
+    }
+    const rows = [];
+    for (const s of filteredSales) {
+      const leg = paymentBreakdownLines(s).find((l) => l.method === filters.formaPago);
+      if (leg) rows.push({ ...s, _displayTotal: Number(leg.amount), _pagoLabel: paymentMethodLabel(leg.method) });
+    }
+    return rows;
+  }, [filteredSales, filters.formaPago]);
+
   function setDia(value) {
     setFilters({ ...filters, dateFrom: value, dateTo: value });
   }
@@ -95,16 +118,18 @@ export default function ReportsPage() {
     try {
       // La librería de Excel es pesada: se descarga recién al exportar, no al abrir Reportes.
       const XLSX = await import('xlsx');
-      const rows = filteredSales.map((s) => ({
+      const formaPagoActiva = !!filters.formaPago;
+      const rows = displayRows.map((s) => ({
         Producto: s.product_name,
         Cliente: s.client_name,
         Vendedor: s.vendor_name,
         Tipo: tipoVentaLabel(s.tipo_venta),
         Cantidad: s.quantity,
-        'Precio producto': s.precio_producto !== null && s.precio_producto !== undefined ? Number(s.precio_producto) : '',
-        'Precio envío': s.precio_envio !== null && s.precio_envio !== undefined ? Number(s.precio_envio) : '',
-        Total: Number(s.total),
+        'Precio producto': !formaPagoActiva && s.precio_producto !== null && s.precio_producto !== undefined ? Number(s.precio_producto) : '',
+        'Precio envío': !formaPagoActiva && s.precio_envio !== null && s.precio_envio !== undefined ? Number(s.precio_envio) : '',
+        Total: s._displayTotal,
         Comisión: s.comision !== null && s.comision !== undefined ? Number(s.comision) : '',
+        'Forma de pago': s._pagoLabel,
         Estado: saleStatusLabel(s.status),
         Envío: ['ENVIO', 'ENVIO_PREPAGADO', 'ENVIO_REGION'].includes(s.tipo_venta) ? deliveryStatusLabel(s.delivery_status) : '-',
         Fecha: formatDate(s.created_at),
@@ -115,19 +140,25 @@ export default function ReportsPage() {
       // tienen "total" sin separar; ante la falta de desglose se asume que todo
       // el monto es de producto (no hubo envío), para que las tres sumas nunca
       // pierdan dinero: total productos + total envíos siempre da el total real.
+      // Con filtro de forma de pago, el total es la suma de los montos parciales
+      // de esa forma de pago (no se desglosa producto/envío a nivel de línea de pago).
       let totalProductos = 0;
       let totalEnvios = 0;
       let totalComision = 0;
-      for (const s of filteredSales) {
-        const envio = s.precio_envio !== null && s.precio_envio !== undefined ? Number(s.precio_envio) : 0;
-        const producto = s.precio_producto !== null && s.precio_producto !== undefined
-          ? Number(s.precio_producto)
-          : Number(s.total) - envio;
-        totalProductos += producto;
-        totalEnvios += envio;
+      let totalDisplay = 0;
+      for (const s of displayRows) {
+        totalDisplay += s._displayTotal;
+        if (!formaPagoActiva) {
+          const envio = s.precio_envio !== null && s.precio_envio !== undefined ? Number(s.precio_envio) : 0;
+          const producto = s.precio_producto !== null && s.precio_producto !== undefined
+            ? Number(s.precio_producto)
+            : Number(s.total) - envio;
+          totalProductos += producto;
+          totalEnvios += envio;
+        }
         totalComision += s.comision !== null && s.comision !== undefined ? Number(s.comision) : 0;
       }
-      const totalGeneral = totalProductos + totalEnvios;
+      const totalGeneral = formaPagoActiva ? totalDisplay : totalProductos + totalEnvios;
 
       const sheet = XLSX.utils.json_to_sheet(rows);
       XLSX.utils.sheet_add_aoa(
@@ -250,6 +281,15 @@ export default function ReportsPage() {
             </select>
           </div>
           <div className="form-field">
+            <label>Forma de pago</label>
+            <select value={filters.formaPago} onChange={(e) => setFilters({ ...filters, formaPago: e.target.value })}>
+              <option value="">Todas</option>
+              {PAYMENT_METHODS.map((m) => (
+                <option key={m} value={m}>{paymentMethodLabel(m)}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-field">
             <label>Tipo de precio</label>
             <select value={filters.tipoPrecio} onChange={(e) => setFilters({ ...filters, tipoPrecio: e.target.value })}>
               <option value="">Todos</option>
@@ -301,8 +341,8 @@ export default function ReportsPage() {
       {data && (
         <div className="card" style={{ padding: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, flexWrap: 'wrap', gap: 12 }}>
-            <h3 style={{ margin: 0, fontSize: 15 }}>Vista previa · {filteredSales.length} venta(s)</h3>
-            <button className="btn btn-primary" onClick={handleExport} disabled={exporting || filteredSales.length === 0}>
+            <h3 style={{ margin: 0, fontSize: 15 }}>Vista previa · {displayRows.length} venta(s)</h3>
+            <button className="btn btn-primary" onClick={handleExport} disabled={exporting || displayRows.length === 0}>
               {exporting ? 'Generando...' : 'Exportar a Excel'}
             </button>
           </div>
@@ -324,19 +364,20 @@ export default function ReportsPage() {
                   <th>Precio envío</th>
                   <th>Total</th>
                   <th>Comisión</th>
+                  <th>Forma de pago</th>
                   <th>Estado</th>
                   <th>Envío</th>
                   <th>Fecha</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredSales.length === 0 ? (
+                {displayRows.length === 0 ? (
                   <tr>
-                    <td colSpan={13} style={{ color: 'var(--color-text-muted)' }}>Sin ventas que coincidan con los filtros</td>
+                    <td colSpan={14} style={{ color: 'var(--color-text-muted)' }}>Sin ventas que coincidan con los filtros</td>
                   </tr>
                 ) : (
-                  filteredSales.map((s) => (
-                    <tr key={s.id}>
+                  displayRows.map((s, i) => (
+                    <tr key={`${s.id}-${s._pagoLabel}-${i}`}>
                       <td data-label="Producto">{s.product_name}</td>
                       <td data-label="Cliente">{s.client_name}</td>
                       <td data-label="Vendedor">{s.vendor_name}</td>
@@ -345,10 +386,11 @@ export default function ReportsPage() {
                       </td>
                       <td data-label="Precios"><Badge label={priceTypeLabel(s.price_type)} color={PRICE_TYPE_LABELS[s.price_type]?.color} /></td>
                       <td data-label="Cantidad">{s.quantity}</td>
-                      <td data-label="Precio producto">{s.precio_producto !== null && s.precio_producto !== undefined ? formatCurrency(s.precio_producto) : '-'}</td>
-                      <td data-label="Precio envío">{s.precio_envio !== null && s.precio_envio !== undefined ? formatCurrency(s.precio_envio) : '-'}</td>
-                      <td data-label="Total">{formatCurrency(s.total)}</td>
+                      <td data-label="Precio producto">{!filters.formaPago && s.precio_producto !== null && s.precio_producto !== undefined ? formatCurrency(s.precio_producto) : '-'}</td>
+                      <td data-label="Precio envío">{!filters.formaPago && s.precio_envio !== null && s.precio_envio !== undefined ? formatCurrency(s.precio_envio) : '-'}</td>
+                      <td data-label="Total">{formatCurrency(s._displayTotal)}</td>
                       <td data-label="Comisión">{s.comision !== null && s.comision !== undefined ? formatCurrency(s.comision) : '-'}</td>
+                      <td data-label="Forma de pago">{s._pagoLabel}</td>
                       <td data-label="Estado">
                         <Badge label={saleStatusLabel(s.status)} color={SALE_STATUS_LABELS[s.status]?.color} />
                       </td>

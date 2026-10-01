@@ -5,8 +5,7 @@ const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 const { MIN_MAYOR, MIN_MAYOR_MESSAGE, comisionDeLineas, summarizeLines } = require('../utils/saleLines');
-
-const PAYMENT_METHODS = ['efectivo', 'debito', 'credito', 'transferencia', 'link_pago'];
+const { PAYMENT_METHODS, validatePaymentBreakdown, normalizePaymentBreakdown } = require('../utils/paymentBreakdown');
 
 // ============================================
 // POST - Crear venta desde Caja (tienda o envío prepagado)
@@ -14,7 +13,7 @@ const PAYMENT_METHODS = ['efectivo', 'debito', 'credito', 'transferencia', 'link
 router.post('/sale', authenticateToken, requireRole(['operador', 'admin', 'caja'], 'Solo operadores, admins o caja pueden usar Caja'), async (req, res) => {
   const user = req.user;
 
-  const { vendor_id, client_id, client, items, payment_method, notes, transferencia_verificada, retiro_id } = req.body;
+  const { vendor_id, client_id, client, items, payment_method, payment_breakdown, notes, transferencia_verificada, retiro_id } = req.body;
   const tipo = req.body.tipo === 'ENVIO_PREPAGADO' ? 'ENVIO_PREPAGADO' : 'TIENDA';
   // En Caja el tipo de precio por defecto es SOL (precios tienda).
   const defaultPriceType = req.body.price_type === 'marketplace' ? 'marketplace' : 'sol';
@@ -31,8 +30,11 @@ router.post('/sale', authenticateToken, requireRole(['operador', 'admin', 'caja'
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Debes agregar al menos un producto' });
   }
-  if (!payment_method || !PAYMENT_METHODS.includes(payment_method)) {
-    return res.status(400).json({ error: `Forma de pago inválida. Opciones: ${PAYMENT_METHODS.join(', ')}` });
+  if (!payment_method || (payment_method !== 'mixto' && !PAYMENT_METHODS.includes(payment_method))) {
+    return res.status(400).json({ error: `Forma de pago inválida. Opciones: ${PAYMENT_METHODS.join(', ')}, mixto` });
+  }
+  if (payment_method === 'mixto' && !Array.isArray(payment_breakdown)) {
+    return res.status(400).json({ error: 'El pago mixto necesita el detalle de montos por forma de pago' });
   }
   for (const item of items) {
     if (!item.product_name || !item.quantity || !item.price) {
@@ -111,17 +113,24 @@ router.post('/sale', authenticateToken, requireRole(['operador', 'admin', 'caja'
       const total = precioProducto + precioEnvio;
       const comision = await comisionDeLineas(dbClient, [{ product_name: item.product_name, quantity: Number(item.quantity), price: Number(item.price), price_type: itemPriceType(item) }]);
 
+      let breakdownJson = null;
+      if (payment_method === 'mixto') {
+        const error = validatePaymentBreakdown(payment_breakdown, total);
+        if (error) throw { status: 400, message: error };
+        breakdownJson = JSON.stringify(normalizePaymentBreakdown(payment_breakdown));
+      }
+
       const inserted = await dbClient.query(
         `INSERT INTO sales
            (vendor_id, client_id, product_name, quantity, price, total, address, comuna, phone, notes,
-            status, delivery_status, tipo_venta, payment_method, transferencia_verificada, precio_producto, precio_envio, comision, price_type)
+            status, delivery_status, tipo_venta, payment_method, transferencia_verificada, precio_producto, precio_envio, comision, price_type, payment_breakdown)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                 'pendiente', 'listo_para_imprimir', 'ENVIO_PREPAGADO', $11, $12, $13, $14, $15, $16)
+                 'pendiente', 'listo_para_imprimir', 'ENVIO_PREPAGADO', $11, $12, $13, $14, $15, $16, $17)
          RETURNING *`,
         [
           vendor_id, finalClientId, item.product_name, item.quantity, item.price, total,
           address, comuna, phone || null, notes || null,
-          payment_method, !!transferencia_verificada, precioProducto, precioEnvio, comision, itemPriceType(item),
+          payment_method, !!transferencia_verificada, precioProducto, precioEnvio, comision, itemPriceType(item), breakdownJson,
         ]
       );
 
@@ -142,13 +151,20 @@ router.post('/sale', authenticateToken, requireRole(['operador', 'admin', 'caja'
       const resumen = await summarizeLines(dbClient, lines);
       const total = resumen.productosTotal;
 
+      let breakdownJson = null;
+      if (payment_method === 'mixto') {
+        const error = validatePaymentBreakdown(payment_breakdown, total);
+        if (error) throw { status: 400, message: error };
+        breakdownJson = JSON.stringify(normalizePaymentBreakdown(payment_breakdown));
+      }
+
       const inserted = await dbClient.query(
         `INSERT INTO sales
            (vendor_id, client_id, product_name, quantity, price, total, status, delivery_status, tipo_venta,
-            payment_method, transferencia_verificada, notes, precio_producto, comision, price_type, items)
-         VALUES ($1, $2, $3, $4, $5, $6, 'completado', NULL, 'TIENDA', $7, $8, $9, $6, $10, $11, $12)
+            payment_method, transferencia_verificada, notes, precio_producto, comision, price_type, items, payment_breakdown)
+         VALUES ($1, $2, $3, $4, $5, $6, 'completado', NULL, 'TIENDA', $7, $8, $9, $6, $10, $11, $12, $13)
          RETURNING *`,
-        [vendor_id, finalClientId, resumen.productName, resumen.totalQty, total / resumen.totalQty, total, payment_method, !!transferencia_verificada, notes || null, resumen.comision, resumen.priceType, resumen.itemsJson]
+        [vendor_id, finalClientId, resumen.productName, resumen.totalQty, total / resumen.totalQty, total, payment_method, !!transferencia_verificada, notes || null, resumen.comision, resumen.priceType, resumen.itemsJson, breakdownJson]
       );
       createdSales.push(inserted.rows[0]);
     }

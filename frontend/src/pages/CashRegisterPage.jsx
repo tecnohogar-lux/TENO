@@ -6,11 +6,10 @@ import Badge from '../components/Badge';
 import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
 import { formatCurrency, formatDate } from '../utils/format';
-import { saleStatusLabel, deliveryStatusLabel, tipoVentaLabel, paymentMethodLabel, TIPO_VENTA_LABELS } from '../utils/labels';
+import { saleStatusLabel, deliveryStatusLabel, tipoVentaLabel, paymentMethodLabel, paymentBreakdownLines, TIPO_VENTA_LABELS, PAYMENT_METHODS } from '../utils/labels';
 import { PRICE_TYPE_LABELS, priceTypeLabel } from '../utils/priceType';
 
 const emptyFilters = { order_id: '', cliente: '', vendedor: '', fecha: '', producto: '', estado: '', forma_pago: '' };
-const FORMAS_PAGO = ['efectivo', 'debito', 'credito', 'transferencia', 'link_pago'];
 
 function buildQuery(filters) {
   const params = new URLSearchParams();
@@ -114,7 +113,7 @@ export default function CashRegisterPage() {
             <>
               <h4 style={{ margin: '16px 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>Debería haber por forma de pago</h4>
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                {FORMAS_PAGO.map((m) => (
+                {PAYMENT_METHODS.map((m) => (
                   <MetricsCard key={m} label={paymentMethodLabel(m)} value={formatCurrency(closedResult.por_forma_pago[m])} />
                 ))}
               </div>
@@ -225,7 +224,7 @@ export default function CashRegisterPage() {
                     <>
                       <h5 style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>Debería haber por forma de pago</h5>
                       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
-                        {FORMAS_PAGO.map((m) => (
+                        {PAYMENT_METHODS.map((m) => (
                           <MetricsCard key={m} label={paymentMethodLabel(m)} value={formatCurrency(detailData.por_forma_pago[m])} />
                         ))}
                       </div>
@@ -264,7 +263,7 @@ export default function CashRegisterPage() {
                 <>
                   <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>Debería haber por forma de pago</h3>
                   <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
-                    {FORMAS_PAGO.map((m) => (
+                    {PAYMENT_METHODS.map((m) => (
                       <MetricsCard key={m} label={paymentMethodLabel(m)} value={formatCurrency(detailData.por_forma_pago[m])} />
                     ))}
                   </div>
@@ -280,11 +279,9 @@ export default function CashRegisterPage() {
                   <input type="date" value={filters.fecha} onChange={(e) => setFilters({ ...filters, fecha: e.target.value })} />
                   <select value={filters.forma_pago} onChange={(e) => setFilters({ ...filters, forma_pago: e.target.value })}>
                     <option value="">Forma de pago (todas)</option>
-                    <option value="efectivo">Efectivo</option>
-                    <option value="debito">Débito</option>
-                    <option value="credito">Crédito</option>
-                    <option value="transferencia">Transferencia</option>
-                    <option value="link_pago">Link de pago</option>
+                    {PAYMENT_METHODS.map((m) => (
+                      <option key={m} value={m}>{paymentMethodLabel(m)}</option>
+                    ))}
                   </select>
                   <button type="submit" className="btn btn-primary">Filtrar</button>
                   <button type="button" className="btn btn-secondary" onClick={clearFilters}>Limpiar</button>
@@ -330,7 +327,11 @@ export default function CashRegisterPage() {
                             <td data-label="Precios"><Badge label={priceTypeLabel(s.price_type)} color={PRICE_TYPE_LABELS[s.price_type]?.color} /></td>
                             <td data-label="Total">{formatCurrency(s.total)}</td>
                             <td data-label="Estado">{s.tipo_venta === 'TIENDA' ? saleStatusLabel(s.status) : deliveryStatusLabel(s.delivery_status)}</td>
-                            <td data-label="Pago">{paymentMethodLabel(s.payment_method)}</td>
+                            <td data-label="Pago">
+                              {s.payment_method === 'mixto'
+                                ? paymentBreakdownLines(s).map((l) => `${paymentMethodLabel(l.method)} ${formatCurrency(l.amount)}`).join(' + ')
+                                : paymentMethodLabel(s.payment_method)}
+                            </td>
                             <td data-label="Fecha">{formatDate(s.created_at)}</td>
                           </tr>
                         ))

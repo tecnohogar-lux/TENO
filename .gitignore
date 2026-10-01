@@ -57,3 +57,6 @@ coverage/
 backend/uploads/
 *.xlsx
 .claude/
+
+# Respaldos de base de datos (datos reales de clientes, nunca a GitHub)
+database/backups/

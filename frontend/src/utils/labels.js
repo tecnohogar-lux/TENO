@@ -25,12 +25,15 @@ export const TIPO_VENTA_LABELS = {
   ENVIO_REGION: { label: 'Envío a región', color: '#8a5fb0' },
 };
 
+export const PAYMENT_METHODS = ['efectivo', 'debito', 'credito', 'transferencia', 'link_pago'];
+
 export const PAYMENT_METHOD_LABELS = {
   efectivo: 'Efectivo',
   debito: 'Débito',
   credito: 'Crédito',
   transferencia: 'Transferencia',
   link_pago: 'Link de pago',
+  mixto: 'Mixto',
 };
 
 export function saleStatusLabel(value) {
@@ -48,4 +51,14 @@ export function tipoVentaLabel(value) {
 
 export function paymentMethodLabel(value) {
   return PAYMENT_METHOD_LABELS[value] || value || '-';
+}
+
+// Detalle de formas de pago de una venta: si tiene pago mixto devuelve cada
+// línea (payment_breakdown); si no, una sola línea a partir de payment_method.
+export function paymentBreakdownLines(sale) {
+  if (Array.isArray(sale.payment_breakdown) && sale.payment_breakdown.length > 0) return sale.payment_breakdown;
+  if (sale.payment_method) {
+    return [{ method: sale.payment_method, amount: Number(sale.total), transferencia_verificada: sale.transferencia_verificada }];
+  }
+  return [];
 }

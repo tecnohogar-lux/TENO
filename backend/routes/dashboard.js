@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
+const { totalesPorFormaPago } = require('../utils/paymentBreakdown');
 
 // ============================================
 // GET - Comparativo de ventas: semana actual vs semana anterior
@@ -169,14 +170,9 @@ async function getEfectivoCaja() {
   if (cajaResult.rows.length === 0) return null;
 
   const caja = cajaResult.rows[0];
-  const ventasEfectivo = await pool.query(
-    `SELECT COALESCE(SUM(total), 0) as total FROM sales
-     WHERE status = 'completado' AND payment_method = 'efectivo' AND deleted_at IS NULL
-     AND created_at >= $1`,
-    [caja.opened_at]
-  );
+  const porFormaPago = await totalesPorFormaPago(pool, caja.opened_at, new Date());
 
-  return parseFloat(caja.saldo_inicial) + parseFloat(ventasEfectivo.rows[0].total);
+  return parseFloat(caja.saldo_inicial) + porFormaPago.efectivo;
 }
 
 const ESTADOS_ORDENES = [

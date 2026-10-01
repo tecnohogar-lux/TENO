@@ -8,6 +8,7 @@ import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
 import { formatCurrency } from '../utils/format';
 import { MIN_MAYOR, productPrice } from '../utils/priceType';
+import { PAYMENT_METHODS, paymentMethodLabel } from '../utils/labels';
 
 const FREE_PRODUCT_OPTION = [{ value: '__free__', label: 'Producto libre (no registrado)' }];
 
@@ -50,6 +51,9 @@ export default function CajaPage() {
   );
   const [paymentMethod, setPaymentMethod] = useState('efectivo');
   const [transferenciaVerificada, setTransferenciaVerificada] = useState(false);
+  // Pago mixto: monto por cada forma de pago (string vacío = no se usa esa forma).
+  const [breakdownAmounts, setBreakdownAmounts] = useState({});
+  const [breakdownVerificada, setBreakdownVerificada] = useState(false);
   const [notes, setNotes] = useState('');
   const [address, setAddress] = useState('');
   const [comuna, setComuna] = useState('');
@@ -60,6 +64,13 @@ export default function CajaPage() {
   const precioEnvio = comuna ? (shippingCostsData?.costos || []).find((c) => c.comuna === comuna)?.precio || 0 : 0;
   const precioProductos = cart.reduce((sum, item) => sum + item.quantity * item.price, 0);
   const total = precioProductos + (isEnvioPrepagado ? Number(precioEnvio) : 0);
+
+  const breakdownLegs = PAYMENT_METHODS
+    .map((method) => ({ method, amount: Number(breakdownAmounts[method]) || 0 }))
+    .filter((leg) => leg.amount > 0);
+  const breakdownSum = breakdownLegs.reduce((sum, leg) => sum + leg.amount, 0);
+  const breakdownRestante = total - breakdownSum;
+  const breakdownOk = paymentMethod !== 'mixto' || (breakdownLegs.length >= 2 && Math.abs(breakdownRestante) < 1);
 
   function handlePriceTypeChange(next) {
     setPriceType(next);
@@ -121,6 +132,7 @@ export default function CajaPage() {
     if (!vendorId || cart.length === 0) return;
     if (isEnvioPrepagado && (!address || !comuna || !phone)) return;
     if (!retiroId && (!newClient.nombre.trim() || !newClient.apellido.trim())) return;
+    if (!breakdownOk) return;
 
     const payload = {
       tipo,
@@ -130,6 +142,14 @@ export default function CajaPage() {
       transferencia_verificada: paymentMethod === 'transferencia' ? transferenciaVerificada : false,
       notes,
     };
+
+    if (paymentMethod === 'mixto') {
+      payload.payment_breakdown = breakdownLegs.map((leg) => ({
+        method: leg.method,
+        amount: leg.amount,
+        transferencia_verificada: leg.method === 'transferencia' ? breakdownVerificada : undefined,
+      }));
+    }
 
     if (isEnvioPrepagado) {
       payload.address = address;
@@ -158,6 +178,8 @@ export default function CajaPage() {
       setComuna('');
       setPhone('');
       setTransferenciaVerificada(false);
+      setBreakdownAmounts({});
+      setBreakdownVerificada(false);
       setRetiroId(null);
     }
   }
@@ -262,11 +284,10 @@ export default function CajaPage() {
           <div className="form-field">
             <label>Forma de pago</label>
             <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} required>
-              <option value="efectivo">Efectivo</option>
-              <option value="debito">Débito</option>
-              <option value="credito">Crédito</option>
-              <option value="transferencia">Transferencia</option>
-              <option value="link_pago">Link de pago</option>
+              {PAYMENT_METHODS.map((m) => (
+                <option key={m} value={m}>{paymentMethodLabel(m)}</option>
+              ))}
+              <option value="mixto">Mixto (varias formas de pago)</option>
             </select>
           </div>
 
@@ -277,12 +298,44 @@ export default function CajaPage() {
             </label>
           )}
 
+          {paymentMethod === 'mixto' && (
+            <div className="form-field">
+              <label>Montos por forma de pago</label>
+              {PAYMENT_METHODS.map((m) => (
+                <div key={m} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{ flex: 1, fontSize: 13 }}>{paymentMethodLabel(m)}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="$0"
+                    value={breakdownAmounts[m] || ''}
+                    onChange={(e) => setBreakdownAmounts({ ...breakdownAmounts, [m]: e.target.value })}
+                    style={{ width: 120 }}
+                  />
+                </div>
+              ))}
+              {breakdownAmounts.transferencia > 0 && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, margin: '4px 0 8px' }}>
+                  <input type="checkbox" checked={breakdownVerificada} onChange={(e) => setBreakdownVerificada(e.target.checked)} />
+                  Transferencia verificada
+                </label>
+              )}
+              <div style={{ fontSize: 13, fontWeight: 600, color: breakdownOk ? 'var(--color-success)' : 'var(--color-error)' }}>
+                {breakdownRestante === 0
+                  ? 'Montos completos'
+                  : breakdownRestante > 0
+                    ? `Faltan ${formatCurrency(breakdownRestante)} por asignar`
+                    : `Excede el total por ${formatCurrency(-breakdownRestante)}`}
+              </div>
+            </div>
+          )}
+
           <div className="form-field">
             <label>Notas</label>
             <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
 
-          <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={saving || cart.length === 0}>
+          <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={saving || cart.length === 0 || !breakdownOk}>
             {saving ? 'Guardando...' : `Registrar venta (${formatCurrency(total)})`}
           </button>
         </div>

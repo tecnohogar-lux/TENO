@@ -9,7 +9,7 @@ import useAuth from '../hooks/useAuth';
 import useConfirm from '../hooks/useConfirm';
 import useDebouncedValue from '../hooks/useDebouncedValue';
 import { formatCurrency, formatDate } from '../utils/format';
-import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, TIPO_VENTA_LABELS, saleStatusLabel, deliveryStatusLabel, tipoVentaLabel, paymentMethodLabel } from '../utils/labels';
+import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, TIPO_VENTA_LABELS, saleStatusLabel, deliveryStatusLabel, tipoVentaLabel, paymentMethodLabel, paymentBreakdownLines } from '../utils/labels';
 import { PRICE_TYPE_LABELS, priceTypeLabel } from '../utils/priceType';
 import PriceTypeBadge from '../components/PriceTypeBadge';
 import { shareSaleViaWhatsApp } from '../utils/whatsapp';
@@ -59,6 +59,17 @@ export default function SalesPage() {
   async function toggleTransferenciaVerificada(sale) {
     setActionError('');
     const result = await put(`/api/sales/${sale.id}`, { transferencia_verificada: !sale.transferencia_verificada });
+    if (result.success) refetch();
+    else if (result.error) setActionError(result.error);
+  }
+
+  // Pago mixto: alterna "verificada" solo en la línea de transferencia del detalle.
+  async function toggleBreakdownTransferenciaVerificada(sale) {
+    setActionError('');
+    const breakdown = paymentBreakdownLines(sale).map((leg) =>
+      leg.method === 'transferencia' ? { ...leg, transferencia_verificada: !leg.transferencia_verificada } : leg
+    );
+    const result = await put(`/api/sales/${sale.id}`, { payment_breakdown: breakdown });
     if (result.success) refetch();
     else if (result.error) setActionError(result.error);
   }
@@ -161,19 +172,42 @@ export default function SalesPage() {
                     <td data-label="Pago">
                       {s.payment_method ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
-                          <span>{paymentMethodLabel(s.payment_method)}</span>
-                          {s.payment_method === 'transferencia' && (
-                            canManage ? (
-                              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--color-text-muted)' }}>
-                                <input type="checkbox" checked={!!s.transferencia_verificada} onChange={() => toggleTransferenciaVerificada(s)} />
-                                Verificada
-                              </label>
-                            ) : (
-                              <Badge
-                                label={s.transferencia_verificada ? 'Verificada' : 'Sin verificar'}
-                                color={s.transferencia_verificada ? 'var(--color-success)' : 'var(--color-warning)'}
-                              />
-                            )
+                          {s.payment_method === 'mixto' ? (
+                            paymentBreakdownLines(s).map((leg) => (
+                              <span key={leg.method} style={{ fontSize: 12 }}>
+                                {paymentMethodLabel(leg.method)}: {formatCurrency(leg.amount)}
+                                {leg.method === 'transferencia' && (
+                                  canManage ? (
+                                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 6, fontSize: 11, color: 'var(--color-text-muted)' }}>
+                                      <input type="checkbox" checked={!!leg.transferencia_verificada} onChange={() => toggleBreakdownTransferenciaVerificada(s)} />
+                                      Verificada
+                                    </label>
+                                  ) : (
+                                    <Badge
+                                      label={leg.transferencia_verificada ? 'Verificada' : 'Sin verificar'}
+                                      color={leg.transferencia_verificada ? 'var(--color-success)' : 'var(--color-warning)'}
+                                    />
+                                  )
+                                )}
+                              </span>
+                            ))
+                          ) : (
+                            <>
+                              <span>{paymentMethodLabel(s.payment_method)}</span>
+                              {s.payment_method === 'transferencia' && (
+                                canManage ? (
+                                  <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--color-text-muted)' }}>
+                                    <input type="checkbox" checked={!!s.transferencia_verificada} onChange={() => toggleTransferenciaVerificada(s)} />
+                                    Verificada
+                                  </label>
+                                ) : (
+                                  <Badge
+                                    label={s.transferencia_verificada ? 'Verificada' : 'Sin verificar'}
+                                    color={s.transferencia_verificada ? 'var(--color-success)' : 'var(--color-warning)'}
+                                  />
+                                )
+                              )}
+                            </>
                           )}
                         </div>
                       ) : (
@@ -262,7 +296,11 @@ export default function SalesPage() {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 16, fontSize: 13 }}>
               <Badge label={saleStatusLabel(detailSale.status)} color={SALE_STATUS_LABELS[detailSale.status]?.color} />
               <PriceTypeBadge type={detailSale.price_type} />
-              {detailSale.payment_method && <span>Pago: {paymentMethodLabel(detailSale.payment_method)}</span>}
+              {detailSale.payment_method === 'mixto' ? (
+                <span>Pago: {paymentBreakdownLines(detailSale).map((l) => `${paymentMethodLabel(l.method)} ${formatCurrency(l.amount)}`).join(' + ')}</span>
+              ) : (
+                detailSale.payment_method && <span>Pago: {paymentMethodLabel(detailSale.payment_method)}</span>
+              )}
               {['ENVIO', 'ENVIO_PREPAGADO', 'ENVIO_REGION'].includes(detailSale.tipo_venta) && (
                 <Badge label={deliveryStatusLabel(detailSale.delivery_status)} color={DELIVERY_STATUS_LABELS[detailSale.delivery_status]?.color} />
               )}

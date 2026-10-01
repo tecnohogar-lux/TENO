@@ -127,7 +127,14 @@ router.get('/comisiones', authenticateToken, requireManage('No tienes permiso pa
       's.deleted_at IS NULL',
       `s.status = 'completado'`,
       `(s.tipo_venta = 'TIENDA' OR s.delivery_status = 'entregado')`,
-      `(COALESCE(s.payment_method, '') != 'transferencia' OR s.transferencia_verificada = true)`,
+      `(
+         (COALESCE(s.payment_method, '') NOT IN ('transferencia', 'mixto'))
+         OR (s.payment_method = 'transferencia' AND s.transferencia_verificada = true)
+         OR (s.payment_method = 'mixto' AND NOT EXISTS (
+              SELECT 1 FROM json_array_elements(s.payment_breakdown) leg
+              WHERE leg->>'method' = 'transferencia' AND COALESCE((leg->>'transferencia_verificada')::boolean, false) = false
+            ))
+       )`,
       's.created_at >= $1',
       's.created_at < ($2::date + INTERVAL \'1 day\')',
     ];
@@ -512,7 +519,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const {
       status, delivery_status, notes,
       client_id, address, comuna, phone,
-      transferencia_verificada,
+      transferencia_verificada, payment_breakdown,
     } = req.body;
     let { product_name, quantity, price } = req.body;
     let { vendor_id } = req.body;
@@ -577,6 +584,22 @@ router.put('/:id', authenticateToken, async (req, res) => {
       comision = comisionUnitaria !== null ? comisionUnitaria * newQuantity : null;
     }
 
+    // Pago mixto: esta edición solo permite marcar/desmarcar "transferencia verificada"
+    // por línea del detalle, nunca cambiar los métodos o montos ya registrados.
+    let breakdownJson = null;
+    if (payment_breakdown !== undefined && sale.payment_method === 'mixto' && Array.isArray(sale.payment_breakdown)) {
+      const incomingByMethod = Object.fromEntries(
+        (Array.isArray(payment_breakdown) ? payment_breakdown : []).map((leg) => [leg.method, leg])
+      );
+      const reconciled = sale.payment_breakdown.map((leg) => ({
+        ...leg,
+        transferencia_verificada: leg.method === 'transferencia'
+          ? !!incomingByMethod[leg.method]?.transferencia_verificada
+          : leg.transferencia_verificada,
+      }));
+      breakdownJson = JSON.stringify(reconciled);
+    }
+
     const deliveringNow = delivery_status === 'entregado' && sale.delivery_status !== 'entregado';
     const undeliveringNow = delivery_status !== undefined && delivery_status !== 'entregado' && sale.delivery_status === 'entregado';
     const newStatus = status || (deliveringNow ? 'completado' : (undeliveringNow ? 'pendiente' : null));
@@ -600,6 +623,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
            delivered_at = CASE WHEN $16 THEN NULL ELSE COALESCE($13, delivered_at) END,
            transferencia_verificada = COALESCE($14, transferencia_verificada),
            comision = $17,
+           payment_breakdown = COALESCE($18, payment_breakdown),
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $15
        RETURNING *`,
@@ -608,7 +632,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
         product_name, quantity !== undefined ? newQuantity : null, price !== undefined ? newPrice : null, total,
         vendor_id, client_id, address, comuna, phone,
         deliveredAt, transferencia_verificada !== undefined ? !!transferencia_verificada : null, id,
-        clearDeliveredAt, comision,
+        clearDeliveredAt, comision, breakdownJson,
       ]
     );
 

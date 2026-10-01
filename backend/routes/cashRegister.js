@@ -6,39 +6,28 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
+const { totalesPorFormaPago: calcularTotalesPorFormaPago, formaPagoCondition } = require('../utils/paymentBreakdown');
 
 const requireAdminOperador = requireRole(['admin', 'operador', 'caja'], 'No tienes permiso para acceder a Apertura/Cierre de Caja');
-const FORMAS_PAGO = ['efectivo', 'debito', 'credito', 'transferencia', 'link_pago'];
 
 // Cuánto dinero debería existir por cada forma de pago en el período (para
 // cuadrar caja: solo el efectivo se cuenta físicamente, el resto se verifica
-// contra el extracto bancario/POS correspondiente).
+// contra el extracto bancario/POS correspondiente). Las ventas con pago mixto
+// aportan a cada forma de pago solo el monto de su línea correspondiente.
 async function obtenerTotalesPorFormaPago(desde, hasta) {
-  const result = await pool.query(
-    `SELECT payment_method, COALESCE(SUM(total), 0) as total
-     FROM sales
-     WHERE deleted_at IS NULL AND status = 'completado' AND created_at >= $1 AND created_at <= $2
-       AND payment_method IS NOT NULL
-     GROUP BY payment_method`,
-    [desde, hasta]
-  );
-
-  const porFormaPago = Object.fromEntries(FORMAS_PAGO.map((m) => [m, 0]));
-  for (const row of result.rows) {
-    if (row.payment_method in porFormaPago) porFormaPago[row.payment_method] = parseFloat(row.total);
-  }
-  return porFormaPago;
+  return calcularTotalesPorFormaPago(pool, desde, hasta);
 }
 
 // Calcula los totales del período [desde, hasta] para una caja (abierta o ya cerrada).
-async function calcularTotales(desde, hasta, saldoInicial) {
+// porFormaPago se puede pasar ya calculado para no repetir la misma consulta.
+async function calcularTotales(desde, hasta, saldoInicial, porFormaPago = null) {
   const ventas = await pool.query(
-    `SELECT COALESCE(SUM(total) FILTER (WHERE status = 'completado'), 0) as total_vendido,
-            COALESCE(SUM(total) FILTER (WHERE status = 'completado' AND payment_method = 'efectivo'), 0) as efectivo_ventas
+    `SELECT COALESCE(SUM(total) FILTER (WHERE status = 'completado'), 0) as total_vendido
      FROM sales
      WHERE deleted_at IS NULL AND created_at >= $1 AND created_at <= $2`,
     [desde, hasta]
   );
+  if (!porFormaPago) porFormaPago = await obtenerTotalesPorFormaPago(desde, hasta);
 
   const gastosResult = await pool.query(
     `SELECT COALESCE(SUM(monto), 0) as total_gastos FROM gastos WHERE created_at >= $1 AND created_at <= $2`,
@@ -46,7 +35,7 @@ async function calcularTotales(desde, hasta, saldoInicial) {
   );
 
   const total_vendido = parseFloat(ventas.rows[0].total_vendido);
-  const efectivo_ventas = parseFloat(ventas.rows[0].efectivo_ventas);
+  const efectivo_ventas = porFormaPago.efectivo;
   const total_gastos = parseFloat(gastosResult.rows[0].total_gastos);
   const saldo_real = parseFloat(saldoInicial) + efectivo_ventas - total_gastos;
 
@@ -83,8 +72,7 @@ async function obtenerVentasPeriodo(desde, hasta, filtros = {}) {
     conditions.push(`COALESCE(s.delivery_status, s.status) = $${params.length}`);
   }
   if (filtros.forma_pago) {
-    params.push(filtros.forma_pago);
-    conditions.push(`s.payment_method = $${params.length}`);
+    conditions.push(formaPagoCondition(params, filtros.forma_pago));
   }
 
   const result = await pool.query(
@@ -129,8 +117,9 @@ router.get('/current', authenticateToken, requireAdminOperador, async (req, res)
     }
 
     const caja = result.rows[0];
-    const totales = await calcularTotales(caja.opened_at, new Date(), caja.saldo_inicial);
-    const por_forma_pago = await obtenerTotalesPorFormaPago(caja.opened_at, new Date());
+    const ahora = new Date();
+    const por_forma_pago = await obtenerTotalesPorFormaPago(caja.opened_at, ahora);
+    const totales = await calcularTotales(caja.opened_at, ahora, caja.saldo_inicial, por_forma_pago);
 
     res.json({ caja: { ...caja, ...totales }, por_forma_pago });
 
@@ -186,7 +175,8 @@ router.post('/:id/close', authenticateToken, requireAdminOperador, async (req, r
     const caja = cajaResult.rows[0];
 
     const cerradoEn = new Date();
-    const { total_vendido, total_gastos, saldo_real } = await calcularTotales(caja.opened_at, cerradoEn, caja.saldo_inicial);
+    const por_forma_pago = await obtenerTotalesPorFormaPago(caja.opened_at, cerradoEn);
+    const { total_vendido, total_gastos, saldo_real } = await calcularTotales(caja.opened_at, cerradoEn, caja.saldo_inicial, por_forma_pago);
     const diferencia = parseFloat(efectivo_contado) - saldo_real;
 
     const result = await pool.query(
@@ -203,8 +193,6 @@ router.post('/:id/close', authenticateToken, requireAdminOperador, async (req, r
     }
 
     await logAudit({ userId: user.id, action: 'cerrar_caja', tableName: 'cierre_caja', recordId: Number(id), oldValues: caja, newValues: result.rows[0] });
-
-    const por_forma_pago = await obtenerTotalesPorFormaPago(caja.opened_at, cerradoEn);
 
     res.json({ message: 'Caja cerrada', caja: result.rows[0], por_forma_pago });
 
@@ -285,8 +273,8 @@ router.get('/:id', authenticateToken, requireAdminOperador, async (req, res) => 
     const { order_id, cliente, vendedor, fecha, producto, estado, forma_pago } = req.query;
     const { ventas, por_canal } = await obtenerVentasPeriodo(caja.opened_at, hasta, { order_id, cliente, vendedor, fecha, producto, estado, forma_pago });
 
-    const totalesEnVivo = caja.closed_at ? null : await calcularTotales(caja.opened_at, hasta, caja.saldo_inicial);
     const por_forma_pago = await obtenerTotalesPorFormaPago(caja.opened_at, hasta);
+    const totalesEnVivo = caja.closed_at ? null : await calcularTotales(caja.opened_at, hasta, caja.saldo_inicial, por_forma_pago);
 
     res.json({ caja: totalesEnVivo ? { ...caja, ...totalesEnVivo } : caja, ventas, por_canal, por_forma_pago });
 

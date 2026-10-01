@@ -1,5 +1,5 @@
 import { formatCurrency, formatDate } from './format';
-import { deliveryStatusLabel, saleStatusLabel, tipoVentaLabel, paymentMethodLabel } from './labels';
+import { deliveryStatusLabel, saleStatusLabel, tipoVentaLabel, paymentMethodLabel, paymentBreakdownLines } from './labels';
 
 export function buildSaleShareText(sale) {
   const lines = [
@@ -14,6 +14,9 @@ export function buildSaleShareText(sale) {
     if (sale.comuna) lines.push(`Comuna: ${sale.comuna}`);
     if (sale.address) lines.push(`Dirección: ${sale.address}`);
     lines.push(`Estado envío: ${deliveryStatusLabel(sale.delivery_status)}`);
+  } else if (sale.payment_method === 'mixto') {
+    const detalle = paymentBreakdownLines(sale).map((l) => `${paymentMethodLabel(l.method)} ${formatCurrency(l.amount)}`).join(' + ');
+    lines.push(`Forma de pago: Mixto (${detalle})`);
   } else if (sale.payment_method) {
     lines.push(`Forma de pago: ${paymentMethodLabel(sale.payment_method)}`);
   }

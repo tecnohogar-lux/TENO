@@ -6,6 +6,7 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 const { MIN_MAYOR, MIN_MAYOR_MESSAGE, comisionDeLineas, summarizeLines } = require('../utils/saleLines');
 const { PAYMENT_METHODS, validatePaymentBreakdown, normalizePaymentBreakdown } = require('../utils/paymentBreakdown');
+const { buildQrValue } = require('../utils/qrCode');
 
 // ============================================
 // POST - Crear venta desde Caja (tienda o envío prepagado)
@@ -136,7 +137,7 @@ router.post('/sale', authenticateToken, requireRole(['operador', 'admin', 'caja'
 
       const withQr = await dbClient.query(
         `UPDATE sales SET qr_code = $1 WHERE id = $2 RETURNING *`,
-        [`TENO-${inserted.rows[0].id}`, inserted.rows[0].id]
+        [buildQrValue(), inserted.rows[0].id]
       );
       createdSales.push(withQr.rows[0]);
     } else {

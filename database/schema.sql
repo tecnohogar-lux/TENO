@@ -67,8 +67,10 @@ CREATE TABLE IF NOT EXISTS sales (
   phone VARCHAR(20),
   status VARCHAR(50) NOT NULL DEFAULT 'pendiente' CHECK (status IN ('pendiente', 'completado', 'cancelado')),
   delivery_status VARCHAR(50) DEFAULT 'listo_para_imprimir' CHECK (delivery_status IN (
-    'listo_para_imprimir', 'impreso', 'en_camino', 'entregado', 'cancelado', 'reprogramado',
-    'solo_envio_pagado', 'solo_entrega_incompleto', 'cambio_producto'
+    'listo_para_imprimir', 'impreso', 'en_camino', 'entregado', 'cancelado', 'reprogramado'
+  )),
+  delivery_type VARCHAR(30) NOT NULL DEFAULT 'delivery' CHECK (delivery_type IN (
+    'delivery', 'solo_envio_pagado', 'solo_entrega_incompleto', 'cambio_producto'
   )),
   tipo_venta VARCHAR(20) NOT NULL DEFAULT 'ENVIO' CHECK (tipo_venta IN ('ENVIO', 'TIENDA', 'ENVIO_PREPAGADO', 'ENVIO_REGION')),
   payment_method VARCHAR(30) CHECK (payment_method IN ('efectivo', 'debito', 'credito', 'transferencia', 'link_pago', 'mixto')),

@@ -13,17 +13,9 @@ import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, TIPO_VENTA_LABELS, saleStat
 import { PRICE_TYPE_LABELS, priceTypeLabel } from '../utils/priceType';
 import PriceTypeBadge from '../components/PriceTypeBadge';
 import { shareSaleViaWhatsApp } from '../utils/whatsapp';
+import { saleLines } from '../utils/saleLines';
 
 const PAGE_SIZE = 25;
-
-// Venta con varios productos: las líneas vienen en `items`. Una venta de un solo producto
-// no trae items; se arma su única línea a partir de los datos de la venta.
-function saleLines(sale) {
-  if (Array.isArray(sale.items) && sale.items.length > 0) return sale.items;
-  const qty = Number(sale.quantity) || 1;
-  const productos = sale.precio_producto !== null && sale.precio_producto !== undefined ? Number(sale.precio_producto) : Number(sale.total);
-  return [{ product_name: sale.product_name, quantity: qty, price: productos / qty, price_type: sale.price_type }];
-}
 
 // En el panel principal: un producto => su nombre; varios => solo cuántos son.
 function saleProductLabel(sale) {

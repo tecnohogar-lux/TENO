@@ -11,12 +11,21 @@ export const DELIVERY_STATUS_LABELS = {
   entregado: { label: 'Entregado', color: '#4c7a52' },
   cancelado: { label: 'Cancelado', color: '#b3423a' },
   reprogramado: { label: 'Reprogramado', color: '#8a5fb0' },
+};
+
+export const DELIVERY_STATUS_OPTIONS = Object.keys(DELIVERY_STATUS_LABELS);
+
+// Tipo de envío: independiente del estado de entrega (no lo pisa ni es pisado por
+// él). Por defecto todo envío es 'delivery'; solo operador/admin/caja pueden
+// cambiarlo a uno de los otros 3 (Delivery Santiago los separa en un botón aparte).
+export const DELIVERY_TYPE_LABELS = {
+  delivery: { label: 'Delivery', color: '#6f6b62' },
   solo_envio_pagado: { label: 'Solo envío (ya pago)', color: '#3a6ea5' },
   solo_entrega_incompleto: { label: 'Solo entrega (incompleto)', color: '#b98a2e' },
   cambio_producto: { label: 'Cambio de producto', color: '#8a5fb0' },
 };
 
-export const DELIVERY_STATUS_OPTIONS = Object.keys(DELIVERY_STATUS_LABELS);
+export const DELIVERY_TYPE_OPTIONS = Object.keys(DELIVERY_TYPE_LABELS);
 
 export const TIPO_VENTA_LABELS = {
   ENVIO: { label: 'Envío', color: '#3a6ea5' },
@@ -43,6 +52,10 @@ export function saleStatusLabel(value) {
 export function deliveryStatusLabel(value) {
   if (value === 'completado_tienda') return 'Completado en tienda';
   return DELIVERY_STATUS_LABELS[value]?.label || value || '-';
+}
+
+export function deliveryTypeLabel(value) {
+  return DELIVERY_TYPE_LABELS[value]?.label || value || '-';
 }
 
 export function tipoVentaLabel(value) {

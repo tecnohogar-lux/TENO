@@ -551,20 +551,22 @@ tbody tr:hover {
     overflow: visible !important;
     max-height: none !important;
   }
-  .label-row {
-    display: flex !important;
-    flex-direction: row;
-    align-items: stretch;
-    gap: 0.2in;
+  .label-page {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 0.15in;
+    width: 10.5in;
+    height: 8in;
     margin-bottom: 0 !important;
     page-break-after: always;
   }
-  .label-row:last-child {
+  .label-page:last-child {
     page-break-after: auto;
   }
   .label-card {
-    width: 3.4in;
-    flex-shrink: 0;
+    width: 100%;
+    height: 100%;
   }
 }
 

@@ -5,13 +5,16 @@ const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 const { MIN_MAYOR, MIN_MAYOR_MESSAGE, lookupComisionUnitaria, validateLines, summarizeLines } = require('../utils/saleLines');
+const { buildQrValue } = require('../utils/qrCode');
 
-const DELIVERY_STATUSES = [
-  'listo_para_imprimir', 'impreso', 'en_camino', 'entregado', 'cancelado', 'reprogramado',
-  'solo_envio_pagado', 'solo_entrega_incompleto', 'cambio_producto',
-];
+const DELIVERY_STATUSES = ['listo_para_imprimir', 'impreso', 'en_camino', 'entregado', 'cancelado', 'reprogramado'];
+// Tipo de envío de Delivery Santiago: independiente del estado de entrega (no lo
+// pisa ni es pisado por él). Por defecto todo envío es 'delivery'; los otros 3
+// tipos solo los puede poner/cambiar operador/admin/caja.
+const DELIVERY_TYPES = ['delivery', 'solo_envio_pagado', 'solo_entrega_incompleto', 'cambio_producto'];
+const MANAGE_ROLES = ['admin', 'operador', 'caja'];
 const requireAdmin = (message) => requireRole(['admin'], message);
-const requireManage = (message) => requireRole(['admin', 'operador', 'caja'], message);
+const requireManage = (message) => requireRole(MANAGE_ROLES, message);
 
 // ============================================
 // GET - Papelera (ventas/envíos eliminados, solo admin)
@@ -407,7 +410,7 @@ router.post('/', authenticateToken, async (req, res) => {
 
     const withQr = await dbClient.query(
       `UPDATE sales SET qr_code = $1 WHERE id = $2 RETURNING *`,
-      [`TENO-${sale.id}`, sale.id]
+      [buildQrValue(), sale.id]
     );
 
     await dbClient.query('COMMIT');
@@ -506,6 +509,57 @@ router.put('/batch-status', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Error al actualizar paquetes' });
   } finally {
     dbClient.release();
+  }
+});
+
+// ============================================
+// PUT - Cambiar el tipo de envío (delivery/solo envío pagado/etc.) de varios a la vez.
+// Independiente de delivery_status: no lo pisa ni es pisado por él. Solo operador/admin/caja.
+// ============================================
+router.put('/batch-delivery-type', authenticateToken, requireManage('Solo operadores pueden cambiar el tipo de envío'), async (req, res) => {
+  const user = req.user;
+  const { ids, delivery_type } = req.body;
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'Debes enviar al menos un id de venta' });
+  }
+  if (!DELIVERY_TYPES.includes(delivery_type)) {
+    return res.status(400).json({ error: `Tipo de envío inválido. Opciones: ${DELIVERY_TYPES.join(', ')}` });
+  }
+
+  try {
+    const existing = await pool.query(
+      `SELECT id, tipo_venta, delivery_type FROM sales WHERE id = ANY($1::int[]) AND deleted_at IS NULL`,
+      [ids]
+    );
+    if (existing.rows.length !== ids.length) {
+      return res.status(404).json({ error: 'Una o más ventas no existen' });
+    }
+    if (existing.rows.some((s) => s.tipo_venta !== 'ENVIO')) {
+      return res.status(400).json({ error: 'Solo las ventas de tipo envío tienen tipo de envío' });
+    }
+
+    const result = await pool.query(
+      `UPDATE sales SET delivery_type = $1, updated_at = CURRENT_TIMESTAMP WHERE id = ANY($2::int[]) RETURNING *`,
+      [delivery_type, ids]
+    );
+
+    for (const before of existing.rows) {
+      await logAudit({
+        userId: user.id,
+        action: 'cambiar_tipo_envio_lote',
+        tableName: 'sales',
+        recordId: before.id,
+        oldValues: { delivery_type: before.delivery_type },
+        newValues: { delivery_type }
+      });
+    }
+
+    res.json({ message: `${result.rows.length} envío(s) actualizado(s)`, sales: result.rows });
+
+  } catch (err) {
+    console.error('Error al actualizar tipo de envío por lote:', err);
+    res.status(500).json({ error: 'Error al actualizar tipo de envío' });
   }
 });
 
@@ -717,6 +771,51 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error al actualizar estado del paquete:', err);
     res.status(500).json({ error: 'Error al actualizar estado del paquete' });
+  }
+});
+
+// ============================================
+// PUT - Cambiar el tipo de envío (delivery/solo envío pagado/etc.) de un paquete.
+// Independiente de delivery_status: no lo pisa ni es pisado por él. Solo operador/admin/caja.
+// ============================================
+router.put('/:id/delivery-type', authenticateToken, requireManage('Solo operadores pueden cambiar el tipo de envío'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user;
+    const { delivery_type } = req.body;
+
+    if (!DELIVERY_TYPES.includes(delivery_type)) {
+      return res.status(400).json({ error: `Tipo de envío inválido. Opciones: ${DELIVERY_TYPES.join(', ')}` });
+    }
+
+    const saleResult = await pool.query('SELECT * FROM sales WHERE id = $1 AND deleted_at IS NULL', [id]);
+    if (saleResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Venta no encontrada' });
+    }
+    const sale = saleResult.rows[0];
+    if (sale.tipo_venta !== 'ENVIO') {
+      return res.status(400).json({ error: 'Solo las ventas de tipo envío tienen tipo de envío' });
+    }
+
+    const result = await pool.query(
+      `UPDATE sales SET delivery_type = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+      [delivery_type, id]
+    );
+
+    await logAudit({
+      userId: user.id,
+      action: 'cambiar_tipo_envio',
+      tableName: 'sales',
+      recordId: Number(id),
+      oldValues: { delivery_type: sale.delivery_type },
+      newValues: { delivery_type }
+    });
+
+    res.json({ message: 'Tipo de envío actualizado', sale: result.rows[0] });
+
+  } catch (err) {
+    console.error('Error al actualizar tipo de envío:', err);
+    res.status(500).json({ error: 'Error al actualizar tipo de envío' });
   }
 });
 

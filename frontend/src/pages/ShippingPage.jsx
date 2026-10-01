@@ -12,7 +12,7 @@ import useConfirm from '../hooks/useConfirm';
 import useDebouncedValue from '../hooks/useDebouncedValue';
 import { formatCurrency, formatDate } from '../utils/format';
 import { productPrice } from '../utils/priceType';
-import { DELIVERY_STATUS_LABELS, DELIVERY_STATUS_OPTIONS, deliveryStatusLabel } from '../utils/labels';
+import { DELIVERY_STATUS_LABELS, DELIVERY_STATUS_OPTIONS, DELIVERY_TYPE_LABELS, DELIVERY_TYPE_OPTIONS, deliveryStatusLabel, deliveryTypeLabel } from '../utils/labels';
 
 const FREE_PRODUCT_OPTION = [{ value: '__free__', label: 'Producto libre (no registrado)' }];
 
@@ -53,6 +53,9 @@ export default function ShippingPage() {
   const [actionsOpen, setActionsOpen] = useState(false);
   const [bulkStatusPanel, setBulkStatusPanel] = useState(false);
   const [bulkStatusValue, setBulkStatusValue] = useState('en_camino');
+  const [bulkTypePanel, setBulkTypePanel] = useState(false);
+  const [bulkTypeValue, setBulkTypeValue] = useState('delivery');
+  const [typeMenuId, setTypeMenuId] = useState(null);
   const [printSale, setPrintSale] = useState(null);
   const [printBatch, setPrintBatch] = useState(null);
   const [editingSale, setEditingSale] = useState(null);
@@ -91,6 +94,15 @@ export default function ShippingPage() {
     else if (result.error) setActionError(result.error);
   }
 
+  // Tipo de envío (delivery/solo envío pagado/etc.): independiente del estado de
+  // entrega, no lo pisa ni es pisado por él.
+  async function handleDeliveryTypeChange(sale, deliveryType) {
+    setActionError('');
+    const result = await put(`/api/sales/${sale.id}/delivery-type`, { delivery_type: deliveryType });
+    if (result.success) refetch();
+    else if (result.error) setActionError(result.error);
+  }
+
   async function handleCourierChange(sale, courierId) {
     setActionError('');
     const result = await put(`/api/sales/${sale.id}/courier`, { courier_id: courierId || null });
@@ -98,12 +110,25 @@ export default function ShippingPage() {
     else if (result.error) setActionError(result.error);
   }
 
-  async function handleBulkStatus() {
+  async function applyBulkStatus(status) {
     setActionError('');
-    const result = await put('/api/sales/batch-status', { ids: selectedIds, status: bulkStatusValue });
+    const result = await put('/api/sales/batch-status', { ids: selectedIds, status });
     if (result.success) {
       setSelectedIds([]);
       setBulkStatusPanel(false);
+      setActionsOpen(false);
+      refetch();
+    } else if (result.error) {
+      setActionError(result.error);
+    }
+  }
+
+  async function applyBulkDeliveryType(deliveryType) {
+    setActionError('');
+    const result = await put('/api/sales/batch-delivery-type', { ids: selectedIds, delivery_type: deliveryType });
+    if (result.success) {
+      setSelectedIds([]);
+      setBulkTypePanel(false);
       setActionsOpen(false);
       refetch();
     } else if (result.error) {
@@ -260,7 +285,30 @@ export default function ShippingPage() {
                             <option key={opt} value={opt}>{deliveryStatusLabel(opt)}</option>
                           ))}
                         </select>
-                        <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={handleBulkStatus}>
+                        <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => applyBulkStatus(bulkStatusValue)}>
+                          Aplicar
+                        </button>
+                      </div>
+                    )}
+                    <button
+                      className="btn btn-secondary"
+                      style={{ width: '100%', justifyContent: 'flex-start', marginBottom: 4 }}
+                      onClick={() => setBulkTypePanel((v) => !v)}
+                    >
+                      Tipo de envío
+                    </button>
+                    {bulkTypePanel && (
+                      <div style={{ display: 'flex', gap: 6, padding: '6px 4px 10px' }}>
+                        <select
+                          value={bulkTypeValue}
+                          onChange={(e) => setBulkTypeValue(e.target.value)}
+                          style={{ flex: 1, fontSize: 12, padding: '4px 6px', borderRadius: 4, border: '1px solid var(--color-border)' }}
+                        >
+                          {DELIVERY_TYPE_OPTIONS.map((opt) => (
+                            <option key={opt} value={opt}>{deliveryTypeLabel(opt)}</option>
+                          ))}
+                        </select>
+                        <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => applyBulkDeliveryType(bulkTypeValue)}>
                           Aplicar
                         </button>
                       </div>
@@ -432,22 +480,50 @@ export default function ShippingPage() {
                       )}
                     </td>
                     <td data-label="Estado">
-                      {canManage ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
-                          <Badge label={deliveryStatusLabel(s.delivery_status)} color={DELIVERY_STATUS_LABELS[s.delivery_status]?.color} />
-                          <select
-                            value={s.delivery_status}
-                            onChange={(e) => handleStatusChange(s, e.target.value)}
-                            style={{ fontSize: 12, padding: '4px 6px', borderRadius: 4, border: '1px solid var(--color-border)' }}
-                          >
-                            {DELIVERY_STATUS_OPTIONS.map((opt) => (
-                              <option key={opt} value={opt}>{deliveryStatusLabel(opt)}</option>
-                            ))}
-                          </select>
-                        </div>
-                      ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
                         <Badge label={deliveryStatusLabel(s.delivery_status)} color={DELIVERY_STATUS_LABELS[s.delivery_status]?.color} />
-                      )}
+                        {s.delivery_type !== 'delivery' && (
+                          <Badge label={deliveryTypeLabel(s.delivery_type)} color={DELIVERY_TYPE_LABELS[s.delivery_type]?.color} />
+                        )}
+                        {canManage && (
+                          <>
+                            <select
+                              value={s.delivery_status}
+                              onChange={(e) => handleStatusChange(s, e.target.value)}
+                              style={{ fontSize: 12, padding: '4px 6px', borderRadius: 4, border: '1px solid var(--color-border)' }}
+                            >
+                              {DELIVERY_STATUS_OPTIONS.map((opt) => (
+                                <option key={opt} value={opt}>{deliveryStatusLabel(opt)}</option>
+                              ))}
+                            </select>
+                            <div style={{ position: 'relative' }}>
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                style={{ fontSize: 11, padding: '3px 8px' }}
+                                onClick={() => setTypeMenuId((id) => (id === s.id ? null : s.id))}
+                              >
+                                Tipo de envío ▾
+                              </button>
+                              {typeMenuId === s.id && (
+                                <div className="card" style={{ position: 'absolute', top: '110%', right: 0, padding: 6, width: 190, zIndex: 20 }}>
+                                  {DELIVERY_TYPE_OPTIONS.map((opt) => (
+                                    <button
+                                      key={opt}
+                                      type="button"
+                                      className="btn btn-secondary"
+                                      style={{ width: '100%', justifyContent: 'flex-start', fontSize: 12, marginBottom: 4 }}
+                                      onClick={() => { handleDeliveryTypeChange(s, opt); setTypeMenuId(null); }}
+                                    >
+                                      {deliveryTypeLabel(opt)}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </td>
                     <td data-label="Fecha">{formatDate(s.created_at)}</td>
                     {canManage && (

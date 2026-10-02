@@ -34,12 +34,19 @@ async function calcularTotales(desde, hasta, saldoInicial, porFormaPago = null) 
     [desde, hasta]
   );
 
+  // Ingresos a caja (pagos de deudas, abonos...): efectivo sin venta asociada, solo suma al saldo.
+  const ingresosResult = await pool.query(
+    `SELECT COALESCE(SUM(monto), 0) as total_ingresos FROM ingresos_caja WHERE created_at >= $1 AND created_at <= $2`,
+    [desde, hasta]
+  );
+
   const total_vendido = parseFloat(ventas.rows[0].total_vendido);
   const efectivo_ventas = porFormaPago.efectivo;
   const total_gastos = parseFloat(gastosResult.rows[0].total_gastos);
-  const saldo_real = parseFloat(saldoInicial) + efectivo_ventas - total_gastos;
+  const total_ingresos = parseFloat(ingresosResult.rows[0].total_ingresos);
+  const saldo_real = parseFloat(saldoInicial) + efectivo_ventas + total_ingresos - total_gastos;
 
-  return { total_vendido, efectivo_ventas, total_gastos, saldo_real };
+  return { total_vendido, efectivo_ventas, total_gastos, total_ingresos, saldo_real };
 }
 
 // Ventas del período separadas por canal (Tienda / Envío RM / Envíos a Región), con filtros opcionales.
@@ -176,16 +183,16 @@ router.post('/:id/close', authenticateToken, requireAdminOperador, async (req, r
 
     const cerradoEn = new Date();
     const por_forma_pago = await obtenerTotalesPorFormaPago(caja.opened_at, cerradoEn);
-    const { total_vendido, total_gastos, saldo_real } = await calcularTotales(caja.opened_at, cerradoEn, caja.saldo_inicial, por_forma_pago);
+    const { total_vendido, total_gastos, total_ingresos, saldo_real } = await calcularTotales(caja.opened_at, cerradoEn, caja.saldo_inicial, por_forma_pago);
     const diferencia = parseFloat(efectivo_contado) - saldo_real;
 
     const result = await pool.query(
       `UPDATE cierre_caja
        SET closed_at = $1, closed_by = $2, total_vendido = $3, total_gastos = $4,
-           saldo_real = $5, efectivo_contado = $6, diferencia = $7, notas = $8
+           saldo_real = $5, efectivo_contado = $6, diferencia = $7, notas = $8, total_ingresos = $10
        WHERE id = $9 AND closed_at IS NULL
        RETURNING *`,
-      [cerradoEn, user.id, total_vendido, total_gastos, saldo_real, efectivo_contado, diferencia, notas || null, id]
+      [cerradoEn, user.id, total_vendido, total_gastos, saldo_real, efectivo_contado, diferencia, notas || null, id, total_ingresos]
     );
 
     if (result.rows.length === 0) {

@@ -21,7 +21,7 @@ const MODULE_GROUPS = [
       { path: '/retiro-tienda', label: 'Retiro en Tienda', roles: ['vendedor', 'operador', 'admin', 'caja'] },
       { path: '/caja', label: 'Caja', roles: ['operador', 'admin', 'caja'] },
       { path: '/cash-register', label: 'Apertura/Cierre de Caja', roles: ['operador', 'admin', 'caja'] },
-      { path: '/gastos', label: 'Gastos y egresos', roles: ['operador', 'admin', 'caja'] },
+      { path: '/gastos', label: 'Gastos e ingresos', roles: ['operador', 'admin', 'caja'] },
     ],
   },
   {

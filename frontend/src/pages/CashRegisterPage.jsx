@@ -164,6 +164,7 @@ export default function CashRegisterPage() {
               <MetricsCard label="Saldo inicial" value={formatCurrency(caja.saldo_inicial)} />
               <MetricsCard label="Total vendido" value={formatCurrency(caja.total_vendido)} />
               <MetricsCard label="Total gastos" value={formatCurrency(caja.total_gastos)} />
+              <MetricsCard label="Ingresos a caja" value={formatCurrency(caja.total_ingresos)} />
               <MetricsCard label="Saldo real (efectivo esperado)" value={formatCurrency(caja.saldo_real)} />
             </div>
 
@@ -200,6 +201,7 @@ export default function CashRegisterPage() {
                     <MetricsCard label="Saldo inicial" value={formatCurrency(caja.saldo_inicial)} />
                     <MetricsCard label="Total vendido" value={formatCurrency(caja.total_vendido)} />
                     <MetricsCard label="Total gastos" value={formatCurrency(caja.total_gastos)} />
+                    <MetricsCard label="Ingresos a caja" value={formatCurrency(caja.total_ingresos)} />
                     <MetricsCard label="Saldo real (esperado)" value={formatCurrency(caja.saldo_real)} />
                     <MetricsCard label="Efectivo contado" value={formatCurrency(efectivoContado)} />
                     <MetricsCard

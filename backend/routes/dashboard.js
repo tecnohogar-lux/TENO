@@ -171,8 +171,9 @@ async function getEfectivoCaja() {
 
   const caja = cajaResult.rows[0];
   const porFormaPago = await totalesPorFormaPago(pool, caja.opened_at, new Date());
+  const ingresos = await pool.query('SELECT COALESCE(SUM(monto), 0) as total FROM ingresos_caja WHERE created_at >= $1', [caja.opened_at]);
 
-  return parseFloat(caja.saldo_inicial) + porFormaPago.efectivo;
+  return parseFloat(caja.saldo_inicial) + porFormaPago.efectivo + parseFloat(ingresos.rows[0].total);
 }
 
 const ESTADOS_ORDENES = [

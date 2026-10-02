@@ -167,6 +167,7 @@ CREATE TABLE IF NOT EXISTS cierre_caja (
   closed_by INTEGER REFERENCES users(id),
   total_vendido DECIMAL(10, 2),
   total_gastos DECIMAL(10, 2),
+  total_ingresos DECIMAL(10, 2),
   saldo_real DECIMAL(10, 2),
   efectivo_contado DECIMAL(10, 2),
   diferencia DECIMAL(10, 2),
@@ -178,6 +179,14 @@ CREATE TABLE IF NOT EXISTS gastos (
   id SERIAL PRIMARY KEY,
   nombre VARCHAR(255) NOT NULL,
   monto DECIMAL(10, 2) NOT NULL,
+  created_by INTEGER NOT NULL REFERENCES users(id),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS ingresos_caja (
+  id SERIAL PRIMARY KEY,
+  nombre VARCHAR(255) NOT NULL,
+  monto DECIMAL(10, 2) NOT NULL CHECK (monto > 0),
   created_by INTEGER NOT NULL REFERENCES users(id),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -226,6 +235,7 @@ CREATE INDEX idx_retiros_tienda_status ON retiros_tienda(status);
 CREATE INDEX idx_cierre_caja_closed_at ON cierre_caja(closed_at);
 CREATE UNIQUE INDEX idx_cierre_caja_una_abierta ON cierre_caja((closed_at IS NULL)) WHERE closed_at IS NULL;
 CREATE INDEX idx_gastos_created_at ON gastos(created_at DESC);
+CREATE INDEX idx_ingresos_caja_created_at ON ingresos_caja(created_at DESC);
 
 INSERT INTO users (name, email, password, role, is_active) VALUES
 ('Admin', 'admin@teno.com', '$2a$10$kRh/5wEI6qiwryQIo0AAqeu5URs8csVeIcQO862mEJbVnasyOY5DS', 'admin', true),

@@ -4,6 +4,8 @@ import Badge from '../components/Badge';
 import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
 import useAuth from '../hooks/useAuth';
+import useConfirm from '../hooks/useConfirm';
+import SearchableSelect from '../components/SearchableSelect';
 import { formatCurrency, formatDate } from '../utils/format';
 import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, TIPO_VENTA_LABELS, saleStatusLabel, deliveryStatusLabel, tipoVentaLabel, paymentMethodLabel, paymentBreakdownLines, PAYMENT_METHODS } from '../utils/labels';
 import { PRICE_TYPE_LABELS, priceTypeLabel } from '../utils/priceType';
@@ -34,6 +36,32 @@ export default function ReportsPage() {
   const today = new Date().toISOString().slice(0, 10);
   const [comisionesRango, setComisionesRango] = useState({ desde: today, hasta: today });
   const [comisionesResult, setComisionesResult] = useState(null);
+  const { post: postDescuento, del: delDescuento, loading: savingDescuento, error: descuentoError } = useApi();
+  const { confirm, dialog: confirmDialog } = useConfirm();
+  const { data: usersData } = useFetch('/api/users', { enabled: canManage });
+  // El vendedor ve sus propios descuentos (el backend ya filtra por su usuario).
+  const { data: misDescuentos } = useFetch('/api/descuentos', { enabled: user.role === 'vendedor' });
+  const [descuentoForm, setDescuentoForm] = useState({ vendor_id: '', motivo: '', monto: '' });
+  const vendorOptions = useMemo(
+    () => (usersData?.users || []).filter((u) => u.role === 'vendedor' && u.is_active).map((v) => ({ value: v.id, label: v.name })),
+    [usersData]
+  );
+
+  async function handleCrearDescuento(e) {
+    e.preventDefault();
+    const result = await postDescuento('/api/descuentos', { ...descuentoForm, vendor_id: Number(descuentoForm.vendor_id) });
+    if (result.success) {
+      setDescuentoForm({ vendor_id: '', motivo: '', monto: '' });
+      handleCalcularComisiones();
+    }
+  }
+
+  async function handleEliminarDescuento(d) {
+    const ok = await confirm(`¿Eliminar el descuento "${d.motivo}" por ${formatCurrency(d.monto)}?`, { title: 'Eliminar descuento', confirmLabel: 'Eliminar', danger: true });
+    if (!ok) return;
+    const result = await delDescuento(`/api/descuentos/${d.id}`);
+    if (result.success) handleCalcularComisiones();
+  }
 
   async function handleCalcularComisiones() {
     setComisionesResult(null);
@@ -219,30 +247,107 @@ export default function ReportsPage() {
                   <tr>
                     <th>Vendedor</th>
                     <th>Ventas</th>
-                    <th>Total a pagar</th>
+                    <th>Comisión</th>
+                    <th>Descuentos</th>
+                    <th>Neto a pagar</th>
                   </tr>
                 </thead>
                 <tbody>
                   {comisionesResult.vendedores.length === 0 ? (
                     <tr>
-                      <td colSpan={3} style={{ color: 'var(--color-text-muted)' }}>Sin comisiones en ese rango de fechas</td>
+                      <td colSpan={5} style={{ color: 'var(--color-text-muted)' }}>Sin comisiones ni descuentos en ese rango de fechas</td>
                     </tr>
                   ) : (
                     comisionesResult.vendedores.map((v) => (
                       <tr key={v.vendor_id}>
                         <td data-label="Vendedor">{v.vendor_name}</td>
                         <td data-label="Ventas">{v.cantidad_ventas}</td>
-                        <td data-label="Total a pagar">{formatCurrency(v.total_comision)}</td>
+                        <td data-label="Comisión">{formatCurrency(v.total_comision)}</td>
+                        <td data-label="Descuentos">
+                          {v.total_descuentos > 0 ? `-${formatCurrency(v.total_descuentos)}` : '-'}
+                          {v.descuentos.map((d) => (
+                            <div key={d.id} style={{ fontSize: 11, color: 'var(--color-text-muted)', display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+                              <span>{d.motivo} ({formatCurrency(d.monto)})</span>
+                              <button type="button" onClick={() => handleEliminarDescuento(d)} style={{ border: 'none', background: 'none', color: 'var(--color-danger)', cursor: 'pointer', fontSize: 11, padding: 0 }}>quitar</button>
+                            </div>
+                          ))}
+                        </td>
+                        <td data-label="Neto a pagar" style={{ fontWeight: 700, color: v.neto < 0 ? 'var(--color-danger)' : undefined }}>{formatCurrency(v.neto)}</td>
                       </tr>
                     ))
                   )}
                 </tbody>
               </table>
               {comisionesResult.vendedores.length > 0 && (
-                <div style={{ marginTop: 12, fontSize: 14, textAlign: 'right' }}>
-                  Total general: <strong>{formatCurrency(comisionesResult.total_general)}</strong>
+                <div style={{ marginTop: 12, fontSize: 14, textAlign: 'right', lineHeight: 1.7 }}>
+                  <div>Comisiones: {formatCurrency(comisionesResult.total_general)}</div>
+                  <div>Descuentos: -{formatCurrency(comisionesResult.total_descuentos)}</div>
+                  <div>Neto a pagar: <strong>{formatCurrency(comisionesResult.total_neto)}</strong></div>
                 </div>
               )}
+            </div>
+          )}
+
+          <form onSubmit={handleCrearDescuento} style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--color-border)' }}>
+            <h4 style={{ margin: '0 0 4px', fontSize: 14 }}>Registrar descuento a un vendedor</h4>
+            <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: '0 0 12px' }}>
+              Devoluciones o errores: se resta de la comisión del rango de fechas en que lo registres. El vendedor puede ver sus descuentos.
+            </p>
+            {descuentoError && <div className="alert alert-error">{descuentoError}</div>}
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div className="form-field" style={{ marginBottom: 0, minWidth: 200 }}>
+                <label>Vendedor</label>
+                <SearchableSelect value={descuentoForm.vendor_id} onChange={(v) => setDescuentoForm({ ...descuentoForm, vendor_id: v })} options={vendorOptions} placeholder="Selecciona un vendedor" required />
+              </div>
+              <div className="form-field" style={{ marginBottom: 0, flex: 1, minWidth: 180 }}>
+                <label>Motivo</label>
+                <input value={descuentoForm.motivo} onChange={(e) => setDescuentoForm({ ...descuentoForm, motivo: e.target.value })} required />
+              </div>
+              <div className="form-field" style={{ marginBottom: 0, width: 140 }}>
+                <label>Monto</label>
+                <input type="number" min="1" value={descuentoForm.monto} onChange={(e) => setDescuentoForm({ ...descuentoForm, monto: e.target.value })} required />
+              </div>
+              <button type="submit" className="btn btn-primary" disabled={savingDescuento || !descuentoForm.vendor_id}>
+                {savingDescuento ? 'Guardando...' : 'Registrar descuento'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {user.role === 'vendedor' && misDescuentos && (
+        <div className="card" style={{ padding: 20, marginBottom: 24 }}>
+          <h3 style={{ margin: '0 0 4px', fontSize: 15 }}>Mis descuentos</h3>
+          <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 0, marginBottom: 16 }}>
+            Descuentos por devoluciones o errores que se restan de tu comisión al pagarte.
+          </p>
+          <table className="responsive-stack">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Motivo</th>
+                <th>Monto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {misDescuentos.descuentos.length === 0 ? (
+                <tr>
+                  <td colSpan={3} style={{ color: 'var(--color-text-muted)' }}>No tienes descuentos</td>
+                </tr>
+              ) : (
+                misDescuentos.descuentos.map((d) => (
+                  <tr key={d.id}>
+                    <td data-label="Fecha">{formatDate(d.created_at)}</td>
+                    <td data-label="Motivo">{d.motivo}</td>
+                    <td data-label="Monto">-{formatCurrency(d.monto)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+          {misDescuentos.descuentos.length > 0 && (
+            <div style={{ marginTop: 12, fontSize: 14, textAlign: 'right' }}>
+              Total: <strong>-{formatCurrency(misDescuentos.total_monto)}</strong>
             </div>
           )}
         </div>
@@ -410,6 +515,7 @@ export default function ReportsPage() {
           </div>
         </div>
       )}
+      {confirmDialog}
     </Layout>
   );
 }

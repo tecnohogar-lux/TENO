@@ -187,18 +187,48 @@ router.get('/comisiones', authenticateToken, requireManage('No tienes permiso pa
       params
     );
 
-    const vendedores = result.rows.map((r) => ({
-      vendor_id: r.vendor_id,
-      vendor_name: r.vendor_name,
-      cantidad_ventas: parseInt(r.cantidad_ventas),
-      total_comision: parseFloat(r.total_comision),
-    }));
+    // Descuentos (devoluciones, errores...) registrados en el rango: se restan de la
+    // comisión. Un vendedor con descuentos pero sin comisión también aparece (neto negativo).
+    const descuentosResult = await pool.query(
+      `SELECT d.id, d.vendor_id, u.name as vendor_name, d.motivo, d.monto, d.created_at
+       FROM descuentos_vendedor d
+       JOIN users u ON d.vendor_id = u.id
+       WHERE d.created_at >= $1 AND d.created_at < ($2::date + INTERVAL '1 day')
+       ORDER BY d.created_at DESC`,
+      params
+    );
+
+    const porVendedor = new Map();
+    for (const r of result.rows) {
+      porVendedor.set(r.vendor_id, {
+        vendor_id: r.vendor_id,
+        vendor_name: r.vendor_name,
+        cantidad_ventas: parseInt(r.cantidad_ventas),
+        total_comision: parseFloat(r.total_comision),
+        total_descuentos: 0,
+        descuentos: [],
+      });
+    }
+    for (const d of descuentosResult.rows) {
+      if (!porVendedor.has(d.vendor_id)) {
+        porVendedor.set(d.vendor_id, { vendor_id: d.vendor_id, vendor_name: d.vendor_name, cantidad_ventas: 0, total_comision: 0, total_descuentos: 0, descuentos: [] });
+      }
+      const v = porVendedor.get(d.vendor_id);
+      v.total_descuentos += parseFloat(d.monto);
+      v.descuentos.push({ id: d.id, motivo: d.motivo, monto: parseFloat(d.monto), created_at: d.created_at });
+    }
+
+    const vendedores = [...porVendedor.values()]
+      .map((v) => ({ ...v, neto: v.total_comision - v.total_descuentos }))
+      .sort((a, b) => a.vendor_name.localeCompare(b.vendor_name));
 
     res.json({
       desde,
       hasta,
       vendedores,
       total_general: vendedores.reduce((acc, v) => acc + v.total_comision, 0),
+      total_descuentos: vendedores.reduce((acc, v) => acc + v.total_descuentos, 0),
+      total_neto: vendedores.reduce((acc, v) => acc + v.neto, 0),
     });
 
   } catch (err) {

@@ -48,13 +48,13 @@ export default function LabelCard({ sale }) {
             }}
           >
             <div style={{ fontWeight: 700, fontSize: 24, lineHeight: 1, flexShrink: 0 }}>{l.quantity}</div>
-            <div style={{ fontSize: 12, textTransform: 'uppercase', lineHeight: 1.25 }}>{l.product_name}</div>
+            <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', lineHeight: 1.25 }}>{l.product_name}</div>
           </div>
         ))}
       </div>
 
       <div style={{ display: 'flex', gap: 10, padding: '8px 10px', borderBottom: '2px solid #000' }}>
-        <div style={{ flex: 1, fontSize: 10, lineHeight: 1.5, minWidth: 0 }}>
+        <div style={{ flex: 1, fontSize: 10, fontWeight: 700, lineHeight: 1.5, minWidth: 0 }}>
           <div>Cliente: {sale.client_name}</div>
           <div>Tel: {sale.phone || '-'}</div>
           <div>Dir: {sale.address || '-'}</div>

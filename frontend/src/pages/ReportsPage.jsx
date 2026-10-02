@@ -264,13 +264,35 @@ export default function ReportsPage() {
                         <td data-label="Ventas">{v.cantidad_ventas}</td>
                         <td data-label="Comisión">{formatCurrency(v.total_comision)}</td>
                         <td data-label="Descuentos">
-                          {v.total_descuentos > 0 ? `-${formatCurrency(v.total_descuentos)}` : '-'}
-                          {v.descuentos.map((d) => (
-                            <div key={d.id} style={{ fontSize: 11, color: 'var(--color-text-muted)', display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
-                              <span>{d.motivo} ({formatCurrency(d.monto)})</span>
-                              <button type="button" onClick={() => handleEliminarDescuento(d)} style={{ border: 'none', background: 'none', color: 'var(--color-danger)', cursor: 'pointer', fontSize: 11, padding: 0 }}>quitar</button>
+                          <div style={{ fontWeight: 600 }}>{v.total_descuentos > 0 ? `-${formatCurrency(v.total_descuentos)}` : '-'}</div>
+                          {v.descuentos.length > 0 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8, minWidth: 220 }}>
+                              {v.descuentos.map((d) => (
+                                <div
+                                  key={d.id}
+                                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px 6px 10px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)' }}
+                                >
+                                  <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                                    <div style={{ fontSize: 12, fontWeight: 600, overflowWrap: 'anywhere' }}>{d.motivo}</div>
+                                    <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{formatDate(d.created_at)} · -{formatCurrency(d.monto)}</div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    title="Eliminar este descuento"
+                                    aria-label={`Eliminar descuento ${d.motivo}`}
+                                    onClick={() => handleEliminarDescuento(d)}
+                                    style={{ padding: '5px 9px', fontSize: 12, gap: 5, flexShrink: 0, color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
+                                  >
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                      <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
+                                    Eliminar
+                                  </button>
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
                         </td>
                         <td data-label="Neto a pagar" style={{ fontWeight: 700, color: v.neto < 0 ? 'var(--color-danger)' : undefined }}>{formatCurrency(v.neto)}</td>
                       </tr>

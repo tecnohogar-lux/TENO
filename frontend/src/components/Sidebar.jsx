@@ -3,6 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
 import usePreguntasUnreadCount from '../hooks/usePreguntasUnreadCount';
 import Logo from './Logo';
+import CategoryIcon from './CategoryIcon';
 
 const PREGUNTAS_ROLES = ['vendedor', 'operador', 'admin', 'caja'];
 
@@ -10,11 +11,12 @@ const MODULE_GROUPS = [
   {
     label: null,
     items: [
-      { path: '/dashboard', label: 'Dashboard', roles: ['vendedor', 'operador', 'admin', 'caja'] },
+      { path: '/dashboard', label: 'Dashboard', icon: 'dashboard', roles: ['vendedor', 'operador', 'admin', 'caja'] },
     ],
   },
   {
     label: 'Ventas',
+    icon: 'ventas',
     color: 'ventas',
     items: [
       { path: '/sales', label: 'Historial de Ventas', roles: ['vendedor', 'operador', 'admin', 'caja'] },
@@ -26,6 +28,7 @@ const MODULE_GROUPS = [
   },
   {
     label: 'Envíos',
+    icon: 'envios',
     color: 'envios',
     items: [
       { path: '/shipping', label: 'Delivery Santiago', roles: ['vendedor', 'operador', 'admin', 'escaneo', 'caja'] },
@@ -36,6 +39,7 @@ const MODULE_GROUPS = [
   },
   {
     label: 'Catálogo',
+    icon: 'catalogo',
     color: 'catalogo',
     items: [
       { path: '/products', label: 'Productos', roles: ['vendedor', 'operador', 'admin', 'caja'] },
@@ -43,6 +47,7 @@ const MODULE_GROUPS = [
   },
   {
     label: 'Comunicación',
+    icon: 'comunicacion',
     color: 'comunicacion',
     items: [
       { path: '/noticias', label: 'Noticias', roles: ['vendedor', 'operador', 'admin', 'caja'] },
@@ -52,6 +57,7 @@ const MODULE_GROUPS = [
   },
   {
     label: 'Análisis',
+    icon: 'analisis',
     color: 'analisis',
     items: [
       { path: '/reports', label: 'Reportes', roles: ['vendedor', 'operador', 'admin', 'caja'] },
@@ -60,6 +66,7 @@ const MODULE_GROUPS = [
   },
   {
     label: 'Administración',
+    icon: 'administracion',
     color: 'administracion',
     items: [
       { path: '/users', label: 'Usuarios', roles: ['admin'] },
@@ -84,7 +91,9 @@ function NavItem({ m, onNavigate, color }) {
       to={m.path}
       onClick={onNavigate}
       style={({ isActive }) => ({
-        display: 'block',
+        display: m.icon ? 'flex' : 'block',
+        alignItems: 'center',
+        gap: 10,
         padding: '11px 14px',
         borderRadius: 'var(--radius-sm)',
         fontSize: 14,
@@ -101,6 +110,11 @@ function NavItem({ m, onNavigate, color }) {
         if (e.currentTarget.getAttribute('aria-current') !== 'page') e.currentTarget.style.background = 'transparent';
       }}
     >
+      {m.icon && (
+        <span style={{ width: 24, display: 'inline-flex', justifyContent: 'center', flexShrink: 0 }}>
+          <CategoryIcon name={m.icon} size={18} />
+        </span>
+      )}
       {m.label}
     </NavLink>
   );
@@ -250,17 +264,7 @@ export default function Sidebar({ mobileOpen = false, onNavigate }) {
                       color: g.color ? `var(--color-group-${g.color})` : 'var(--color-text-muted)',
                     }}
                   >
-                    {g.color && (
-                      <span
-                        style={{
-                          width: 6,
-                          height: 6,
-                          borderRadius: '50%',
-                          background: `var(--color-group-${g.color})`,
-                          flexShrink: 0,
-                        }}
-                      />
-                    )}
+                    {g.icon && <CategoryIcon name={g.icon} size={18} />}
                     {g.label}
                     <Chevron open={isOpen} />
                   </button>

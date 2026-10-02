@@ -217,7 +217,6 @@ export default function CashRegisterPage() {
                       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
                         <MetricsCard label="Tienda" value={detailData.por_canal.tienda.cantidad} subtext={formatCurrency(detailData.por_canal.tienda.total)} />
                         <MetricsCard label="Delivery Santiago" value={detailData.por_canal.envio_rm.cantidad} subtext={formatCurrency(detailData.por_canal.envio_rm.total)} />
-                        <MetricsCard label="Envíos a Región" value={detailData.por_canal.envio_region.cantidad} subtext={formatCurrency(detailData.por_canal.envio_region.total)} />
                       </div>
                     </>
                   )}
@@ -258,7 +257,6 @@ export default function CashRegisterPage() {
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
                 <MetricsCard label="Tienda" value={detailData.por_canal.tienda.cantidad} subtext={formatCurrency(detailData.por_canal.tienda.total)} />
                 <MetricsCard label="Delivery Santiago" value={detailData.por_canal.envio_rm.cantidad} subtext={formatCurrency(detailData.por_canal.envio_rm.total)} />
-                <MetricsCard label="Envíos a Región" value={detailData.por_canal.envio_region.cantidad} subtext={formatCurrency(detailData.por_canal.envio_region.total)} />
               </div>
 
               {detailData.por_forma_pago && (

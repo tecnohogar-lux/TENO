@@ -24,7 +24,7 @@ async function calcularTotales(desde, hasta, saldoInicial, porFormaPago = null) 
   const ventas = await pool.query(
     `SELECT COALESCE(SUM(total) FILTER (WHERE status = 'completado'), 0) as total_vendido
      FROM sales
-     WHERE deleted_at IS NULL AND created_at >= $1 AND created_at <= $2`,
+     WHERE deleted_at IS NULL AND tipo_venta != 'ENVIO_REGION' AND created_at >= $1 AND created_at <= $2`,
     [desde, hasta]
   );
   if (!porFormaPago) porFormaPago = await obtenerTotalesPorFormaPago(desde, hasta);
@@ -51,7 +51,8 @@ async function calcularTotales(desde, hasta, saldoInicial, porFormaPago = null) 
 
 // Ventas del período separadas por canal (Tienda / Envío RM / Envíos a Región), con filtros opcionales.
 async function obtenerVentasPeriodo(desde, hasta, filtros = {}) {
-  const conditions = ['s.deleted_at IS NULL', 's.created_at >= $1', 's.created_at <= $2'];
+  // Envíos a Regiones no entran a la caja (se llevan aparte, ver Envíos Regiones).
+  const conditions = ['s.deleted_at IS NULL', `s.tipo_venta != 'ENVIO_REGION'`, 's.created_at >= $1', 's.created_at <= $2'];
   const params = [desde, hasta];
 
   if (filtros.order_id) {
@@ -86,7 +87,6 @@ async function obtenerVentasPeriodo(desde, hasta, filtros = {}) {
     `SELECT s.*, u.name as vendor_name, c.name as client_name,
             CASE
               WHEN s.tipo_venta = 'TIENDA' THEN 'tienda'
-              WHEN s.tipo_venta = 'ENVIO_REGION' THEN 'envio_region'
               ELSE 'envio_rm'
             END as canal
      FROM sales s
@@ -97,7 +97,7 @@ async function obtenerVentasPeriodo(desde, hasta, filtros = {}) {
     params
   );
 
-  const porCanal = { tienda: { cantidad: 0, total: 0 }, envio_rm: { cantidad: 0, total: 0 }, envio_region: { cantidad: 0, total: 0 } };
+  const porCanal = { tienda: { cantidad: 0, total: 0 }, envio_rm: { cantidad: 0, total: 0 } };
   for (const s of result.rows) {
     porCanal[s.canal].cantidad += 1;
     if (s.status === 'completado') porCanal[s.canal].total += parseFloat(s.total);

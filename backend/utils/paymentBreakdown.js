@@ -48,12 +48,12 @@ async function totalesPorFormaPago(pool, desde, hasta) {
     `SELECT method, COALESCE(SUM(amount), 0) as total FROM (
        SELECT payment_method AS method, total AS amount
        FROM sales
-       WHERE deleted_at IS NULL AND status = 'completado' AND payment_method IS NOT NULL
+       WHERE deleted_at IS NULL AND tipo_venta != 'ENVIO_REGION' AND status = 'completado' AND payment_method IS NOT NULL
          AND payment_method != 'mixto' AND created_at >= $1 AND created_at <= $2
        UNION ALL
        SELECT leg->>'method' AS method, (leg->>'amount')::numeric AS amount
        FROM sales, json_array_elements(payment_breakdown) AS leg
-       WHERE deleted_at IS NULL AND status = 'completado' AND payment_method = 'mixto'
+       WHERE deleted_at IS NULL AND tipo_venta != 'ENVIO_REGION' AND status = 'completado' AND payment_method = 'mixto'
          AND created_at >= $1 AND created_at <= $2
      ) combined
      GROUP BY method`,

@@ -10,6 +10,7 @@ import useApi from '../hooks/useApi';
 import useAuth from '../hooks/useAuth';
 import useConfirm from '../hooks/useConfirm';
 import useDebouncedValue from '../hooks/useDebouncedValue';
+import MetricsCard from '../components/MetricsCard';
 import { formatCurrency, formatDate } from '../utils/format';
 import { productPrice } from '../utils/priceType';
 import { DELIVERY_STATUS_LABELS, DELIVERY_STATUS_OPTIONS, deliveryStatusLabel } from '../utils/labels';
@@ -20,6 +21,7 @@ const emptyCreateForm = {
   vendor_id: '',
   nombre: '',
   apellido: '',
+  email: '',
   items: [],
   region: '',
   comuna: '',
@@ -45,6 +47,7 @@ export default function BlueExpressPage() {
     `/api/sales?tipo_venta=ENVIO_REGION&search=${encodeURIComponent(debouncedSearch)}`,
     { deps: [debouncedSearch] }
   );
+  const { data: movimientos } = useFetch('/api/sales/regiones/movimientos', { enabled: isAdmin, deps: [data] });
   const { data: usersData } = useFetch('/api/users', { enabled: canManage });
   const { data: productsData } = useFetch('/api/products/catalog');
   const { post, put, del, loading: saving, error: saveError } = useApi();
@@ -189,7 +192,7 @@ export default function BlueExpressPage() {
       region: createForm.region,
       phone: createForm.phone,
       notes: createForm.notes,
-      client: { name: `${createForm.nombre.trim()} ${createForm.apellido.trim()}` },
+      client: { name: `${createForm.nombre.trim()} ${createForm.apellido.trim()}`, email: createForm.email.trim() || undefined },
     };
     if (canManage) payload.vendor_id = Number(createForm.vendor_id);
 
@@ -294,6 +297,20 @@ export default function BlueExpressPage() {
         </div>
       </div>
 
+      {isAdmin && movimientos && (
+        <div className="card" style={{ padding: 20, marginBottom: 24 }}>
+          <h3 style={{ margin: '0 0 4px', fontSize: 15 }}>Movimientos de envíos a regiones</h3>
+          <p style={{ color: 'var(--color-text-muted)', margin: '0 0 16px', fontSize: 13 }}>
+            Solo visible para admin. Estos envíos no entran a la caja (ni al crearse ni al entregarse): se llevan como un movimiento independiente.
+          </p>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <MetricsCard label="Envíos" value={movimientos.cantidad} subtext={formatCurrency(movimientos.monto_total)} />
+            <MetricsCard label="Entregados" value={movimientos.cantidad_entregados} subtext={formatCurrency(movimientos.monto_entregado)} />
+            <MetricsCard label="Pendientes" value={movimientos.cantidad_pendientes} subtext={formatCurrency(movimientos.monto_pendiente)} />
+          </div>
+        </div>
+      )}
+
       {actionError && <div className="alert alert-error">{actionError}</div>}
 
       {showCreateForm && (
@@ -321,6 +338,11 @@ export default function BlueExpressPage() {
                 <input placeholder="Nombre" value={createForm.nombre} onChange={(e) => setCreateForm({ ...createForm, nombre: e.target.value })} required style={{ flex: 1, minWidth: 0 }} />
                 <input placeholder="Apellido" value={createForm.apellido} onChange={(e) => setCreateForm({ ...createForm, apellido: e.target.value })} required style={{ flex: 1, minWidth: 0 }} />
               </div>
+            </div>
+
+            <div className="form-field">
+              <label>Correo del cliente</label>
+              <input type="email" placeholder="cliente@correo.com" value={createForm.email} onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })} />
             </div>
 
             <ShipmentItemsInput
@@ -414,7 +436,7 @@ export default function BlueExpressPage() {
                       </td>
                     )}
                     <td data-label="Producto">{s.product_name}</td>
-                    <td data-label="Cliente">{s.client_name}</td>
+                    <td data-label="Cliente">{s.client_name}{s.client_email && <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{s.client_email}</div>}</td>
                     <td data-label="Vendedor">{s.vendor_name}</td>
                     <td data-label="Región">{s.region || '-'}</td>
                     <td data-label="Comuna">{s.comuna || '-'}</td>

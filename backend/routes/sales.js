@@ -22,7 +22,7 @@ const requireManage = (message) => requireRole(MANAGE_ROLES, message);
 router.get('/trash', authenticateToken, requireAdmin('Solo un admin puede ver la papelera'), async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT s.*, u.name as vendor_name, c.name as client_name, co.name as courier_name
+      `SELECT s.*, u.name as vendor_name, c.name as client_name, c.email as client_email, co.name as courier_name
        FROM sales s
        JOIN users u ON s.vendor_id = u.id
        JOIN clients c ON s.client_id = c.id
@@ -45,7 +45,7 @@ router.get('/trash', authenticateToken, requireAdmin('Solo un admin puede ver la
 router.get('/pending-delivery', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT s.*, u.name as vendor_name, c.name as client_name, co.name as courier_name
+      `SELECT s.*, u.name as vendor_name, c.name as client_name, c.email as client_email, co.name as courier_name
        FROM sales s
        JOIN users u ON s.vendor_id = u.id
        JOIN clients c ON s.client_id = c.id
@@ -62,6 +62,38 @@ router.get('/pending-delivery', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error al obtener envíos pendientes:', err);
     res.status(500).json({ error: 'Error al obtener envíos pendientes' });
+  }
+});
+
+// ============================================
+// GET - Movimientos de Envíos a Regiones (solo admin). Estos envíos no entran a la caja
+// (ni al crearse ni al entregarse): se llevan como un movimiento independiente.
+// ============================================
+router.get('/regiones/movimientos', authenticateToken, requireAdmin('Solo un admin puede ver los movimientos de envíos a regiones'), async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE delivery_status != 'cancelado') as cantidad,
+         COALESCE(SUM(total) FILTER (WHERE delivery_status != 'cancelado'), 0) as monto_total,
+         COUNT(*) FILTER (WHERE delivery_status = 'entregado') as cantidad_entregados,
+         COALESCE(SUM(total) FILTER (WHERE delivery_status = 'entregado'), 0) as monto_entregado,
+         COUNT(*) FILTER (WHERE delivery_status NOT IN ('entregado', 'cancelado')) as cantidad_pendientes,
+         COALESCE(SUM(total) FILTER (WHERE delivery_status NOT IN ('entregado', 'cancelado')), 0) as monto_pendiente
+       FROM sales
+       WHERE tipo_venta = 'ENVIO_REGION' AND deleted_at IS NULL`
+    );
+    const r = result.rows[0];
+    res.json({
+      cantidad: parseInt(r.cantidad),
+      monto_total: parseFloat(r.monto_total),
+      cantidad_entregados: parseInt(r.cantidad_entregados),
+      monto_entregado: parseFloat(r.monto_entregado),
+      cantidad_pendientes: parseInt(r.cantidad_pendientes),
+      monto_pendiente: parseFloat(r.monto_pendiente),
+    });
+  } catch (err) {
+    console.error('Error al obtener movimientos de regiones:', err);
+    res.status(500).json({ error: 'Error al obtener movimientos de envíos a regiones' });
   }
 });
 
@@ -220,7 +252,7 @@ router.get('/', authenticateToken, async (req, res) => {
     const total = parseInt(countResult.rows[0].count);
 
     let query = `
-      SELECT s.*, u.name as vendor_name, c.name as client_name, co.name as courier_name
+      SELECT s.*, u.name as vendor_name, c.name as client_name, c.email as client_email, co.name as courier_name
       FROM sales s
       JOIN users u ON s.vendor_id = u.id
       JOIN clients c ON s.client_id = c.id
@@ -262,7 +294,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
     const user = req.user;
 
     const result = await pool.query(
-      `SELECT s.*, u.name as vendor_name, c.name as client_name, co.name as courier_name
+      `SELECT s.*, u.name as vendor_name, c.name as client_name, c.email as client_email, co.name as courier_name
        FROM sales s
        JOIN users u ON s.vendor_id = u.id
        JOIN clients c ON s.client_id = c.id
@@ -460,7 +492,7 @@ router.put('/batch-status', authenticateToken, async (req, res) => {
     if (existing.rows.length !== ids.length) {
       throw { status: 404, message: 'Una o más ventas no existen' };
     }
-    if (existing.rows.some((s) => s.tipo_venta !== 'ENVIO')) {
+    if (existing.rows.some((s) => !['ENVIO', 'ENVIO_REGION'].includes(s.tipo_venta))) {
       throw { status: 400, message: 'Solo las ventas de tipo envío tienen estado de paquete' };
     }
     if (user.role === 'vendedor' && existing.rows.some((s) => s.vendor_id !== user.id)) {
@@ -731,7 +763,7 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
 
     const sale = saleResult.rows[0];
 
-    if (sale.tipo_venta !== 'ENVIO') {
+    if (!['ENVIO', 'ENVIO_REGION'].includes(sale.tipo_venta)) {
       return res.status(400).json({ error: 'Solo las ventas de tipo envío tienen estado de paquete' });
     }
 

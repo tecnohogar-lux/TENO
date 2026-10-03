@@ -4,6 +4,7 @@ import useAuth from '../hooks/useAuth';
 import usePreguntasUnreadCount from '../hooks/usePreguntasUnreadCount';
 import Logo from './Logo';
 import CategoryIcon from './CategoryIcon';
+import HelpButton from './HelpButton';
 
 const PREGUNTAS_ROLES = ['vendedor', 'operador', 'admin', 'caja'];
 
@@ -289,7 +290,9 @@ export default function Sidebar({ mobileOpen = false, onNavigate }) {
         ))}
       </nav>
 
-      <div style={{ padding: 16, borderTop: '1px solid var(--color-sidebar-border)' }}>
+      <div style={{ padding: 16, borderTop: '1px solid var(--color-sidebar-border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {/* Centro de ayuda: por ahora solo para vendedores. */}
+        {user?.role === 'vendedor' && <HelpButton onOpen={onNavigate} />}
         <button
           onClick={logout}
           className="btn"

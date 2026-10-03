@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { FAQ, TUTORIALES } from '../data/ayudaVendedores';
 
@@ -26,8 +27,9 @@ function Respuesta({ texto }) {
   return <div className="help-answer">{bloques}</div>;
 }
 
-// Botón flotante + panel de ayuda con preguntas frecuentes y tutoriales (para vendedores).
-export default function HelpButton() {
+// Botón "Ayuda" (va al final del menú lateral) + panel con preguntas frecuentes y tutoriales (para vendedores).
+// onOpen permite cerrar el menú móvil al abrir el panel.
+export default function HelpButton({ onOpen }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState('preguntas');
@@ -77,16 +79,16 @@ export default function HelpButton() {
 
   return (
     <>
-      <button type="button" className="help-fab" onClick={() => setOpen(true)} aria-label="Abrir ayuda" title="Ayuda">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <button type="button" className="help-nav-btn" onClick={() => { onOpen?.(); setOpen(true); }} aria-label="Abrir ayuda" title="Ayuda">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
           <path d="M9.6 9.4a2.5 2.5 0 1 1 3.6 2.2c-.7.4-1.2.9-1.2 1.7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           <circle cx="12" cy="17" r="1.1" fill="currentColor" />
         </svg>
-        <span className="help-fab-label">Ayuda</span>
+        <span>Ayuda</span>
       </button>
 
-      {open && (
+      {open && createPortal(
         <>
           <div className="help-overlay" onClick={close} />
           <aside className="help-panel" role="dialog" aria-modal="true" aria-label="Centro de ayuda">
@@ -178,7 +180,8 @@ export default function HelpButton() {
 
             <div className="help-footer">¿No encontraste tu respuesta? Consulta con tu operador o con el administrador.</div>
           </aside>
-        </>
+        </>,
+        document.body
       )}
     </>
   );

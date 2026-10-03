@@ -1,12 +1,9 @@
 import { useState } from 'react';
 import Sidebar from './Sidebar';
 import Logo from './Logo';
-import HelpButton from './HelpButton';
-import useAuth from '../hooks/useAuth';
 
 export default function Layout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { user } = useAuth();
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--color-bg)' }}>
@@ -29,9 +26,6 @@ export default function Layout({ children }) {
       <Sidebar mobileOpen={mobileOpen} onNavigate={() => setMobileOpen(false)} />
 
       <main className="page-content" style={{ flex: 1, minWidth: 0 }}>{children}</main>
-
-      {/* Centro de ayuda flotante: por ahora solo para vendedores. */}
-      {user?.role === 'vendedor' && <HelpButton />}
     </div>
   );
 }

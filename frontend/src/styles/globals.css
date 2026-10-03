@@ -532,29 +532,25 @@ tbody tr:hover {
 
 
 
-/* ---------- Centro de ayuda (botón flotante) ---------- */
-.help-fab {
-  position: fixed;
-  right: 20px;
-  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
-  z-index: 90;
-  display: inline-flex;
+/* ---------- Centro de ayuda ---------- */
+.help-nav-btn {
+  display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  height: 52px;
-  padding: 0 18px 0 14px;
-  border: none;
-  border-radius: 999px;
-  background: var(--color-primary);
-  color: var(--color-text-inverse);
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--color-sidebar-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-sidebar-text-active);
   font: inherit;
   font-weight: 700;
   font-size: 14px;
   cursor: pointer;
-  box-shadow: var(--shadow-lg);
-  transition: background-color 0.15s ease, transform 0.15s ease;
+  transition: background-color 0.15s ease;
 }
-.help-fab:hover { background: var(--color-primary-hover); transform: translateY(-1px); }
+.help-nav-btn:hover { background: var(--color-sidebar-hover); }
 
 .help-overlay {
   position: fixed;
@@ -718,8 +714,6 @@ tbody tr:hover {
 }
 
 @media (max-width: 768px) {
-  .help-fab { right: 14px; width: 52px; padding: 0; justify-content: center; }
-  .help-fab-label { display: none; }
   .help-panel { inset: 0; width: 100%; max-width: 100%; border-radius: 0; border: none; }
   .help-search input { font-size: 16px; }
 }
@@ -736,5 +730,93 @@ tbody tr:hover {
 @media (max-width: 768px) {
   .form-grid-2 {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Escritorio angosto (laptops de 14", ventanas reducidas) ----------
+   Entre el layout móvil (≤768px) y las pantallas amplias (≥1441px) se compacta el
+   tamaño de los elementos para que ninguna página obligue a hacer scroll horizontal
+   (antes solo se adaptaba el móvil). En pantallas amplias todo queda como estaba. */
+
+/* Los hijos de una grilla no pueden ser más angostos que su contenido por defecto
+   (min-width:auto); sin esto un input o una tabla empuja toda la página a lo ancho. */
+[style*="grid-template-columns"] > *,
+.form-grid-2 > * {
+  min-width: 0;
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea {
+  max-width: 100%;
+}
+
+@media (min-width: 769px) and (max-width: 1440px) {
+  :root {
+    --sidebar-width: 212px;
+  }
+
+  .page-content {
+    padding: 22px 18px;
+  }
+
+  .card[style*="padding: 20"],
+  .card[style*="padding:20"] {
+    padding: 14px !important;
+  }
+
+  /* Tablas: celdas y texto más compactos, y se permite partir palabras largas
+     (productos, direcciones, correos) en vez de ensanchar la tabla. */
+  thead th {
+    padding: 8px 7px;
+    font-size: 11px;
+  }
+
+  tbody td {
+    padding: 8px 7px;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+  }
+
+  .btn {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  h1 {
+    font-size: 20px !important;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1180px) {
+  :root {
+    --sidebar-width: 190px;
+  }
+
+  .page-content {
+    padding: 18px 12px;
+  }
+
+  thead th {
+    padding: 7px 5px;
+    font-size: 10px;
+    letter-spacing: 0;
+  }
+
+  tbody td {
+    padding: 7px 5px;
+    font-size: 12px;
+  }
+
+  .btn {
+    padding: 7px 10px;
+    font-size: 12px;
+  }
+
+  .form-field input,
+  .form-field select,
+  .form-field textarea {
+    padding: 8px 10px;
+    font-size: 13px;
   }
 }

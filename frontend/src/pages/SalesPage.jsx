@@ -101,7 +101,6 @@ export default function SalesPage() {
       {summary && (
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
           <MetricsCard label="Total ventas" value={summary.total} />
-          {user.role !== 'vendedor' && <MetricsCard label="Monto generado" value={formatCurrency(summary.monto)} />}
           <MetricsCard label="Envíos" value={summary.envios} />
           <MetricsCard label="Tienda" value={summary.tienda} />
         </div>

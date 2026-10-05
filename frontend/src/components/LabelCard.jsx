@@ -1,7 +1,7 @@
 import { QRCodeSVG } from 'qrcode.react';
 import { formatCurrency } from '../utils/format';
 import { saleLines } from '../utils/saleLines';
-import { deliveryTypeLabel } from '../utils/labels';
+import { deliveryTypeLabel, isSinCobro } from '../utils/labels';
 
 const IG_CAPTION = 'Síguenos en IG y descubre miles de productos';
 const IG_URL = 'https://www.instagram.com/tecnohogar.cl/';
@@ -66,9 +66,12 @@ export default function LabelCard({ sale }) {
         </div>
       </div>
 
-      <div style={{ padding: '6px 10px', fontSize: 16, fontWeight: 700, textAlign: 'right' }}>
-        TOTAL: {formatCurrency(sale.total)}
-      </div>
+      {/* Los envíos sin cobro (solo envío, solo entrega, cambio de producto) no muestran monto. */}
+      {!isSinCobro(sale) && (
+        <div style={{ padding: '6px 10px', fontSize: 16, fontWeight: 700, textAlign: 'right' }}>
+          TOTAL: {formatCurrency(sale.total)}
+        </div>
+      )}
     </div>
   );
 }

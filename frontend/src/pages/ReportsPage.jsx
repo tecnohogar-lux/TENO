@@ -7,7 +7,7 @@ import useAuth from '../hooks/useAuth';
 import useConfirm from '../hooks/useConfirm';
 import SearchableSelect from '../components/SearchableSelect';
 import { formatCurrency, formatDate } from '../utils/format';
-import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, TIPO_VENTA_LABELS, saleStatusLabel, deliveryStatusLabel, tipoVentaLabel, paymentMethodLabel, paymentBreakdownLines, PAYMENT_METHODS } from '../utils/labels';
+import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, TIPO_VENTA_LABELS, saleStatusLabel, deliveryStatusLabel, tipoVentaLabel, paymentMethodLabel, paymentBreakdownLines, PAYMENT_METHODS, isSinCobro } from '../utils/labels';
 import { PRICE_TYPE_LABELS, priceTypeLabel } from '../utils/priceType';
 
 const emptyFilters = { dateFrom: '', dateTo: '', nombre: '', producto: '', vendedor: '', cliente: '', canal: '', tipoPrecio: '', formaPago: '' };
@@ -74,7 +74,8 @@ export default function ReportsPage() {
   const clientes = useMemo(() => [...new Set((data?.sales || []).map((s) => s.client_name))].sort(), [data]);
 
   const filteredSales = useMemo(() => {
-    let rows = data?.sales || [];
+    // Los envíos sin cobro (solo envío, solo entrega, cambio de producto) no entran a los reportes.
+    let rows = (data?.sales || []).filter((s) => !isSinCobro(s));
 
     if (filters.dateFrom) {
       const from = parseLocalDayBoundary(filters.dateFrom);

@@ -7,6 +7,7 @@ const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 const { totalesPorFormaPago: calcularTotalesPorFormaPago, formaPagoCondition } = require('../utils/paymentBreakdown');
+const { conCobroSql } = require('../utils/sinCobro');
 
 const requireAdminOperador = requireRole(['admin', 'operador', 'caja'], 'No tienes permiso para acceder a Apertura/Cierre de Caja');
 
@@ -24,7 +25,7 @@ async function calcularTotales(desde, hasta, saldoInicial, porFormaPago = null) 
   const ventas = await pool.query(
     `SELECT COALESCE(SUM(total) FILTER (WHERE status = 'completado'), 0) as total_vendido
      FROM sales
-     WHERE deleted_at IS NULL AND tipo_venta != 'ENVIO_REGION' AND created_at >= $1 AND created_at <= $2`,
+     WHERE deleted_at IS NULL AND tipo_venta != 'ENVIO_REGION' AND ${conCobroSql()} AND created_at >= $1 AND created_at <= $2`,
     [desde, hasta]
   );
   if (!porFormaPago) porFormaPago = await obtenerTotalesPorFormaPago(desde, hasta);
@@ -52,7 +53,8 @@ async function calcularTotales(desde, hasta, saldoInicial, porFormaPago = null) 
 // Ventas del período separadas por canal (Tienda / Envío RM / Envíos a Región), con filtros opcionales.
 async function obtenerVentasPeriodo(desde, hasta, filtros = {}) {
   // Envíos a Regiones no entran a la caja (se llevan aparte, ver Envíos Regiones).
-  const conditions = ['s.deleted_at IS NULL', `s.tipo_venta != 'ENVIO_REGION'`, 's.created_at >= $1', 's.created_at <= $2'];
+  // Los envíos sin cobro (solo envío, solo entrega, cambio de producto) no entran a la caja.
+  const conditions = ['s.deleted_at IS NULL', `s.tipo_venta != 'ENVIO_REGION'`, conCobroSql('s.'), 's.created_at >= $1', 's.created_at <= $2'];
   const params = [desde, hasta];
 
   if (filtros.order_id) {

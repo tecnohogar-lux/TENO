@@ -6,6 +6,7 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 const { MIN_MAYOR, MIN_MAYOR_MESSAGE, lookupComisionUnitaria, validateLines, summarizeLines } = require('../utils/saleLines');
 const { buildQrValue } = require('../utils/qrCode');
+const { esSinCobro, conCobroSql, aplicarTipoEnvio } = require('../utils/sinCobro');
 
 const DELIVERY_STATUSES = ['listo_para_imprimir', 'impreso', 'en_camino', 'entregado', 'cancelado', 'reprogramado'];
 
@@ -120,7 +121,8 @@ router.get('/summary', authenticateToken, async (req, res) => {
     const user = req.user;
     const { search } = req.query;
 
-    const conditions = ['s.deleted_at IS NULL'];
+    // Los envíos sin cobro (solo envío, solo entrega, cambio de producto) no cuentan en las métricas.
+    const conditions = ['s.deleted_at IS NULL', conCobroSql('s.')];
     const params = [];
 
     if (user.role === 'vendedor') {
@@ -175,6 +177,7 @@ router.get('/comisiones', authenticateToken, requireManage('No tienes permiso pa
 
     const conditions = [
       's.deleted_at IS NULL',
+      conCobroSql('s.'),
       `s.status = 'completado'`,
       `(s.tipo_venta = 'TIENDA' OR s.delivery_status = 'entregado')`,
       `(
@@ -621,10 +624,8 @@ router.put('/batch-delivery-type', authenticateToken, requireManage('Solo operad
       return res.status(400).json({ error: 'Solo las ventas de tipo envío tienen tipo de envío' });
     }
 
-    const result = await pool.query(
-      `UPDATE sales SET delivery_type = $1, updated_at = CURRENT_TIMESTAMP WHERE id = ANY($2::int[]) RETURNING *`,
-      [delivery_type, ids]
-    );
+    // Los tipos "sin cobro" dejan precio, total y comisión en 0 (con respaldo para restaurar).
+    const updatedRows = await aplicarTipoEnvio(pool, ids, delivery_type);
 
     for (const before of existing.rows) {
       await logAudit({
@@ -637,7 +638,7 @@ router.put('/batch-delivery-type', authenticateToken, requireManage('Solo operad
       });
     }
 
-    res.json({ message: `${result.rows.length} envío(s) actualizado(s)`, sales: result.rows });
+    res.json({ message: `${updatedRows.length} envío(s) actualizado(s)`, sales: updatedRows });
 
   } catch (err) {
     console.error('Error al actualizar tipo de envío por lote:', err);
@@ -678,7 +679,8 @@ router.put('/:id', authenticateToken, async (req, res) => {
 
     // Un envío con varios productos (líneas con su propio tipo de precio) no permite
     // cambiar producto/cantidad/monto: se ignoran esos campos para no desarmar las líneas.
-    if (sale.items) {
+    // Un envío sin cobro tampoco: su precio y comisión se mantienen en 0.
+    if (sale.items || esSinCobro(sale.delivery_type)) {
       product_name = undefined;
       quantity = undefined;
       price = undefined;
@@ -896,10 +898,7 @@ router.put('/:id/delivery-type', authenticateToken, requireManage('Solo operador
       return res.status(400).json({ error: 'Solo las ventas de tipo envío tienen tipo de envío' });
     }
 
-    const result = await pool.query(
-      `UPDATE sales SET delivery_type = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
-      [delivery_type, id]
-    );
+    const [updated] = await aplicarTipoEnvio(pool, [Number(id)], delivery_type);
 
     await logAudit({
       userId: user.id,
@@ -910,7 +909,7 @@ router.put('/:id/delivery-type', authenticateToken, requireManage('Solo operador
       newValues: { delivery_type }
     });
 
-    res.json({ message: 'Tipo de envío actualizado', sale: result.rows[0] });
+    res.json({ message: 'Tipo de envío actualizado', sale: updated });
 
   } catch (err) {
     console.error('Error al actualizar tipo de envío:', err);

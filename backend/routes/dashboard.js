@@ -4,6 +4,18 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 const { totalesPorFormaPago } = require('../utils/paymentBreakdown');
+const { conCobroSql } = require('../utils/sinCobro');
+
+// "Hoy" se mide en hora de Chile (el servidor corre en UTC: sin esto el día se reiniciaría
+// a las 21:00 hora chilena). Las columnas created_at/delivered_at son TIMESTAMP sin zona,
+// guardadas en la hora de la sesión de la base; se pasan a hora de Chile para comparar.
+const TZ_CHILE = 'America/Santiago';
+const HOY = `(NOW() AT TIME ZONE '${TZ_CHILE}')::date`;
+const diaChile = (col) => `((${col} AT TIME ZONE current_setting('TimeZone')) AT TIME ZONE '${TZ_CHILE}')::date`;
+
+// Los envíos sin cobro (solo envío, solo entrega, cambio de producto) no cuentan en
+// ninguna métrica ni conteo de ventas.
+const CON_COBRO = conCobroSql();
 
 // ============================================
 // GET - Comparativo de ventas: semana actual vs semana anterior
@@ -21,7 +33,7 @@ router.get('/comparison', authenticateToken, async (req, res) => {
     const actual = await pool.query(
       `SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total
        FROM sales
-       WHERE status = 'completado' AND deleted_at IS NULL
+       WHERE status = 'completado' AND deleted_at IS NULL AND ${CON_COBRO}
        AND DATE_TRUNC('${period}', created_at) = DATE_TRUNC('${period}', CURRENT_DATE)
        ${scopeClause}`,
       params
@@ -30,7 +42,7 @@ router.get('/comparison', authenticateToken, async (req, res) => {
     const anterior = await pool.query(
       `SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total
        FROM sales
-       WHERE status = 'completado' AND deleted_at IS NULL
+       WHERE status = 'completado' AND deleted_at IS NULL AND ${CON_COBRO}
        AND DATE_TRUNC('${period}', created_at) = DATE_TRUNC('${period}', CURRENT_DATE - INTERVAL '1 ${period}')
        ${scopeClause}`,
       params
@@ -92,7 +104,7 @@ async function getDashboardVendedor(userId) {
   const hoy = await pool.query(
     `SELECT COUNT(*) as count, COALESCE(SUM(total) FILTER (WHERE status = 'completado'), 0) as total
      FROM sales
-     WHERE vendor_id = $1 AND deleted_at IS NULL AND DATE(created_at) = CURRENT_DATE`,
+     WHERE vendor_id = $1 AND deleted_at IS NULL AND ${CON_COBRO} AND ${diaChile('created_at')} = ${HOY}`,
     [userId]
   );
 
@@ -100,14 +112,14 @@ async function getDashboardVendedor(userId) {
   const mes = await pool.query(
     `SELECT COUNT(*) as count, COALESCE(SUM(total) FILTER (WHERE status = 'completado'), 0) as total
      FROM sales
-     WHERE vendor_id = $1 AND deleted_at IS NULL
+     WHERE vendor_id = $1 AND deleted_at IS NULL AND ${CON_COBRO}
      AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)`,
     [userId]
   );
 
   // Últimas ventas
   const ultimas = await pool.query(
-    `SELECT s.id, s.product_name, s.total, s.status, s.tipo_venta, s.delivery_status, s.created_at, c.name as client_name
+    `SELECT s.id, s.product_name, s.total, s.status, s.tipo_venta, s.delivery_status, s.delivery_type, s.created_at, c.name as client_name
      FROM sales s
      JOIN clients c ON s.client_id = c.id
      WHERE s.vendor_id = $1 AND s.deleted_at IS NULL
@@ -136,8 +148,8 @@ async function getTendencia14Dias(vendorId = null) {
   const vendorFilter = vendorId ? 'AND s.vendor_id = $1' : '';
   const result = await pool.query(
     `SELECT gs.dia::date as fecha, COALESCE(SUM(s.total) FILTER (WHERE s.status = 'completado'), 0) as total
-     FROM generate_series(CURRENT_DATE - INTERVAL '13 days', CURRENT_DATE, INTERVAL '1 day') as gs(dia)
-     LEFT JOIN sales s ON DATE(s.created_at) = gs.dia AND s.deleted_at IS NULL ${vendorFilter}
+     FROM generate_series(${HOY} - 13, ${HOY}, INTERVAL '1 day') as gs(dia)
+     LEFT JOIN sales s ON ${diaChile('s.created_at')} = gs.dia::date AND s.deleted_at IS NULL AND ${conCobroSql('s.')} ${vendorFilter}
      GROUP BY gs.dia
      ORDER BY gs.dia`,
     params
@@ -148,8 +160,8 @@ async function getTendencia14Dias(vendorId = null) {
 async function getVentasEntregadasAyer(scopeClause = '', params = []) {
   const result = await pool.query(
     `SELECT COUNT(*) as count FROM sales
-     WHERE delivery_status = 'entregado' AND deleted_at IS NULL
-     AND DATE(delivered_at) = CURRENT_DATE - INTERVAL '1 day'
+     WHERE delivery_status = 'entregado' AND deleted_at IS NULL AND ${CON_COBRO}
+     AND ${diaChile('delivered_at')} = ${HOY} - 1
      ${scopeClause}`,
     params
   );
@@ -159,10 +171,34 @@ async function getVentasEntregadasAyer(scopeClause = '', params = []) {
 async function getVentasPosHoy() {
   const result = await pool.query(
     `SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total FROM sales
-     WHERE tipo_venta = 'TIENDA' AND status = 'completado' AND deleted_at IS NULL
-     AND DATE(created_at) = CURRENT_DATE`
+     WHERE tipo_venta = 'TIENDA' AND status = 'completado' AND deleted_at IS NULL AND ${CON_COBRO}
+     AND ${diaChile('created_at')} = ${HOY}`
   );
   return { cantidad: parseInt(result.rows[0].count), total: parseFloat(result.rows[0].total) };
+}
+
+// "Monto generado hoy": solo lo que efectivamente entró HOY: ventas registradas en Caja,
+// ingresos a caja y entregas completadas de Delivery Santiago. Se reinicia cada día.
+// (Envíos a regiones y envíos sin cobro no entran.)
+async function getMontoGeneradoHoy() {
+  const result = await pool.query(
+    `SELECT
+       (SELECT COALESCE(SUM(total), 0) FROM sales
+         WHERE deleted_at IS NULL AND ${CON_COBRO} AND status != 'cancelado'
+           AND tipo_venta IN ('TIENDA', 'ENVIO_PREPAGADO')
+           AND ${diaChile('created_at')} = ${HOY}) as caja,
+       (SELECT COALESCE(SUM(monto), 0) FROM ingresos_caja
+         WHERE ${diaChile('created_at')} = ${HOY}) as ingresos,
+       (SELECT COALESCE(SUM(total), 0) FROM sales
+         WHERE deleted_at IS NULL AND ${CON_COBRO} AND tipo_venta = 'ENVIO'
+           AND delivery_status = 'entregado'
+           AND ${diaChile('delivered_at')} = ${HOY}) as entregas`
+  );
+  const r = result.rows[0];
+  const caja = parseFloat(r.caja);
+  const ingresos = parseFloat(r.ingresos);
+  const entregas = parseFloat(r.entregas);
+  return { total: caja + ingresos + entregas, caja, ingresos, entregas };
 }
 
 async function getEfectivoCaja() {
@@ -197,22 +233,23 @@ async function getEstadoOrdenes() {
 // ============================================
 async function getDashboardOperador() {
   const hoy = await pool.query(
-    `SELECT COUNT(*) as count, COALESCE(SUM(total) FILTER (WHERE status = 'completado'), 0) as total
+    `SELECT COUNT(*) as count
      FROM sales
-     WHERE deleted_at IS NULL AND DATE(created_at) = CURRENT_DATE`
+     WHERE deleted_at IS NULL AND ${CON_COBRO} AND ${diaChile('created_at')} = ${HOY}`
   );
+  const montoHoy = await getMontoGeneradoHoy();
 
   const mes = await pool.query(
     `SELECT COUNT(*) as count, COALESCE(SUM(total) FILTER (WHERE status = 'completado'), 0) as total
      FROM sales
-     WHERE deleted_at IS NULL
+     WHERE deleted_at IS NULL AND ${CON_COBRO}
      AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)`
   );
 
   const productos = await pool.query(
     `SELECT product_name, COUNT(*) as cantidad, COALESCE(SUM(total), 0) as total
      FROM sales
-     WHERE deleted_at IS NULL
+     WHERE deleted_at IS NULL AND ${CON_COBRO}
      AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)
      GROUP BY product_name
      ORDER BY cantidad DESC
@@ -228,7 +265,8 @@ async function getDashboardOperador() {
     role: 'operador',
     ventas_hoy: {
       cantidad: parseInt(hoy.rows[0].count),
-      total: parseFloat(hoy.rows[0].total)
+      total: montoHoy.total,
+      desglose: { caja: montoHoy.caja, ingresos: montoHoy.ingresos, entregas: montoHoy.entregas }
     },
     ventas_mes: {
       cantidad: parseInt(mes.rows[0].count),
@@ -253,15 +291,16 @@ async function getDashboardOperador() {
 // ============================================
 async function getDashboardAdmin() {
   const hoy = await pool.query(
-    `SELECT COUNT(*) as count, COALESCE(SUM(total) FILTER (WHERE status = 'completado'), 0) as total
+    `SELECT COUNT(*) as count
      FROM sales
-     WHERE deleted_at IS NULL AND DATE(created_at) = CURRENT_DATE`
+     WHERE deleted_at IS NULL AND ${CON_COBRO} AND ${diaChile('created_at')} = ${HOY}`
   );
+  const montoHoy = await getMontoGeneradoHoy();
 
   const mes = await pool.query(
     `SELECT COUNT(*) as count, COALESCE(SUM(total) FILTER (WHERE status = 'completado'), 0) as total
      FROM sales
-     WHERE deleted_at IS NULL
+     WHERE deleted_at IS NULL AND ${CON_COBRO}
      AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)`
   );
 
@@ -274,7 +313,8 @@ async function getDashboardAdmin() {
     role: 'admin',
     ventas_hoy: {
       cantidad: parseInt(hoy.rows[0].count),
-      total: parseFloat(hoy.rows[0].total)
+      total: montoHoy.total,
+      desglose: { caja: montoHoy.caja, ingresos: montoHoy.ingresos, entregas: montoHoy.entregas }
     },
     ventas_mes: {
       cantidad: parseInt(mes.rows[0].count),

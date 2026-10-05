@@ -9,7 +9,7 @@ import useAuth from '../hooks/useAuth';
 import useConfirm from '../hooks/useConfirm';
 import useDebouncedValue from '../hooks/useDebouncedValue';
 import { formatCurrency, formatDate } from '../utils/format';
-import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, TIPO_VENTA_LABELS, saleStatusLabel, deliveryStatusLabel, tipoVentaLabel, paymentMethodLabel, paymentBreakdownLines } from '../utils/labels';
+import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, TIPO_VENTA_LABELS, saleStatusLabel, deliveryStatusLabel, tipoVentaLabel, paymentMethodLabel, paymentBreakdownLines, isSinCobro, deliveryTypeLabel } from '../utils/labels';
 import { PRICE_TYPE_LABELS, priceTypeLabel } from '../utils/priceType';
 import PriceTypeBadge from '../components/PriceTypeBadge';
 import { shareSaleViaWhatsApp } from '../utils/whatsapp';
@@ -150,7 +150,7 @@ export default function SalesPage() {
                     </td>
                     <td data-label="Precios"><Badge label={priceTypeLabel(s.price_type)} color={PRICE_TYPE_LABELS[s.price_type]?.color} /></td>
                     <td data-label="Cantidad">{s.quantity}</td>
-                    <td data-label="Total">{formatCurrency(s.total)}</td>
+                    <td data-label="Total">{isSinCobro(s) ? '—' : formatCurrency(s.total)}</td>
                     <td data-label="Estado">
                       <Badge label={saleStatusLabel(s.status)} color={SALE_STATUS_LABELS[s.status]?.color} />
                     </td>
@@ -267,8 +267,8 @@ export default function SalesPage() {
                       <td data-label="Producto">{l.product_name}</td>
                       <td data-label="Precios"><PriceTypeBadge type={l.price_type} /></td>
                       <td data-label="Cant.">{l.quantity}</td>
-                      <td data-label="Precio">{formatCurrency(l.price)}</td>
-                      <td data-label="Subtotal">{formatCurrency(Number(l.quantity) * Number(l.price))}</td>
+                      <td data-label="Precio">{isSinCobro(detailSale) ? '—' : formatCurrency(l.price)}</td>
+                      <td data-label="Subtotal">{isSinCobro(detailSale) ? '—' : formatCurrency(Number(l.quantity) * Number(l.price))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -276,12 +276,18 @@ export default function SalesPage() {
             </div>
 
             <div style={{ marginTop: 12, textAlign: 'right', fontSize: 14, lineHeight: 1.7 }}>
-              {detailSale.precio_envio !== null && detailSale.precio_envio !== undefined && Number(detailSale.precio_envio) > 0 && (
-                <div style={{ color: 'var(--color-text-muted)' }}>Envío: {formatCurrency(detailSale.precio_envio)}</div>
-              )}
-              <div style={{ fontSize: 17, fontWeight: 700 }}>Total: {formatCurrency(detailSale.total)}</div>
-              {detailSale.comision !== null && detailSale.comision !== undefined && (
-                <div style={{ color: 'var(--color-text-muted)' }}>Comisión: {formatCurrency(detailSale.comision)}</div>
+              {isSinCobro(detailSale) ? (
+                <div style={{ color: 'var(--color-text-muted)' }}>Sin cobro · {deliveryTypeLabel(detailSale.delivery_type)}</div>
+              ) : (
+                <>
+                  {detailSale.precio_envio !== null && detailSale.precio_envio !== undefined && Number(detailSale.precio_envio) > 0 && (
+                    <div style={{ color: 'var(--color-text-muted)' }}>Envío: {formatCurrency(detailSale.precio_envio)}</div>
+                  )}
+                  <div style={{ fontSize: 17, fontWeight: 700 }}>Total: {formatCurrency(detailSale.total)}</div>
+                  {detailSale.comision !== null && detailSale.comision !== undefined && (
+                    <div style={{ color: 'var(--color-text-muted)' }}>Comisión: {formatCurrency(detailSale.comision)}</div>
+                  )}
+                </>
               )}
             </div>
 

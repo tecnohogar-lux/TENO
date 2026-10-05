@@ -13,7 +13,7 @@ import useConfirm from '../hooks/useConfirm';
 import useDebouncedValue from '../hooks/useDebouncedValue';
 import { formatCurrency, formatDate } from '../utils/format';
 import { productPrice } from '../utils/priceType';
-import { DELIVERY_STATUS_LABELS, DELIVERY_STATUS_OPTIONS, DELIVERY_TYPE_LABELS, DELIVERY_TYPE_OPTIONS, deliveryStatusLabel, deliveryTypeLabel } from '../utils/labels';
+import { DELIVERY_STATUS_LABELS, DELIVERY_STATUS_OPTIONS, DELIVERY_TYPE_LABELS, DELIVERY_TYPE_OPTIONS, deliveryStatusLabel, deliveryTypeLabel, isSinCobro } from '../utils/labels';
 
 // Cancelar o reprogramar un envío exige dejar el motivo (lo ve el vendedor).
 const MOTIVO_STATUSES = ['cancelado', 'reprogramado'];
@@ -479,8 +479,8 @@ export default function ShippingPage() {
                     <td data-label="Vendedor">{s.vendor_name}</td>
                     <td data-label="Dirección">{s.address || '-'}</td>
                     <td data-label="Comuna">{s.comuna || '-'}</td>
-                    <td data-label="Total">{formatCurrency(s.total)}</td>
-                    <td data-label="Comisión">{s.comision !== null && s.comision !== undefined ? formatCurrency(s.comision) : '-'}</td>
+                    <td data-label="Total">{isSinCobro(s) ? '—' : formatCurrency(s.total)}</td>
+                    <td data-label="Comisión">{isSinCobro(s) ? '—' : (s.comision !== null && s.comision !== undefined ? formatCurrency(s.comision) : '-')}</td>
                     <td data-label="Courier">
                       {canManage ? (
                         <select
@@ -649,10 +649,12 @@ export default function ShippingPage() {
               <label>Cantidad</label>
               <input type="number" min="1" value={editForm.quantity} onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })} required />
             </div>
-            <div className="form-field">
-              <label>Monto total</label>
-              <input type="number" min="0" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} required />
-            </div>
+            {!isSinCobro(editingSale) && (
+              <div className="form-field">
+                <label>Monto total</label>
+                <input type="number" min="0" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} required />
+              </div>
+            )}
               </>
             )}
             <div className="form-field">

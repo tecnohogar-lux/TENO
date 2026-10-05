@@ -2,7 +2,14 @@ import MetricsCard from './MetricsCard';
 import Badge from './Badge';
 import SalesTrendChart from './SalesTrendChart';
 import { formatCurrency, formatDate } from '../utils/format';
-import { SALE_STATUS_LABELS, saleStatusLabel, deliveryStatusLabel } from '../utils/labels';
+import { SALE_STATUS_LABELS, saleStatusLabel, deliveryStatusLabel, isSinCobro } from '../utils/labels';
+
+// Desglose del "Monto generado hoy": de dónde salió el dinero del día.
+function montoHoySubtext(ventasHoy) {
+  const d = ventasHoy.desglose;
+  if (!d) return undefined;
+  return `Caja ${formatCurrency(d.caja)} · Ingresos ${formatCurrency(d.ingresos)} · Entregas ${formatCurrency(d.entregas)}`;
+}
 
 function ComparisonCard({ comparison, period, onPeriodChange }) {
   if (!comparison) return null;
@@ -71,7 +78,7 @@ function VendedorDashboard({ data, comparison, period, onPeriodChange }) {
                 <tr key={s.id}>
                   <td data-label="Producto">{s.product_name}</td>
                   <td data-label="Cliente">{s.client_name}</td>
-                  <td data-label="Total">{formatCurrency(s.total)}</td>
+                  <td data-label="Total">{isSinCobro(s) ? '—' : formatCurrency(s.total)}</td>
                   <td data-label="Estado"><Badge label={saleStatusLabel(s.status)} color={SALE_STATUS_LABELS[s.status]?.color} /></td>
                   <td data-label="Fecha">{formatDate(s.created_at)}</td>
                 </tr>
@@ -114,7 +121,7 @@ function OperadorDashboard({ data, comparison, period, onPeriodChange }) {
     <>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 32 }}>
         <MetricsCard label="Ventas hoy" value={data.ventas_hoy.cantidad} />
-        <MetricsCard label="Monto generado hoy" value={formatCurrency(data.ventas_hoy.total)} />
+        <MetricsCard label="Monto generado hoy" value={formatCurrency(data.ventas_hoy.total)} subtext={montoHoySubtext(data.ventas_hoy)} />
         <MetricsCard label="Entregas pendientes" value={data.entregas_pendientes} />
         <MetricsCard label="Ventas entregadas (ayer)" value={data.ventas_entregadas_ayer} />
         {data.efectivo_caja !== null && data.efectivo_caja !== undefined && (
@@ -158,7 +165,7 @@ function AdminDashboard({ data, comparison, period, onPeriodChange }) {
     <>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 32 }}>
         <MetricsCard label="Ventas hoy" value={data.ventas_hoy.cantidad} />
-        <MetricsCard label="Monto generado hoy" value={formatCurrency(data.ventas_hoy.total)} />
+        <MetricsCard label="Monto generado hoy" value={formatCurrency(data.ventas_hoy.total)} subtext={montoHoySubtext(data.ventas_hoy)} />
         <MetricsCard label="Ventas del mes" value={formatCurrency(data.ventas_mes.total)} />
         <MetricsCard label="Entregas pendientes" value={data.entregas_pendientes} />
         <MetricsCard label="Ventas entregadas (ayer)" value={data.ventas_entregadas_ayer} />

@@ -54,6 +54,12 @@ export function deliveryStatusLabel(value) {
   return DELIVERY_STATUS_LABELS[value]?.label || value || '-';
 }
 
+// Envíos "sin cobro" (solo envío ya pagado, solo entrega incompleta, cambio de producto):
+// no se cobran, así que no se muestra su monto ni cuentan en métricas.
+export function isSinCobro(sale) {
+  return !!sale && !!sale.delivery_type && sale.delivery_type !== 'delivery';
+}
+
 export function deliveryTypeLabel(value) {
   return DELIVERY_TYPE_LABELS[value]?.label || value || '-';
 }

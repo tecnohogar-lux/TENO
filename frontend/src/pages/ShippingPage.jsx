@@ -3,6 +3,7 @@ import Layout from '../components/Layout';
 import Badge from '../components/Badge';
 import LabelPrint from '../components/LabelPrint';
 import LabelPrintBatch from '../components/LabelPrintBatch';
+import MotivoDialog from '../components/MotivoDialog';
 import SearchableSelect from '../components/SearchableSelect';
 import ShipmentItemsInput from '../components/ShipmentItemsInput';
 import useFetch from '../hooks/useFetch';
@@ -13,6 +14,9 @@ import useDebouncedValue from '../hooks/useDebouncedValue';
 import { formatCurrency, formatDate } from '../utils/format';
 import { productPrice } from '../utils/priceType';
 import { DELIVERY_STATUS_LABELS, DELIVERY_STATUS_OPTIONS, DELIVERY_TYPE_LABELS, DELIVERY_TYPE_OPTIONS, deliveryStatusLabel, deliveryTypeLabel } from '../utils/labels';
+
+// Cancelar o reprogramar un envío exige dejar el motivo (lo ve el vendedor).
+const MOTIVO_STATUSES = ['cancelado', 'reprogramado'];
 
 const FREE_PRODUCT_OPTION = [{ value: '__free__', label: 'Producto libre (no registrado)' }];
 
@@ -56,6 +60,7 @@ export default function ShippingPage() {
   const [bulkTypePanel, setBulkTypePanel] = useState(false);
   const [bulkTypeValue, setBulkTypeValue] = useState('delivery');
   const [typeMenuId, setTypeMenuId] = useState(null);
+  const [motivoPrompt, setMotivoPrompt] = useState(null); // { sale?, status }: pide el motivo antes de cancelar/reprogramar
   const [printSale, setPrintSale] = useState(null);
   const [printBatch, setPrintBatch] = useState(null);
   const [editingSale, setEditingSale] = useState(null);
@@ -87,11 +92,19 @@ export default function ShippingPage() {
     setSelectedIds(allSelected ? [] : shipments.map((s) => s.id));
   }
 
-  async function handleStatusChange(sale, newStatus) {
+  async function handleStatusChange(sale, newStatus, motivo) {
+    if (MOTIVO_STATUSES.includes(newStatus) && !motivo) {
+      setMotivoPrompt({ sale, status: newStatus });
+      return;
+    }
     setActionError('');
-    const result = await put(`/api/sales/${sale.id}/status`, { status: newStatus });
-    if (result.success) refetch();
-    else if (result.error) setActionError(result.error);
+    const result = await put(`/api/sales/${sale.id}/status`, { status: newStatus, motivo });
+    if (result.success) {
+      setMotivoPrompt(null);
+      refetch();
+    } else if (result.error && !motivo) {
+      setActionError(result.error);
+    }
   }
 
   // Tipo de envío (delivery/solo envío pagado/etc.): independiente del estado de
@@ -110,15 +123,20 @@ export default function ShippingPage() {
     else if (result.error) setActionError(result.error);
   }
 
-  async function applyBulkStatus(status) {
+  async function applyBulkStatus(status, motivo) {
+    if (MOTIVO_STATUSES.includes(status) && !motivo) {
+      setMotivoPrompt({ status });
+      return;
+    }
     setActionError('');
-    const result = await put('/api/sales/batch-status', { ids: selectedIds, status });
+    const result = await put('/api/sales/batch-status', { ids: selectedIds, status, motivo });
     if (result.success) {
       setSelectedIds([]);
       setBulkStatusPanel(false);
       setActionsOpen(false);
+      setMotivoPrompt(null);
       refetch();
-    } else if (result.error) {
+    } else if (result.error && !motivo) {
       setActionError(result.error);
     }
   }
@@ -482,6 +500,11 @@ export default function ShippingPage() {
                     <td data-label="Estado">
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
                         <Badge label={deliveryStatusLabel(s.delivery_status)} color={DELIVERY_STATUS_LABELS[s.delivery_status]?.color} />
+                        {MOTIVO_STATUSES.includes(s.delivery_status) && s.motivo_estado && (
+                          <div style={{ fontSize: 12, color: 'var(--color-text-muted)', maxWidth: 220, textAlign: 'right', whiteSpace: 'normal' }}>
+                            <strong>Motivo:</strong> {s.motivo_estado}
+                          </div>
+                        )}
                         {s.delivery_type !== 'delivery' && (
                           <Badge label={deliveryTypeLabel(s.delivery_type)} color={DELIVERY_TYPE_LABELS[s.delivery_type]?.color} />
                         )}
@@ -554,6 +577,18 @@ export default function ShippingPage() {
           </table>
         </div>
       )}
+
+      <MotivoDialog
+        open={!!motivoPrompt}
+        status={motivoPrompt?.status}
+        count={motivoPrompt?.sale ? 1 : selectedIds.length}
+        saving={saving}
+        error={motivoPrompt ? saveError : ''}
+        onCancel={() => setMotivoPrompt(null)}
+        onConfirm={(motivo) => (motivoPrompt.sale
+          ? handleStatusChange(motivoPrompt.sale, motivoPrompt.status, motivo)
+          : applyBulkStatus(motivoPrompt.status, motivo))}
+      />
 
       {printSale && <LabelPrint sale={printSale} onClose={() => setPrintSale(null)} onPrinted={refetch} />}
       {printBatch && <LabelPrintBatch sales={printBatch} onClose={() => setPrintBatch(null)} onPrinted={refetch} />}

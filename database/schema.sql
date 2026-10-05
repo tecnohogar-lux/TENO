@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS sales (
   delivery_status VARCHAR(50) DEFAULT 'listo_para_imprimir' CHECK (delivery_status IN (
     'listo_para_imprimir', 'impreso', 'en_camino', 'entregado', 'cancelado', 'reprogramado'
   )),
+  motivo_estado VARCHAR(500),
   delivery_type VARCHAR(30) NOT NULL DEFAULT 'delivery' CHECK (delivery_type IN (
     'delivery', 'solo_envio_pagado', 'solo_entrega_incompleto', 'cambio_producto'
   )),

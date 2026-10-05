@@ -8,6 +8,21 @@ const { MIN_MAYOR, MIN_MAYOR_MESSAGE, lookupComisionUnitaria, validateLines, sum
 const { buildQrValue } = require('../utils/qrCode');
 
 const DELIVERY_STATUSES = ['listo_para_imprimir', 'impreso', 'en_camino', 'entregado', 'cancelado', 'reprogramado'];
+
+// Cancelar o reprogramar un envío de Santiago exige dejar el motivo (lo ve el vendedor).
+// Los envíos a regiones lo aceptan pero no lo exigen. Al pasar a cualquier otro estado
+// el motivo se limpia (el historial queda en la auditoría).
+const MOTIVO_STATUSES = ['cancelado', 'reprogramado'];
+const MOTIVO_MAX = 500;
+
+// Devuelve { motivo } (string|null) o { error } si falta o excede el largo.
+function resolveMotivo(status, rawMotivo, exigir) {
+  if (!MOTIVO_STATUSES.includes(status)) return { motivo: null };
+  const motivo = typeof rawMotivo === 'string' ? rawMotivo.trim() : '';
+  if (!motivo && exigir) return { error: 'Indica el motivo de la cancelación o reprogramación' };
+  if (motivo.length > MOTIVO_MAX) return { error: `El motivo no puede superar ${MOTIVO_MAX} caracteres` };
+  return { motivo: motivo || null };
+}
 // Tipo de envío de Delivery Santiago: independiente del estado de entrega (no lo
 // pisa ni es pisado por él). Por defecto todo envío es 'delivery'; los otros 3
 // tipos solo los puede poner/cambiar operador/admin/caja.
@@ -501,7 +516,7 @@ router.post('/', authenticateToken, async (req, res) => {
 // ============================================
 router.put('/batch-status', authenticateToken, async (req, res) => {
   const user = req.user;
-  const { ids, status } = req.body;
+  const { ids, status, motivo: rawMotivo } = req.body;
 
   if (!Array.isArray(ids) || ids.length === 0) {
     return res.status(400).json({ error: 'Debes enviar al menos un id de venta' });
@@ -529,6 +544,10 @@ router.put('/batch-status', authenticateToken, async (req, res) => {
       throw { status: 403, message: 'No tienes permiso para editar alguna de estas ventas' };
     }
 
+    const exigirMotivo = existing.rows.some((s) => s.tipo_venta !== 'ENVIO_REGION');
+    const { motivo, error: motivoError } = resolveMotivo(status, rawMotivo, exigirMotivo);
+    if (motivoError) throw { status: 400, message: motivoError };
+
     // Al entregar el paquete, la venta queda completada (se refleja en el dashboard)
     const newSaleStatus = status === 'entregado' ? 'completado' : null;
     const deliveredAt = status === 'entregado' ? new Date() : null;
@@ -538,10 +557,11 @@ router.put('/batch-status', authenticateToken, async (req, res) => {
        SET delivery_status = $1,
            status = COALESCE($2, status),
            delivered_at = COALESCE($3, delivered_at),
+           motivo_estado = $5,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = ANY($4::int[])
        RETURNING *`,
-      [status, newSaleStatus, deliveredAt, ids]
+      [status, newSaleStatus, deliveredAt, ids, motivo]
     );
 
     await dbClient.query('COMMIT');
@@ -553,7 +573,7 @@ router.put('/batch-status', authenticateToken, async (req, res) => {
         tableName: 'sales',
         recordId: before.id,
         oldValues: { delivery_status: before.delivery_status },
-        newValues: { delivery_status: status }
+        newValues: { delivery_status: status, motivo_estado: motivo }
       });
     }
 
@@ -635,7 +655,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const {
       status, delivery_status, notes,
       client_id, address, comuna, phone,
-      transferencia_verificada, payment_breakdown,
+      transferencia_verificada, payment_breakdown, motivo: rawMotivo,
     } = req.body;
     let { product_name, quantity, price } = req.body;
     let { vendor_id } = req.body;
@@ -716,6 +736,15 @@ router.put('/:id', authenticateToken, async (req, res) => {
       breakdownJson = JSON.stringify(reconciled);
     }
 
+    // Motivo de cancelación/reprogramación: solo se toca si esta edición cambia el estado de entrega.
+    const statusChanging = delivery_status !== undefined && delivery_status !== sale.delivery_status;
+    let motivoValue = null;
+    if (statusChanging) {
+      const resolved = resolveMotivo(delivery_status, rawMotivo, sale.tipo_venta !== 'ENVIO_REGION');
+      if (resolved.error) return res.status(400).json({ error: resolved.error });
+      motivoValue = resolved.motivo;
+    }
+
     const deliveringNow = delivery_status === 'entregado' && sale.delivery_status !== 'entregado';
     const undeliveringNow = delivery_status !== undefined && delivery_status !== 'entregado' && sale.delivery_status === 'entregado';
     const newStatus = status || (deliveringNow ? 'completado' : (undeliveringNow ? 'pendiente' : null));
@@ -740,6 +769,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
            transferencia_verificada = COALESCE($14, transferencia_verificada),
            comision = $17,
            payment_breakdown = COALESCE($18, payment_breakdown),
+           motivo_estado = CASE WHEN $19::boolean THEN $20 ELSE motivo_estado END,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $15
        RETURNING *`,
@@ -749,6 +779,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
         vendor_id, client_id, address, comuna, phone,
         deliveredAt, transferencia_verificada !== undefined ? !!transferencia_verificada : null, id,
         clearDeliveredAt, comision, breakdownJson,
+        statusChanging, motivoValue,
       ]
     );
 
@@ -779,7 +810,7 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const user = req.user;
-    const { status } = req.body;
+    const { status, motivo: rawMotivo } = req.body;
 
     if (!DELIVERY_STATUSES.includes(status)) {
       return res.status(400).json({ error: `Estado inválido. Opciones: ${DELIVERY_STATUSES.join(', ')}` });
@@ -801,6 +832,11 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'No tienes permiso para editar esta venta' });
     }
 
+    const { motivo, error: motivoError } = resolveMotivo(status, rawMotivo, sale.tipo_venta !== 'ENVIO_REGION');
+    if (motivoError) {
+      return res.status(400).json({ error: motivoError });
+    }
+
     // Al entregar el paquete, la venta queda completada (se refleja en el dashboard)
     const newSaleStatus = status === 'entregado' ? 'completado' : sale.status;
     const deliveredAt = status === 'entregado' ? new Date() : sale.delivered_at;
@@ -810,10 +846,11 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
        SET delivery_status = $1,
            status = $2,
            delivered_at = $3,
+           motivo_estado = $5,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $4
        RETURNING *`,
-      [status, newSaleStatus, deliveredAt, id]
+      [status, newSaleStatus, deliveredAt, id, motivo]
     );
 
     await logAudit({
@@ -821,8 +858,8 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
       action: 'cambiar_estado_paquete',
       tableName: 'sales',
       recordId: Number(id),
-      oldValues: { delivery_status: sale.delivery_status },
-      newValues: { delivery_status: status }
+      oldValues: { delivery_status: sale.delivery_status, motivo_estado: sale.motivo_estado },
+      newValues: { delivery_status: status, motivo_estado: motivo }
     });
 
     res.json({

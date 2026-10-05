@@ -52,9 +52,71 @@ export default function ProductsPage() {
   const fileInputRef = useRef(null);
   const bulkEditFileInputRef = useRef(null);
 
+  // Selección para eliminar masivamente. Se limpia al cambiar la búsqueda para no
+  // borrar por error productos que ya no se ven en pantalla.
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [selectingAll, setSelectingAll] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
   function handleSearchChange(value) {
     setSearch(value);
     setPage(1);
+    setSelectedIds(new Set());
+  }
+
+  const pageProducts = data?.products || [];
+  const allPageSelected = pageProducts.length > 0 && pageProducts.every((p) => selectedIds.has(p.id));
+
+  function toggleSelect(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectPage() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) pageProducts.forEach((p) => next.delete(p.id));
+      else pageProducts.forEach((p) => next.add(p.id));
+      return next;
+    });
+  }
+
+  async function selectAllMatching() {
+    setSelectingAll(true);
+    setActionError('');
+    try {
+      const { data: res } = await apiClient.get(`/api/products/ids?search=${encodeURIComponent(debouncedSearch)}`);
+      setSelectedIds(new Set(res.ids));
+    } catch (err) {
+      setActionError(err.response?.data?.error || 'No se pudo seleccionar los productos');
+    } finally {
+      setSelectingAll(false);
+    }
+  }
+
+  async function handleBulkDelete() {
+    setActionError('');
+    const n = selectedIds.size;
+    const ok = await confirm(
+      `Vas a eliminar DEFINITIVAMENTE ${n} producto${n === 1 ? '' : 's'}. Esta acción no se puede deshacer y no hay papelera de productos.`,
+      { title: 'Eliminar productos', confirmLabel: `Eliminar ${n} producto${n === 1 ? '' : 's'}`, danger: true }
+    );
+    if (!ok) return;
+    setBulkDeleting(true);
+    try {
+      await apiClient.post('/api/products/bulk-delete', { ids: [...selectedIds] });
+      setSelectedIds(new Set());
+      setPage(1);
+      refetch();
+    } catch (err) {
+      setActionError(err.response?.data?.error || 'No se pudieron eliminar los productos');
+    } finally {
+      setBulkDeleting(false);
+    }
   }
 
   async function handleSubmit(e) {
@@ -86,7 +148,10 @@ export default function ProductsPage() {
     const ok = await confirm(`¿Eliminar el producto "${p.title}"?`, { title: 'Eliminar producto', confirmLabel: 'Eliminar', danger: true });
     if (!ok) return;
     const result = await del(`/api/products/${p.id}`);
-    if (result.success) refetch();
+    if (result.success) {
+      setSelectedIds((prev) => { const next = new Set(prev); next.delete(p.id); return next; });
+      refetch();
+    }
     else if (result.error) setActionError(result.error);
   }
 
@@ -270,9 +335,31 @@ export default function ProductsPage() {
 
       {data && (
         <div className="card" style={{ padding: 20 }}>
+          {canManage && selectedIds.size > 0 && (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '10px 14px', marginBottom: 16, border: '1px solid var(--color-danger)', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)' }}>
+              <strong style={{ fontSize: 14 }}>{selectedIds.size} seleccionado{selectedIds.size === 1 ? '' : 's'}</strong>
+              {allPageSelected && selectedIds.size < data.total && (
+                <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={selectAllMatching} disabled={selectingAll}>
+                  {selectingAll ? 'Seleccionando...' : `Seleccionar los ${data.total} productos${debouncedSearch ? ' que coinciden con la búsqueda' : ''}`}
+                </button>
+              )}
+              <div style={{ flex: 1 }} />
+              <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => setSelectedIds(new Set())} disabled={bulkDeleting}>
+                Limpiar selección
+              </button>
+              <button type="button" className="btn btn-primary" style={{ padding: '6px 12px', fontSize: 13, background: 'var(--color-danger)', borderColor: 'var(--color-danger)' }} onClick={handleBulkDelete} disabled={bulkDeleting}>
+                {bulkDeleting ? 'Eliminando...' : 'Eliminar seleccionados'}
+              </button>
+            </div>
+          )}
           <table className="responsive-stack">
             <thead>
               <tr>
+                {canManage && (
+                  <th style={{ width: 24 }}>
+                    <input type="checkbox" checked={allPageSelected} onChange={toggleSelectPage} aria-label="Seleccionar todos los productos de esta página" />
+                  </th>
+                )}
                 <th>Título</th>
                 <th>SKU</th>
                 <th>Precio marketplace</th>
@@ -288,11 +375,16 @@ export default function ProductsPage() {
             <tbody>
               {data.products.length === 0 ? (
                 <tr>
-                  <td colSpan={canManage ? 10 : 8} style={{ color: 'var(--color-text-muted)' }}>Sin productos que coincidan</td>
+                  <td colSpan={canManage ? 11 : 8} style={{ color: 'var(--color-text-muted)' }}>Sin productos que coincidan</td>
                 </tr>
               ) : (
                 data.products.map((p) => (
                   <tr key={p.id} onClick={() => setViewingProduct(p)} style={{ cursor: 'pointer' }}>
+                    {canManage && (
+                      <td data-label="Seleccionar" onClick={(e) => e.stopPropagation()}>
+                        <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleSelect(p.id)} aria-label={`Seleccionar ${p.title}`} />
+                      </td>
+                    )}
                     <td data-label="Título">{p.title}</td>
                     <td data-label="SKU">{p.sku || '-'}</td>
                     <td data-label="Precio marketplace">{formatCurrency(p.price)}</td>

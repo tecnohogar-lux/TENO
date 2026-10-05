@@ -6,6 +6,7 @@ const xlsx = require('xlsx');
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { crearNoticia } = require('./noticias');
+const { logAudit } = require('../utils/auditLog');
 const fs = require('fs');
 
 const requireManage = (message) => requireRole(['admin', 'operador', 'caja'], message);
@@ -118,6 +119,26 @@ router.get('/', authenticateToken, async (req, res) => {
 
   } catch (err) {
     console.error('Error al obtener productos:', err);
+    res.status(500).json({ error: 'Error al obtener productos' });
+  }
+});
+
+// ============================================
+// GET - IDs de todos los productos que coinciden con la búsqueda (para "seleccionar todos"
+// en la eliminación masiva, aunque estén en varias páginas). Va antes de /:id.
+// ============================================
+router.get('/ids', authenticateToken, requireManage('No tienes permiso para seleccionar productos'), async (req, res) => {
+  try {
+    const params = [];
+    let where = '';
+    if (req.query.search) {
+      params.push(`%${req.query.search}%`);
+      where = 'WHERE title ILIKE $1 OR sku ILIKE $1';
+    }
+    const result = await pool.query(`SELECT id FROM products ${where} ORDER BY created_at DESC`, params);
+    res.json({ ids: result.rows.map((r) => r.id) });
+  } catch (err) {
+    console.error('Error al obtener ids de productos:', err);
     res.status(500).json({ error: 'Error al obtener productos' });
   }
 });
@@ -694,6 +715,41 @@ router.delete('/:id', authenticateToken, requireManage('No tienes permiso para e
   } catch (err) {
     console.error('Error al eliminar producto:', err);
     res.status(500).json({ error: 'Error al eliminar producto' });
+  }
+});
+
+// ============================================
+// POST - Eliminar productos masivamente (borrado definitivo, no hay papelera de productos)
+// ============================================
+router.post('/bulk-delete', authenticateToken, requireManage('No tienes permiso para eliminar productos'), async (req, res) => {
+  try {
+    const user = req.user;
+    const ids = Array.isArray(req.body.ids) ? [...new Set(req.body.ids.map(Number))] : [];
+
+    if (ids.length === 0 || ids.some((n) => !Number.isInteger(n) || n <= 0)) {
+      return res.status(400).json({ error: 'Debes enviar al menos un producto válido' });
+    }
+    if (ids.length > 5000) {
+      return res.status(400).json({ error: 'Máximo 5000 productos por eliminación' });
+    }
+
+    const result = await pool.query('DELETE FROM products WHERE id = ANY($1::int[]) RETURNING id, title, sku', [ids]);
+    const eliminados = result.rows;
+
+    if (eliminados.length > 0) {
+      await crearNoticia({
+        texto: eliminados.length === 1 ? `Se eliminó el producto "${eliminados[0].title}"` : `Se eliminaron ${eliminados.length} productos`,
+        tipo: 'producto_eliminado',
+        userId: user.id,
+      });
+      await logAudit({ userId: user.id, action: 'eliminar_productos_masivo', tableName: 'products', recordId: null, oldValues: { cantidad: eliminados.length, productos: eliminados } });
+    }
+
+    res.json({ message: `${eliminados.length} producto(s) eliminado(s)`, eliminados: eliminados.length });
+
+  } catch (err) {
+    console.error('Error al eliminar productos masivamente:', err);
+    res.status(500).json({ error: 'Error al eliminar productos' });
   }
 });
 

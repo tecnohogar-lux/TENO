@@ -59,7 +59,8 @@ async function resolverItems(dbClient, items, defaultPriceType) {
 }
 
 // ============================================
-// GET - Listar retiros en tienda (vendedor: solo los suyos; operador/admin: todos)
+// GET - Listar retiros en tienda (todos los vendedores ven los de todo el equipo, solo lectura;
+// editar/eliminar/entregar sigue siendo de operador/admin)
 // ============================================
 router.get('/', authenticateToken, async (req, res) => {
   try {
@@ -71,11 +72,6 @@ router.get('/', authenticateToken, async (req, res) => {
     const { page, limit, search } = req.query;
     const conditions = [];
     const params = [];
-
-    if (user.role === 'vendedor') {
-      params.push(user.id);
-      conditions.push(`r.vendor_id = $${params.length}`);
-    }
 
     if (search) {
       params.push(`%${search}%`);
@@ -116,12 +112,20 @@ router.get('/', authenticateToken, async (req, res) => {
 
     const result = await pool.query(query, params);
 
+    // Un vendedor ve que el retiro de otro vendedor se creó, pero NO si el cliente ya fue
+    // atendido en tienda (lo cobrado en Caja es privado): estado y datos de entrega ocultos.
+    const retiros = user.role === 'vendedor'
+      ? result.rows.map((r) => (r.vendor_id === user.id
+          ? r
+          : { ...r, status: null, delivered_at: null, delivered_by: null, delivered_by_name: null }))
+      : result.rows;
+
     res.json({
       total,
       page: pageNum || 1,
       limit: limitNum || total,
       totalPages: limitNum ? Math.max(Math.ceil(total / limitNum), 1) : 1,
-      retiros: result.rows
+      retiros
     });
 
   } catch (err) {

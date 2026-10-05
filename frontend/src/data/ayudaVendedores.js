@@ -28,12 +28,12 @@ export const FAQ = [
       },
       {
         q: '¿Qué puedo ver y hacer con mi cuenta?',
-        a: '- Dashboard: tu resumen, la hora límite de envíos y las noticias.\n- Historial de ventas: solo tus ventas y su detalle.\n- Retiro en tienda: registrar retiros y ver los tuyos.\n- Delivery Santiago y Envíos Regiones: crear etiquetas y ver las tuyas.\n- Costos de envío, Productos y Clientes: consultar (puedes crear clientes).\n- Reportes: tus ventas y tus comisiones, con exportación a Excel.\n- Noticias y Reglas: leer.\n- Preferencias: cambiar el tema y anotar tus cuentas de marketplace.',
+        a: '- Dashboard: tu resumen, la hora límite de envíos y las noticias.\n- Historial de ventas: solo tus ventas y su detalle.\n- Retiro en tienda: registrar retiros y ver los de todo el equipo.\n- Delivery Santiago: crear etiquetas y ver los envíos de todo el equipo.\n- Envíos Regiones: crear etiquetas y ver las tuyas.\n- Costos de envío, Productos y Clientes: consultar (puedes crear clientes).\n- Reportes: tus ventas y tus comisiones, con exportación a Excel.\n- Noticias y Reglas: leer.\n- Preferencias: cambiar el tema y anotar tus cuentas de marketplace.',
         palabras: 'permisos modulos menu acceso',
       },
       {
         q: '¿Puedo ver las ventas de otros vendedores?',
-        a: 'No. Solo ves las tuyas.',
+        a: 'Solo en dos módulos: en Retiro en tienda y en Delivery Santiago ves los de todos los vendedores (solo lectura, sin su comisión, su pago ni si el cliente ya fue atendido en tienda: eso solo lo ves en lo tuyo). En el Historial de ventas, Reportes y Envíos Regiones solo ves lo tuyo; las ventas directas de tienda son de operadores y administradores.',
       },
     ],
   },

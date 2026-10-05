@@ -258,18 +258,25 @@ router.get('/comisiones', authenticateToken, requireManage('No tienes permiso pa
 // ============================================
 // GET - Obtener todas las ventas (según rol)
 // Soporta ?search=  y, opcionalmente, ?page= &limit= (si no se pasan, devuelve todo)
+// Un vendedor ve solo sus ventas, salvo con ?equipo=1 (módulo Delivery Santiago): ahí ve los
+// envíos de Santiago de TODOS los vendedores (solo lectura). Las ventas hechas en Caja (tienda,
+// envío prepagado), los envíos a regiones y los datos de pago de otros vendedores nunca se le muestran.
 // ============================================
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const user = req.user;
-    const { page, limit, search, tipo_venta } = req.query;
+    const { page, limit, search, tipo_venta, equipo } = req.query;
 
     const conditions = ['s.deleted_at IS NULL'];
     const params = [];
 
     if (user.role === 'vendedor') {
       params.push(user.id);
-      conditions.push(`s.vendor_id = $${params.length}`);
+      if (equipo === '1') {
+        conditions.push(`(s.vendor_id = $${params.length} OR s.tipo_venta = 'ENVIO')`);
+      } else {
+        conditions.push(`s.vendor_id = $${params.length}`);
+      }
     }
 
     if (search) {
@@ -319,12 +326,20 @@ router.get('/', authenticateToken, async (req, res) => {
     }
 
     const result = await pool.query(query, params);
+
+    // De un envío ajeno el vendedor no ve la comisión ni nada del cobro (forma de pago, transferencia).
+    const sales = user.role === 'vendedor'
+      ? result.rows.map((s) => (s.vendor_id === user.id
+          ? s
+          : { ...s, comision: null, cobro_original: null, payment_method: null, payment_breakdown: null, transferencia_verificada: null }))
+      : result.rows;
+
     res.json({
       total,
       page: pageNum || 1,
       limit: limitNum || total,
       totalPages: limitNum ? Math.max(Math.ceil(total / limitNum), 1) : 1,
-      sales: result.rows
+      sales
     });
 
   } catch (err) {

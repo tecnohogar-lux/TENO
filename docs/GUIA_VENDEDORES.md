@@ -46,7 +46,7 @@ El administrador desactivó tu cuenta o cambió algo en ella. Habla con él. Tam
 Son módulos de operadores y administradores; no forman parte de tu cuenta.
 
 **¿Puedo ver las ventas de otros vendedores?**
-No. Solo ves las tuyas.
+Solo en dos módulos: en **Retiro en tienda** y **Delivery Santiago** ves los de todos los vendedores (solo lectura, sin su comisión, su pago ni si el cliente ya fue atendido en tienda: eso solo lo ves en lo tuyo). En el Historial de ventas, Reportes y Envíos Regiones solo ves lo tuyo; las ventas directas de tienda son de operadores y administradores.
 
 **¿Dónde veo las novedades y las reglas del equipo?**
 En **Noticias** y **Reglas** (categoría Comunicación del menú). Las noticias también aparecen en tu Dashboard.

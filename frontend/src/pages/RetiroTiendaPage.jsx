@@ -315,10 +315,15 @@ export default function RetiroTiendaPage() {
                       <PriceTypeBadge type={r.price_type} />
                     </td>
                     <td data-label="Estado">
-                      <Badge
-                        label={r.status === 'entregado' ? 'Entregado' : 'Pendiente'}
-                        color={r.status === 'entregado' ? 'var(--color-success)' : 'var(--color-warning)'}
-                      />
+                      {r.status ? (
+                        <Badge
+                          label={r.status === 'entregado' ? 'Entregado' : 'Pendiente'}
+                          color={r.status === 'entregado' ? 'var(--color-success)' : 'var(--color-warning)'}
+                        />
+                      ) : (
+                        // Retiro de otro vendedor: el estado en tienda es privado de su dueño.
+                        <span style={{ color: 'var(--color-text-muted)' }}>—</span>
+                      )}
                     </td>
                     <td data-label="Fecha">{formatDate(r.created_at)}</td>
                     {canManage && (

@@ -42,7 +42,7 @@ export default function ShippingPage() {
   const debouncedSearch = useDebouncedValue(search);
 
   const { data, loading, error, refetch } = useFetch(
-    `/api/sales?tipo_venta=ENVIO,ENVIO_PREPAGADO&search=${encodeURIComponent(debouncedSearch)}`,
+    `/api/sales?tipo_venta=ENVIO,ENVIO_PREPAGADO&equipo=1&search=${encodeURIComponent(debouncedSearch)}`,
     { deps: [debouncedSearch] }
   );
   const { data: usersData } = useFetch('/api/users', { enabled: canManage });

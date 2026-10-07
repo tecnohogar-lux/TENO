@@ -29,13 +29,8 @@ export function buildSaleShareText(sale) {
   return lines.join('\n');
 }
 
-function normalizePhoneCL(phone) {
-  const digits = (phone || '').replace(/\D/g, '');
-  if (!digits) return null;
-  if (digits.startsWith('56')) return digits;
-  if (digits.length === 9) return '56' + digits;
-  return digits;
-}
+// WhatsApp de la tienda (+56 9 7692 1340): el botón siempre abre este chat, no el del cliente de la venta.
+const STORE_WHATSAPP = '56976921340';
 
 export async function shareSaleViaWhatsApp(sale) {
   const text = buildSaleShareText(sale);
@@ -46,10 +41,5 @@ export async function shareSaleViaWhatsApp(sale) {
     // el portapapeles puede no estar disponible; no es crítico
   }
 
-  const phone = normalizePhoneCL(sale.phone);
-  const url = phone
-    ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}`
-    : `https://wa.me/?text=${encodeURIComponent(text)}`;
-
-  window.open(url, '_blank');
+  window.open(`https://wa.me/${STORE_WHATSAPP}?text=${encodeURIComponent(text)}`, '_blank');
 }

@@ -274,6 +274,13 @@ function headerValido(data) {
 
 const MAX_ERRORS_SHOWN = 30;
 
+// ¿La fila editada deja el producto exactamente como está? (textos sin espacios sobrantes,
+// vacío = sin dato; montos con tolerancia de centavos por los decimales de Excel)
+const mismoTexto = (a, b) => String(a ?? '').trim() === String(b ?? '').trim();
+const mismoMonto = (a, b) => (a === null || a === undefined || b === null || b === undefined
+  ? (a ?? null) === (b ?? null)
+  : Math.abs(Number(a) - Number(b)) < 0.005);
+
 function formatearErrores(errors) {
   const listado = errors.slice(0, MAX_ERRORS_SHOWN).join('\n');
   const resto = errors.length > MAX_ERRORS_SHOWN ? `\n... y ${errors.length - MAX_ERRORS_SHOWN} fila(s) más con errores` : '';
@@ -419,6 +426,44 @@ router.post('/import/excel', authenticateToken, requireManage('No tienes permiso
 });
 
 // ============================================
+// GET - Plantilla vacía para la CARGA MASIVA (solo el encabezado correcto; una segunda hoja
+// con instrucciones, que el importador ignora porque solo lee la primera hoja)
+// ============================================
+router.get('/import/template', authenticateToken, requireManage('No tienes permiso para importar productos'), async (req, res) => {
+  try {
+    const sheet = xlsx.utils.aoa_to_sheet([IMPORT_HEADER]);
+    sheet['!cols'] = [{ wch: 36 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 30 }, { wch: 40 }, { wch: 50 }];
+
+    const instrucciones = xlsx.utils.aoa_to_sheet([
+      ['Cómo llenar la hoja "Productos"'],
+      [''],
+      ['Producto', 'Obligatorio. Si ya existe un producto con ese nombre, la fila se omite.'],
+      ['SKU', 'Opcional.'],
+      ['Costo', 'Obligatorio. Número mayor a 0.'],
+      ['Precio', 'Obligatorio. Número mayor a 0 y no menor que el Costo.'],
+      ['Rentabilidad, Menos 75%, Menos 25% (Comision de venta)', 'Déjalas vacías: el sistema las calcula solo.'],
+      ['URL Imagen, Descripcion', 'Opcionales.'],
+      [''],
+      ['No cambies los títulos de las columnas ni su orden, y escribe los productos desde la fila 2.'],
+    ]);
+    instrucciones['!cols'] = [{ wch: 52 }, { wch: 70 }];
+
+    const workbook = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(workbook, sheet, 'Productos');
+    xlsx.utils.book_append_sheet(workbook, instrucciones, 'Instrucciones');
+    const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="plantilla-carga-masiva.xlsx"');
+    res.send(buffer);
+
+  } catch (err) {
+    console.error('Error al generar la plantilla:', err);
+    res.status(500).json({ error: 'Error al generar la plantilla' });
+  }
+});
+
+// ============================================
 // GET - Exportar todos los productos a Excel para edición masiva
 // (orden SIEMPRE por id ASC: es la base para el re-subida por posición)
 // ============================================
@@ -479,7 +524,7 @@ router.post('/bulk-edit/excel', authenticateToken, requireManage('No tienes perm
     if (data.length < 1 || !headerValido(data)) {
       fs.unlinkSync(filePath);
       return res.status(400).json({
-        error: `El archivo no tiene el formato esperado. La primera fila debe ser exactamente: ${IMPORT_HEADER.join(' | ')} (en ese orden). Usa "Exportar para editar" y no cambies las columnas.`,
+        error: `El archivo no tiene el formato esperado. La primera fila debe ser exactamente: ${IMPORT_HEADER.join(' | ')} (en ese orden). Descarga la planilla desde EDICIÓN MASIVA y no cambies las columnas.`,
       });
     }
 
@@ -495,6 +540,7 @@ router.post('/bulk-edit/excel', authenticateToken, requireManage('No tienes perm
 
     const errors = [];
     const updates = [];
+    let sinCambiosCount = 0;
     for (let i = 0; i < dataRows.length; i++) {
       const row = dataRows[i] || [];
       const numFila = i + 2;
@@ -528,23 +574,44 @@ router.post('/bulk-edit/excel', authenticateToken, requireManage('No tienes perm
         continue;
       }
 
-      const derived = computeDerived(finalCosto, finalPrecio);
-      updates.push({
-        id: producto.id,
+      const nuevo = {
         title: titleCell || producto.title,
         sku: skuCell !== null ? skuCell : producto.sku,
         price: finalPrecio,
         cover_image_url: urlCell !== null ? urlCell : producto.cover_image_url,
         caracteristicas: descCell !== null ? descCell : producto.caracteristicas,
         costo: finalCosto,
-        ...derived,
-      });
+      };
+
+      // Solo se actualizan los productos que realmente cambiaron: los demás no se tocan
+      // (ni sus datos ni su fecha de modificación).
+      const sinCambios = mismoTexto(nuevo.title, producto.title)
+        && mismoTexto(nuevo.sku, producto.sku)
+        && mismoTexto(nuevo.cover_image_url, producto.cover_image_url)
+        && mismoTexto(nuevo.caracteristicas, producto.caracteristicas)
+        && mismoMonto(nuevo.price, producto.price)
+        && mismoMonto(nuevo.costo, producto.costo);
+      if (sinCambios) {
+        sinCambiosCount++;
+        continue;
+      }
+
+      updates.push({ id: producto.id, ...nuevo, ...computeDerived(finalCosto, finalPrecio) });
     }
 
     if (updates.length === 0) {
       fs.unlinkSync(filePath);
-      return res.status(400).json({
-        error: `No se actualizó ningún producto. Errores encontrados:\n${formatearErrores(errors)}`,
+      if (errors.length > 0) {
+        return res.status(400).json({
+          error: `No se actualizó ningún producto. Errores encontrados:\n${formatearErrores(errors)}`,
+        });
+      }
+      return res.json({
+        message: 'No se detectaron cambios en la planilla',
+        products_updated: 0,
+        products_unchanged: sinCambiosCount,
+        skipped_count: 0,
+        errors: [],
       });
     }
 
@@ -578,6 +645,7 @@ router.post('/bulk-edit/excel', authenticateToken, requireManage('No tienes perm
     res.json({
       message: errors.length > 0 ? 'Edición masiva completada con algunas filas omitidas' : 'Edición masiva completada',
       products_updated: updates.length,
+      products_unchanged: sinCambiosCount,
       skipped_count: errors.length,
       errors,
     });

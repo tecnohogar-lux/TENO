@@ -81,7 +81,7 @@ Todo se calcula solo, a partir del costo y el precio marketplace:
 ## 3. Productos
 
 **¿Cómo agrego muchos productos de una vez?**
-**Productos → Importar Excel.** La primera fila debe ser exactamente estas 9 columnas, en este orden: `Producto`, `SKU`, `Costo`, `Precio`, `Rentabilidad`, `Menos 75%`, `Menos 25% (Comisión de venta)`, `URL Imagen`, `Descripción`.
+**Productos → CARGA MASIVA.** Se abre una ventana con las instrucciones y dos botones: **Descargar plantilla** (ya trae el formato correcto) y **Subir plantilla rellenada**. Guarda una copia del archivo antes de subirlo como respaldo. La primera fila debe ser exactamente estas 9 columnas, en este orden: `Producto`, `SKU`, `Costo`, `Precio`, `Rentabilidad`, `Menos 75%`, `Menos 25% (Comisión de venta)`, `URL Imagen`, `Descripción`.
 - Obligatorios: Producto, Costo y Precio (mayores a 0; el precio no puede ser menor que el costo).
 - SKU, URL Imagen y Descripción son opcionales.
 - Deja vacías las columnas de Rentabilidad, Menos 75% y Comisión: el sistema las calcula.
@@ -90,9 +90,11 @@ Todo se calcula solo, a partir del costo y el precio marketplace:
 Las filas válidas sí se importan; las inválidas se omiten y el sistema te lista cada una con su motivo (falta el costo, falta el nombre, precio menor al costo, etc.). Corrige esas filas y vuelve a subir el archivo: los productos que ya existen se omiten ("ya existe un producto llamado…"), así que no se duplican.
 
 **¿Cómo cambio precios de muchos productos a la vez?**
-1. **Exportar para editar** (descarga todos los productos, siempre en el mismo orden).
-2. Cambia solo los valores que necesites (por ejemplo, la columna Precio).
-3. **Subir edición masiva.**
+1. **Productos → EDICIÓN MASIVA → Descargar planilla de productos** (trae todos los productos, siempre en el mismo orden). Guarda una copia sin modificar como respaldo.
+2. Cambia solo los valores que necesites en la otra copia (por ejemplo, la columna Precio).
+3. En la misma ventana, **Subir planilla editada.**
+
+Solo se actualizan los productos que modificaste; los que dejaste igual no se tocan.
 
 La actualización se hace **por posición de fila**: lo que está en la fila 5 se aplica al producto que estaba en la fila 5 al exportar. Por eso:
 - **No agregues, borres ni reordenes filas.** Si la cantidad de filas no coincide con la de productos, el sistema rechaza el archivo.
@@ -240,7 +242,7 @@ La hora límite de envíos (semana, sábado y domingo) y el courier predetermina
 | "No hay una caja abierta" | Abrir la caja en Apertura/Cierre de Caja |
 | "Venta al mayor: el mínimo es 6 unidades" | Subir la cantidad a 6 o más, o usar otro tipo de precio |
 | "El archivo no tiene el formato esperado" | Revisar que la primera fila sea el encabezado exacto de 9 columnas |
-| El Excel de edición masiva fue rechazado por filas distintas | Volver a exportar y editar solo valores, sin agregar ni borrar filas |
+| El Excel de edición masiva fue rechazado por filas distintas | Volver a descargar la planilla desde EDICIÓN MASIVA y editar solo valores, sin agregar ni borrar filas |
 | No puedo cambiar el producto de un envío | Es un envío con varios productos: eliminarlo y crearlo de nuevo |
 | El vendedor no ve un producto en el buscador | Escribe parte del nombre: la lista muestra solo las primeras 100 coincidencias |
 | Todo sale en blanco o da error tras un tiempo | Cerrar sesión y volver a entrar |

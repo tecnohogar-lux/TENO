@@ -45,9 +45,11 @@ export default function ProductsPage() {
   const [editForm, setEditForm] = useState(null);
   const [importResult, setImportResult] = useState(null);
   const [bulkEditResult, setBulkEditResult] = useState(null);
-  const [showImportInfo, setShowImportInfo] = useState(false);
+  const [showImportInfo, setShowImportInfo] = useState(false); // ventana de CARGA MASIVA
+  const [showBulkEditInfo, setShowBulkEditInfo] = useState(false); // ventana de EDICIÓN MASIVA
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+  const [downloaded, setDownloaded] = useState(''); // qué planilla se acaba de descargar (para recordar el respaldo)
   const [actionError, setActionError] = useState('');
   const fileInputRef = useRef(null);
   const bulkEditFileInputRef = useRef(null);
@@ -178,6 +180,7 @@ export default function ProductsPage() {
 
   function openImportInfo() {
     setImportResult(null);
+    setDownloaded('');
     setShowImportInfo(true);
   }
 
@@ -186,24 +189,37 @@ export default function ProductsPage() {
     fileInputRef.current?.click();
   }
 
-  async function handleExport() {
+  // Descarga un Excel generado por el servidor (plantilla de carga o planilla de productos).
+  async function downloadExcel(endpoint, filename, kind) {
     setExportError('');
-    setExporting(true);
+    setExporting(kind);
     try {
-      const response = await apiClient.get('/api/products/export/excel', { responseType: 'blob' });
+      const response = await apiClient.get(endpoint, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'productos.xlsx';
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+      setDownloaded(kind);
     } catch (err) {
-      setExportError('No se pudo exportar el archivo');
+      setExportError('No se pudo descargar el archivo');
     } finally {
       setExporting(false);
     }
+  }
+
+  function chooseBulkEditFile() {
+    setShowBulkEditInfo(false);
+    bulkEditFileInputRef.current?.click();
+  }
+
+  function openBulkEditInfo() {
+    setBulkEditResult(null);
+    setDownloaded('');
+    setShowBulkEditInfo(true);
   }
 
   async function handleBulkEdit(e) {
@@ -234,14 +250,11 @@ export default function ProductsPage() {
           {canManage && (
             <>
               <button className="btn btn-secondary" onClick={openImportInfo} disabled={importing}>
-                {importing ? 'Importando...' : 'Importar Excel'}
+                {importing ? 'Cargando...' : 'CARGA MASIVA'}
               </button>
               <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleImport} style={{ display: 'none' }} />
-              <button className="btn btn-secondary" onClick={handleExport} disabled={exporting}>
-                {exporting ? 'Exportando...' : 'Exportar para editar'}
-              </button>
-              <button className="btn btn-secondary" onClick={() => bulkEditFileInputRef.current?.click()} disabled={bulkEditing}>
-                {bulkEditing ? 'Subiendo...' : 'Subir edición masiva'}
+              <button className="btn btn-secondary" onClick={openBulkEditInfo} disabled={bulkEditing}>
+                {bulkEditing ? 'Procesando...' : 'EDICIÓN MASIVA'}
               </button>
               <input ref={bulkEditFileInputRef} type="file" accept=".xlsx,.xls" onChange={handleBulkEdit} style={{ display: 'none' }} />
               <button className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>
@@ -271,8 +284,11 @@ export default function ProductsPage() {
       )}
       {bulkEditResult && (
         <div className="card" style={{ padding: 16, marginBottom: 24, fontSize: 14 }}>
-          {bulkEditResult.products_updated} producto(s) actualizado(s)
-          {bulkEditResult.skipped_count > 0 ? ` (${bulkEditResult.skipped_count} fila(s) omitida(s))` : ''}.
+          {bulkEditResult.products_updated === 0 && !(bulkEditResult.errors?.length > 0)
+            ? 'No se detectaron cambios en la planilla: no se actualizó ningún producto'
+            : `${bulkEditResult.products_updated} producto(s) actualizado(s)`}
+          {bulkEditResult.products_unchanged > 0 ? ` · ${bulkEditResult.products_unchanged} sin cambios (no se tocaron)` : ''}
+          {bulkEditResult.skipped_count > 0 ? ` · ${bulkEditResult.skipped_count} fila(s) omitida(s)` : ''}.
           {bulkEditResult.errors?.length > 0 && (
             <ul style={{ margin: '8px 0 0', paddingLeft: 20, color: 'var(--color-danger)' }}>
               {bulkEditResult.errors.map((err, i) => (
@@ -543,63 +559,98 @@ export default function ProductsPage() {
 
       {showImportInfo && (
         <div className="modal-overlay" onClick={() => setShowImportInfo(false)}>
-          <div className="modal-panel" style={{ width: 520 }} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ margin: '0 0 12px', fontSize: 16 }}>Formato del Excel a importar</h3>
+          <div className="modal-panel" style={{ width: 560, maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 16 }}>Carga masiva de productos</h3>
             <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 0 }}>
-              La primera fila debe ser exactamente este encabezado, en este orden (9 columnas). Esto crea productos <strong>nuevos</strong>: las filas cuyo nombre ya existe se omiten y se reportan. Las filas con errores también se omiten y se reportan; el resto se importa igual.
+              Sirve para crear productos <strong>nuevos</strong>. Descarga la plantilla, llénala (un producto por fila) y súbela. Las filas cuyo nombre ya existe se omiten y se reportan; las filas con errores también se omiten, y el resto se carga igual.
             </p>
-            <div style={{ overflowX: 'auto', marginBottom: 16 }}>
-              <table className="responsive-stack" style={{ fontSize: 13 }}>
-                <thead>
-                  <tr>
-                    <th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F</th><th>G</th><th>H</th><th>I</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td data-label="A"><strong>Producto</strong></td>
-                    <td data-label="B"><strong>SKU</strong></td>
-                    <td data-label="C"><strong>Costo</strong></td>
-                    <td data-label="D"><strong>Precio</strong></td>
-                    <td data-label="E"><strong>Rentabilidad</strong></td>
-                    <td data-label="F"><strong>Menos 75%</strong></td>
-                    <td data-label="G"><strong>Menos 25% (Comisión de venta)</strong></td>
-                    <td data-label="H"><strong>URL Imagen</strong></td>
-                    <td data-label="I"><strong>Descripción</strong></td>
-                  </tr>
-                  <tr>
-                    <td data-label="A">Producto Demo</td>
-                    <td data-label="B">SKU-001</td>
-                    <td data-label="C">8000</td>
-                    <td data-label="D">15990</td>
-                    <td data-label="E"></td>
-                    <td data-label="F"></td>
-                    <td data-label="G"></td>
-                    <td data-label="H">https://...</td>
-                    <td data-label="I"></td>
-                  </tr>
-                </tbody>
-              </table>
+
+            <div className="card" style={{ padding: 12, margin: '0 0 14px', background: 'var(--color-bg)', fontSize: 13 }}>
+              <strong>Columnas de la plantilla (en este orden):</strong>
+              <ul style={{ margin: '8px 0 0', paddingLeft: 20, lineHeight: 1.6, color: 'var(--color-text-muted)' }}>
+                <li><strong>Producto</strong>: obligatorio.</li>
+                <li><strong>Costo y Precio</strong>: obligatorios, números mayores a 0 (el Precio no puede ser menor que el Costo).</li>
+                <li><strong>SKU, URL Imagen, Descripción</strong>: opcionales.</li>
+                <li><strong>Rentabilidad, Menos 75%, Menos 25% (Comisión de venta)</strong>: déjalas vacías; el sistema las calcula solo, igual que el precio tienda.</li>
+                <li>No cambies los títulos ni el orden de las columnas. Las filas vacías se ignoran.</li>
+              </ul>
             </div>
-            <ul style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: '0 0 20px', paddingLeft: 20, lineHeight: 1.6 }}>
-              <li><strong>Producto</strong>: obligatorio.</li>
-              <li><strong>SKU, URL Imagen, Descripción</strong>: opcionales.</li>
-              <li><strong>Costo y Precio (marketplace)</strong>: obligatorios, números mayores a 0 (Precio no puede ser menor que Costo).</li>
-              <li><strong>Rentabilidad, Menos 75%, Menos 25% (Comisión de venta)</strong>: déjalas vacías, el sistema las calcula solas a partir de Costo y Precio.</li>
-              <li>El precio tienda (precio + 20%) y su rentabilidad y comisión también se calculan solos.</li>
-              <li>Las filas completamente vacías se ignoran.</li>
-            </ul>
-            <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: -8 }}>
-              ¿Quieres modificar productos que ya existen (por ejemplo cambiar precios masivamente)? Usa <strong>"Exportar para editar"</strong> y después <strong>"Subir edición masiva"</strong> en vez de este importador — no reordenes ni agregues/borres filas del archivo exportado, ya que la actualización se hace por posición.
-            </p>
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={chooseImportFile}>
-                Seleccionar archivo
+
+            <div className="alert" style={{ margin: '0 0 14px', background: 'var(--color-bg)', border: '1px solid var(--color-warning)', fontSize: 13 }}>
+              <strong>Guarda un respaldo.</strong> Conserva una copia del archivo que vas a subir; si algo sale mal, podrás revisar qué cargaste.
+            </div>
+
+            {downloaded === 'plantilla' && (
+              <div className="alert" style={{ margin: '0 0 14px', border: '1px solid var(--color-success)', fontSize: 13 }}>
+                Plantilla descargada. Llénala y vuelve aquí para subirla.
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ flex: 1, minWidth: 180 }}
+                disabled={!!exporting}
+                onClick={() => downloadExcel('/api/products/import/template', 'plantilla-carga-masiva.xlsx', 'plantilla')}
+              >
+                {exporting === 'plantilla' ? 'Descargando...' : '⬇ Descargar plantilla'}
               </button>
-              <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowImportInfo(false)}>
-                Cancelar
+              <button type="button" className="btn btn-primary" style={{ flex: 1, minWidth: 180 }} onClick={chooseImportFile}>
+                ⬆ Subir plantilla rellenada
               </button>
             </div>
+            <button type="button" className="btn btn-secondary" style={{ width: '100%', marginTop: 12 }} onClick={() => setShowImportInfo(false)}>
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showBulkEditInfo && (
+        <div className="modal-overlay" onClick={() => setShowBulkEditInfo(false)}>
+          <div className="modal-panel" style={{ width: 560, maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 16 }}>Edición masiva de productos</h3>
+            <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 0 }}>
+              Sirve para modificar productos que <strong>ya existen</strong> (por ejemplo cambiar precios). Descarga la planilla con todos los productos, cambia solo los valores que necesites y súbela.
+            </p>
+
+            <div className="card" style={{ padding: 12, margin: '0 0 14px', background: 'var(--color-bg)', fontSize: 13 }}>
+              <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 1.6, color: 'var(--color-text-muted)' }}>
+                <li>Se actualizan <strong>solo los productos que modificaste</strong>; los demás no se tocan.</li>
+                <li><strong>No agregues, borres ni reordenes filas</strong>, ni cambies las columnas: la actualización se hace por posición.</li>
+                <li>Una celda vacía significa "no cambiar" ese dato. Rentabilidad y comisiones se recalculan solas.</li>
+                <li>Para crear productos nuevos usa <strong>CARGA MASIVA</strong>.</li>
+              </ul>
+            </div>
+
+            <div className="alert" style={{ margin: '0 0 14px', background: 'var(--color-bg)', border: '1px solid var(--color-warning)', fontSize: 13 }}>
+              <strong>Guarda un respaldo antes de editar.</strong> Al descargar la planilla, guarda una copia sin modificar en otra carpeta: si algo sale mal, podrás volver a los valores originales.
+            </div>
+
+            {downloaded === 'productos' && (
+              <div className="alert" style={{ margin: '0 0 14px', border: '1px solid var(--color-success)', fontSize: 13 }}>
+                Planilla descargada. <strong>Guarda una copia sin modificar como respaldo</strong>, edita la otra y vuelve aquí para subirla.
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ flex: 1, minWidth: 180 }}
+                disabled={!!exporting}
+                onClick={() => downloadExcel('/api/products/export/excel', 'productos.xlsx', 'productos')}
+              >
+                {exporting === 'productos' ? 'Descargando...' : '⬇ Descargar planilla de productos'}
+              </button>
+              <button type="button" className="btn btn-primary" style={{ flex: 1, minWidth: 180 }} onClick={chooseBulkEditFile}>
+                ⬆ Subir planilla editada
+              </button>
+            </div>
+            <button type="button" className="btn btn-secondary" style={{ width: '100%', marginTop: 12 }} onClick={() => setShowBulkEditInfo(false)}>
+              Cerrar
+            </button>
           </div>
         </div>
       )}

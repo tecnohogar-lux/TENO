@@ -1,25 +1,17 @@
 import { useState } from 'react';
 import Layout from '../components/Layout';
-import Badge from '../components/Badge';
+import NoticiasGrid from '../components/NoticiasGrid';
 import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
 import useAuth from '../hooks/useAuth';
 import useConfirm from '../hooks/useConfirm';
-import { formatDate } from '../utils/format';
-
-const TIPO_LABELS = {
-  manual: { label: 'Noticia', color: '#1b2a82' },
-  producto_creado: { label: 'Producto creado', color: '#4c7a52' },
-  producto_editado: { label: 'Producto editado', color: '#3a6ea5' },
-  producto_agotado: { label: 'Producto agotado', color: '#b3423a' },
-  producto_disponible: { label: 'Producto disponible', color: '#4c7a52' },
-  producto_eliminado: { label: 'Producto eliminado', color: '#6f6b62' },
-};
+import { useNoticiasPageSize } from '../hooks/useIsMobile';
 
 export default function NoticiasPage() {
   const { user } = useAuth();
   const canManage = user.role === 'admin' || user.role === 'operador' || user.role === 'caja';
-  const [limit, setLimit] = useState(10);
+  const pageSize = useNoticiasPageSize();
+  const [limit, setLimit] = useState(pageSize);
   const { data, loading, error, refetch } = useFetch(`/api/noticias?limit=${limit}`, { deps: [limit] });
   const { post, put, del, loading: saving, error: saveError } = useApi();
   const { confirm, dialog: confirmDialog } = useConfirm();
@@ -103,44 +95,19 @@ export default function NoticiasPage() {
       {error && <div className="alert alert-error">{error}</div>}
 
       {data && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div>
           {data.noticias.length === 0 ? (
             <div className="card" style={{ padding: 20, color: 'var(--color-text-muted)' }}>Sin noticias</div>
           ) : (
-            data.noticias.map((n) => (
-              <div key={n.id} className="card" style={{ padding: 16 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
-                  <Badge label={(TIPO_LABELS[n.tipo] || {}).label || n.tipo} color={(TIPO_LABELS[n.tipo] || {}).color} />
-                  <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{formatDate(n.created_at)}</span>
-                </div>
-                <div style={{ fontSize: 14 }}>{n.texto}</div>
-                <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 8 }}>
-                  {n.created_by_name ? `Por ${n.created_by_name}` : 'Sistema'}
-                </div>
-                {canManage && (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                    {n.tipo === 'manual' && (
-                      <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => openEdit(n)}>
-                        Editar
-                      </button>
-                    )}
-                    <button
-                      className="btn btn-secondary"
-                      style={{ padding: '6px 10px', fontSize: 12, color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
-                      onClick={() => handleDelete(n)}
-                    >
-                      Eliminar
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))
+            <NoticiasGrid noticias={data.noticias} canManage={canManage} onEdit={openEdit} onDelete={handleDelete} />
           )}
 
           {data.noticias.length < data.total && (
-            <button className="btn btn-secondary" onClick={() => setLimit((l) => l + 10)} style={{ alignSelf: 'center' }}>
-              Ver más
-            </button>
+            <div style={{ textAlign: 'center', marginTop: 20 }}>
+              <button className="btn btn-secondary" onClick={() => setLimit((l) => l + pageSize)}>
+                Ver más
+              </button>
+            </div>
           )}
         </div>
       )}

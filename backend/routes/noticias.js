@@ -9,13 +9,13 @@ const requireManage = (message) => requireRole(['admin', 'operador', 'caja'], me
 
 // Crea una noticia. Se usa tanto desde las rutas de abajo como desde products.js
 // para publicar automáticamente cada cambio de producto.
-async function crearNoticia({ texto, tipo = 'manual', producto_id = null, userId = null }) {
+async function crearNoticia({ texto, tipo = 'manual', producto_id = null, userId = null, datos = null }) {
   try {
     const result = await pool.query(
-      `INSERT INTO noticias (tipo, texto, producto_id, created_by)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO noticias (tipo, texto, producto_id, created_by, datos)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [tipo, texto, producto_id, userId]
+      [tipo, texto, producto_id, userId, datos ? JSON.stringify(datos) : null]
     );
     return result.rows[0];
   } catch (err) {

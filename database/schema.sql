@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS noticias (
   )),
   texto TEXT NOT NULL,
   producto_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+  datos JSONB,
   created_by INTEGER REFERENCES users(id),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

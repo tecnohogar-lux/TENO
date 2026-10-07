@@ -6,6 +6,7 @@ const xlsx = require('xlsx');
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { crearNoticia } = require('./noticias');
+const { noticiaProducto, detectarCambios } = require('../utils/noticiasTexto');
 const { logAudit } = require('../utils/auditLog');
 const fs = require('fs');
 
@@ -214,7 +215,7 @@ router.post('/', authenticateToken, requireManage('No tienes permiso para crear 
     );
 
     const product = result.rows[0];
-    await crearNoticia({ texto: `Se creó el producto "${product.title}"`, tipo: 'producto_creado', producto_id: product.id, userId: user.id });
+    await crearNoticia({ ...noticiaProducto('producto_creado', product.title), tipo: 'producto_creado', producto_id: product.id, userId: user.id });
 
     res.status(201).json({
       message: 'Producto creado exitosamente',
@@ -600,7 +601,7 @@ router.put('/:id', authenticateToken, requireManage('No tienes permiso para edit
     const user = req.user;
     const { title, sku, price, cover_image_url, caracteristicas, costo } = req.body;
 
-    const existing = await pool.query('SELECT price, costo FROM products WHERE id = $1', [id]);
+    const existing = await pool.query('SELECT title, sku, price, cover_image_url, caracteristicas, costo FROM products WHERE id = $1', [id]);
     if (existing.rows.length === 0) {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
@@ -641,7 +642,12 @@ router.put('/:id', authenticateToken, requireManage('No tienes permiso para edit
     }
 
     const product = result.rows[0];
-    await crearNoticia({ texto: `Se editó el producto "${product.title}"`, tipo: 'producto_editado', producto_id: product.id, userId: user.id });
+    // La noticia detalla qué cambió (precio con su nuevo valor, título, descripción);
+    // si el guardado no cambió nada no se publica.
+    const cambios = detectarCambios(existing.rows[0], product);
+    if (cambios.length > 0) {
+      await crearNoticia({ ...noticiaProducto('producto_editado', product.title, cambios), tipo: 'producto_editado', producto_id: product.id, userId: user.id });
+    }
 
     res.json({
       message: 'Producto actualizado',
@@ -674,7 +680,7 @@ router.put('/:id/agotado', authenticateToken, requireManage('No tienes permiso p
 
     const product = result.rows[0];
     await crearNoticia({
-      texto: product.agotado ? `Producto "${product.title}" marcado como agotado` : `Producto "${product.title}" nuevamente disponible`,
+      ...noticiaProducto(product.agotado ? 'producto_agotado' : 'producto_disponible', product.title),
       tipo: product.agotado ? 'producto_agotado' : 'producto_disponible',
       producto_id: product.id,
       userId: user.id
@@ -708,7 +714,7 @@ router.delete('/:id', authenticateToken, requireManage('No tienes permiso para e
     }
 
     const titulo = existing.rows[0]?.title || `#${id}`;
-    await crearNoticia({ texto: `Se eliminó el producto "${titulo}"`, tipo: 'producto_eliminado', userId: user.id });
+    await crearNoticia({ ...noticiaProducto('producto_eliminado', titulo), tipo: 'producto_eliminado', userId: user.id });
 
     res.json({ message: 'Producto eliminado' });
 
@@ -738,7 +744,9 @@ router.post('/bulk-delete', authenticateToken, requireManage('No tienes permiso 
 
     if (eliminados.length > 0) {
       await crearNoticia({
-        texto: eliminados.length === 1 ? `Se eliminó el producto "${eliminados[0].title}"` : `Se eliminaron ${eliminados.length} productos`,
+        ...(eliminados.length === 1
+          ? noticiaProducto('producto_eliminado', eliminados[0].title)
+          : { texto: `Se eliminaron ${eliminados.length} productos`, datos: { cantidad: eliminados.length } }),
         tipo: 'producto_eliminado',
         userId: user.id,
       });

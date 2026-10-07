@@ -124,14 +124,14 @@ router.post('/sale', authenticateToken, requireRole(['operador', 'admin', 'caja'
       const inserted = await dbClient.query(
         `INSERT INTO sales
            (vendor_id, client_id, product_name, quantity, price, total, address, comuna, phone, notes,
-            status, delivery_status, tipo_venta, payment_method, transferencia_verificada, precio_producto, precio_envio, comision, price_type, payment_breakdown)
+            status, delivery_status, tipo_venta, payment_method, transferencia_verificada, precio_producto, precio_envio, comision, price_type, payment_breakdown, registered_by)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                 'pendiente', 'listo_para_imprimir', 'ENVIO_PREPAGADO', $11, $12, $13, $14, $15, $16, $17)
+                 'pendiente', 'listo_para_imprimir', 'ENVIO_PREPAGADO', $11, $12, $13, $14, $15, $16, $17, $18)
          RETURNING *`,
         [
           vendor_id, finalClientId, item.product_name, item.quantity, item.price, total,
           address, comuna, phone || null, notes || null,
-          payment_method, !!transferencia_verificada, precioProducto, precioEnvio, comision, itemPriceType(item), breakdownJson,
+          payment_method, !!transferencia_verificada, precioProducto, precioEnvio, comision, itemPriceType(item), breakdownJson, user.id,
         ]
       );
 
@@ -162,10 +162,11 @@ router.post('/sale', authenticateToken, requireRole(['operador', 'admin', 'caja'
       const inserted = await dbClient.query(
         `INSERT INTO sales
            (vendor_id, client_id, product_name, quantity, price, total, status, delivery_status, tipo_venta,
-            payment_method, transferencia_verificada, notes, precio_producto, comision, price_type, items, payment_breakdown)
-         VALUES ($1, $2, $3, $4, $5, $6, 'completado', NULL, 'TIENDA', $7, $8, $9, $6, $10, $11, $12, $13)
+            payment_method, transferencia_verificada, notes, precio_producto, comision, price_type, items, payment_breakdown, registered_by, retiro_id)
+         VALUES ($1, $2, $3, $4, $5, $6, 'completado', NULL, 'TIENDA', $7, $8, $9, $6, $10, $11, $12, $13, $14,
+                 (SELECT id FROM retiros_tienda WHERE id = $15))
          RETURNING *`,
-        [vendor_id, finalClientId, resumen.productName, resumen.totalQty, total / resumen.totalQty, total, payment_method, !!transferencia_verificada, notes || null, resumen.comision, resumen.priceType, resumen.itemsJson, breakdownJson]
+        [vendor_id, finalClientId, resumen.productName, resumen.totalQty, total / resumen.totalQty, total, payment_method, !!transferencia_verificada, notes || null, resumen.comision, resumen.priceType, resumen.itemsJson, breakdownJson, user.id, retiro_id ? Number(retiro_id) : null]
       );
       createdSales.push(inserted.rows[0]);
     }

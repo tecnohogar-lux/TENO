@@ -3,8 +3,10 @@ import Layout from '../components/Layout';
 import MetricsCard from '../components/MetricsCard';
 import Pagination from '../components/Pagination';
 import Badge from '../components/Badge';
+import CierreDetalle from '../components/CierreDetalle';
 import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
+import useAuth from '../hooks/useAuth';
 import { formatCurrency, formatDate } from '../utils/format';
 import { saleStatusLabel, deliveryStatusLabel, tipoVentaLabel, paymentMethodLabel, paymentBreakdownLines, TIPO_VENTA_LABELS, PAYMENT_METHODS } from '../utils/labels';
 import { PRICE_TYPE_LABELS, priceTypeLabel } from '../utils/priceType';
@@ -18,6 +20,8 @@ function buildQuery(filters) {
 }
 
 export default function CashRegisterPage() {
+  const { user } = useAuth();
+  const isAdmin = user.role === 'admin';
   const { data: currentData, loading: loadingCurrent, error: errorCurrent, refetch: refetchCurrent } = useFetch('/api/cash-register/current');
   const { post, loading: opening, error: openError } = useApi();
   const { post: closePost, loading: closing, error: closeError } = useApi();
@@ -40,7 +44,10 @@ export default function CashRegisterPage() {
   });
 
   const [historyPage, setHistoryPage] = useState(1);
-  const { data: historyData, refetch: refetchHistory } = useFetch(`/api/cash-register/history?page=${historyPage}&limit=10`, { deps: [historyPage] });
+  const [historyRange, setHistoryRange] = useState({ desde: '', hasta: '' });
+  const [detalleId, setDetalleId] = useState(null); // cierre pasado abierto para revisar/corregir (solo admin)
+  const rangeQuery = `${historyRange.desde ? `&desde=${historyRange.desde}` : ''}${historyRange.hasta ? `&hasta=${historyRange.hasta}` : ''}`;
+  const { data: historyData, refetch: refetchHistory } = useFetch(`/api/cash-register/history?page=${historyPage}&limit=10${rangeQuery}`, { deps: [historyPage, rangeQuery] });
 
   async function handleOpen(e) {
     e.preventDefault();
@@ -345,7 +352,25 @@ export default function CashRegisterPage() {
         </>
       )}
 
-      <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>Historial de cierres</h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, margin: '0 0 12px' }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 15 }}>Historial de cierres</h3>
+          {isAdmin && (
+            <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>
+              Como admin puedes abrir cualquier cierre para ver sus transacciones y corregir errores.
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Desde</label>
+          <input type="date" value={historyRange.desde} max={historyRange.hasta || undefined} onChange={(e) => { setHistoryRange({ ...historyRange, desde: e.target.value }); setHistoryPage(1); }} />
+          <label style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Hasta</label>
+          <input type="date" value={historyRange.hasta} min={historyRange.desde || undefined} onChange={(e) => { setHistoryRange({ ...historyRange, hasta: e.target.value }); setHistoryPage(1); }} />
+          {(historyRange.desde || historyRange.hasta) && (
+            <button type="button" className="btn btn-secondary" onClick={() => { setHistoryRange({ desde: '', hasta: '' }); setHistoryPage(1); }}>Limpiar</button>
+          )}
+        </div>
+      </div>
       {historyData && (
         <div className="card" style={{ padding: 20 }}>
           <table className="responsive-stack">
@@ -357,12 +382,15 @@ export default function CashRegisterPage() {
                 <th>Total vendido</th>
                 <th>Saldo real</th>
                 <th>Diferencia</th>
+                {isAdmin && <th>Acciones</th>}
               </tr>
             </thead>
             <tbody>
               {historyData.cierres.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ color: 'var(--color-text-muted)' }}>Sin cierres registrados todavía</td>
+                  <td colSpan={isAdmin ? 7 : 6} style={{ color: 'var(--color-text-muted)' }}>
+                    {rangeQuery ? 'Sin cierres en ese rango de fechas' : 'Sin cierres registrados todavía'}
+                  </td>
                 </tr>
               ) : (
                 historyData.cierres.map((c) => (
@@ -375,6 +403,13 @@ export default function CashRegisterPage() {
                     <td data-label="Diferencia" style={{ color: Number(c.diferencia) === 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
                       {formatCurrency(c.diferencia)}
                     </td>
+                    {isAdmin && (
+                      <td data-label="Acciones">
+                        <button type="button" className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => setDetalleId(c.id)}>
+                          Ver / corregir
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}
@@ -382,6 +417,10 @@ export default function CashRegisterPage() {
           </table>
           <Pagination page={historyData.page} totalPages={historyData.totalPages} total={historyData.total} onPageChange={setHistoryPage} />
         </div>
+      )}
+
+      {isAdmin && detalleId && (
+        <CierreDetalle cajaId={detalleId} onClose={() => setDetalleId(null)} onChanged={refetchHistory} />
       )}
     </Layout>
   );

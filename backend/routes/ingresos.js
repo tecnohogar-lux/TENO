@@ -6,8 +6,10 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
+const { recalcularCierresQueContienen } = require('../utils/cierreCaja');
 
 const requireStaff = requireRole(['admin', 'operador', 'caja'], 'No tienes permiso para acceder a ingresos');
+const requireAdmin = requireRole(['admin'], 'Solo un admin puede corregir ingresos');
 
 router.get('/', authenticateToken, requireStaff, async (req, res) => {
   try {
@@ -81,6 +83,36 @@ router.post('/', authenticateToken, requireStaff, async (req, res) => {
   }
 });
 
+// Corregir un ingreso (solo admin). Si es de un día ya cerrado, se recalcula ese cierre.
+router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const user = req.user;
+    const { id } = req.params;
+    const nombre = String(req.body.nombre ?? '').trim();
+    const monto = Number(req.body.monto);
+
+    if (!nombre || !(monto > 0)) {
+      return res.status(400).json({ error: 'Nombre y un monto mayor a 0 son requeridos' });
+    }
+
+    const before = await pool.query('SELECT * FROM ingresos_caja WHERE id = $1', [id]);
+    if (before.rows.length === 0) {
+      return res.status(404).json({ error: 'Ingreso no encontrado' });
+    }
+
+    const result = await pool.query('UPDATE ingresos_caja SET nombre = $1, monto = $2 WHERE id = $3 RETURNING *', [nombre, monto, id]);
+
+    await logAudit({ userId: user.id, action: 'editar_ingreso_caja', tableName: 'ingresos_caja', recordId: Number(id), oldValues: before.rows[0], newValues: result.rows[0] });
+    await recalcularCierresQueContienen(result.rows[0].created_at, user.id);
+
+    res.json({ message: 'Ingreso corregido', ingreso: result.rows[0] });
+
+  } catch (err) {
+    console.error('Error al corregir ingreso:', err);
+    res.status(500).json({ error: 'Error al corregir ingreso' });
+  }
+});
+
 router.delete('/:id', authenticateToken, requireStaff, async (req, res) => {
   try {
     const user = req.user;
@@ -92,6 +124,7 @@ router.delete('/:id', authenticateToken, requireStaff, async (req, res) => {
     }
 
     await logAudit({ userId: user.id, action: 'eliminar_ingreso_caja', tableName: 'ingresos_caja', recordId: Number(id), oldValues: result.rows[0] });
+    await recalcularCierresQueContienen(result.rows[0].created_at, user.id);
 
     res.json({ message: 'Ingreso eliminado' });
 

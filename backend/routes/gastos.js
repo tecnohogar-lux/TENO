@@ -5,8 +5,10 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
+const { recalcularCierresQueContienen } = require('../utils/cierreCaja');
 
 const requireAdminOperador = requireRole(['admin', 'operador', 'caja'], 'No tienes permiso para acceder a gastos y egresos');
+const requireAdmin = requireRole(['admin'], 'Solo un admin puede corregir gastos');
 
 // ============================================
 // GET - Listar gastos (paginado, más recientes primero). Soporta ?from=&to= (ISO) para acotar por fecha
@@ -94,6 +96,38 @@ router.post('/', authenticateToken, requireAdminOperador, async (req, res) => {
 });
 
 // ============================================
+// PUT - Corregir un gasto (solo admin). Si es de un día ya cerrado, se recalcula ese cierre.
+// ============================================
+router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const user = req.user;
+    const { id } = req.params;
+    const nombre = String(req.body.nombre ?? '').trim();
+    const monto = Number(req.body.monto);
+
+    if (!nombre || !(monto > 0)) {
+      return res.status(400).json({ error: 'Nombre y un monto mayor a 0 son requeridos' });
+    }
+
+    const before = await pool.query('SELECT * FROM gastos WHERE id = $1', [id]);
+    if (before.rows.length === 0) {
+      return res.status(404).json({ error: 'Gasto no encontrado' });
+    }
+
+    const result = await pool.query('UPDATE gastos SET nombre = $1, monto = $2 WHERE id = $3 RETURNING *', [nombre, monto, id]);
+
+    await logAudit({ userId: user.id, action: 'editar_gasto', tableName: 'gastos', recordId: Number(id), oldValues: before.rows[0], newValues: result.rows[0] });
+    await recalcularCierresQueContienen(result.rows[0].created_at, user.id);
+
+    res.json({ message: 'Gasto corregido', gasto: result.rows[0] });
+
+  } catch (err) {
+    console.error('Error al corregir gasto:', err);
+    res.status(500).json({ error: 'Error al corregir gasto' });
+  }
+});
+
+// ============================================
 // DELETE - Eliminar gasto
 // ============================================
 router.delete('/:id', authenticateToken, requireAdminOperador, async (req, res) => {
@@ -101,13 +135,15 @@ router.delete('/:id', authenticateToken, requireAdminOperador, async (req, res) 
     const user = req.user;
     const { id } = req.params;
 
-    const result = await pool.query('DELETE FROM gastos WHERE id = $1 RETURNING id', [id]);
+    const result = await pool.query('DELETE FROM gastos WHERE id = $1 RETURNING *', [id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Gasto no encontrado' });
     }
 
-    await logAudit({ userId: user.id, action: 'eliminar_gasto', tableName: 'gastos', recordId: Number(id) });
+    await logAudit({ userId: user.id, action: 'eliminar_gasto', tableName: 'gastos', recordId: Number(id), oldValues: result.rows[0] });
+    // Si el gasto era de un día ya cerrado, se corrige el cierre que lo contenía.
+    await recalcularCierresQueContienen(result.rows[0].created_at, user.id);
 
     res.json({ message: 'Gasto eliminado' });
 

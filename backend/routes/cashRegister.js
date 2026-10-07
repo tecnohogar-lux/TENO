@@ -6,49 +6,12 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
-const { totalesPorFormaPago: calcularTotalesPorFormaPago, formaPagoCondition } = require('../utils/paymentBreakdown');
+const { formaPagoCondition } = require('../utils/paymentBreakdown');
 const { conCobroSql } = require('../utils/sinCobro');
+const { obtenerTotalesPorFormaPago, calcularTotales, recalcularCierre } = require('../utils/cierreCaja');
 
 const requireAdminOperador = requireRole(['admin', 'operador', 'caja'], 'No tienes permiso para acceder a Apertura/Cierre de Caja');
-
-// Cuánto dinero debería existir por cada forma de pago en el período (para
-// cuadrar caja: solo el efectivo se cuenta físicamente, el resto se verifica
-// contra el extracto bancario/POS correspondiente). Las ventas con pago mixto
-// aportan a cada forma de pago solo el monto de su línea correspondiente.
-async function obtenerTotalesPorFormaPago(desde, hasta) {
-  return calcularTotalesPorFormaPago(pool, desde, hasta);
-}
-
-// Calcula los totales del período [desde, hasta] para una caja (abierta o ya cerrada).
-// porFormaPago se puede pasar ya calculado para no repetir la misma consulta.
-async function calcularTotales(desde, hasta, saldoInicial, porFormaPago = null) {
-  const ventas = await pool.query(
-    `SELECT COALESCE(SUM(total) FILTER (WHERE status = 'completado'), 0) as total_vendido
-     FROM sales
-     WHERE deleted_at IS NULL AND tipo_venta != 'ENVIO_REGION' AND ${conCobroSql()} AND created_at >= $1 AND created_at <= $2`,
-    [desde, hasta]
-  );
-  if (!porFormaPago) porFormaPago = await obtenerTotalesPorFormaPago(desde, hasta);
-
-  const gastosResult = await pool.query(
-    `SELECT COALESCE(SUM(monto), 0) as total_gastos FROM gastos WHERE created_at >= $1 AND created_at <= $2`,
-    [desde, hasta]
-  );
-
-  // Ingresos a caja (pagos de deudas, abonos...): efectivo sin venta asociada, solo suma al saldo.
-  const ingresosResult = await pool.query(
-    `SELECT COALESCE(SUM(monto), 0) as total_ingresos FROM ingresos_caja WHERE created_at >= $1 AND created_at <= $2`,
-    [desde, hasta]
-  );
-
-  const total_vendido = parseFloat(ventas.rows[0].total_vendido);
-  const efectivo_ventas = porFormaPago.efectivo;
-  const total_gastos = parseFloat(gastosResult.rows[0].total_gastos);
-  const total_ingresos = parseFloat(ingresosResult.rows[0].total_ingresos);
-  const saldo_real = parseFloat(saldoInicial) + efectivo_ventas + total_ingresos - total_gastos;
-
-  return { total_vendido, efectivo_ventas, total_gastos, total_ingresos, saldo_real };
-}
+const requireAdmin = requireRole(['admin'], 'Solo un admin puede corregir cierres de caja');
 
 // Ventas del período separadas por canal (Tienda / Envío RM / Envíos a Región), con filtros opcionales.
 async function obtenerVentasPeriodo(desde, hasta, filtros = {}) {
@@ -86,7 +49,7 @@ async function obtenerVentasPeriodo(desde, hasta, filtros = {}) {
   }
 
   const result = await pool.query(
-    `SELECT s.*, u.name as vendor_name, c.name as client_name,
+    `SELECT s.*, u.name as vendor_name, c.name as client_name, ru.name as registered_by_name,
             CASE
               WHEN s.tipo_venta = 'TIENDA' THEN 'tienda'
               ELSE 'envio_rm'
@@ -94,6 +57,7 @@ async function obtenerVentasPeriodo(desde, hasta, filtros = {}) {
      FROM sales s
      JOIN users u ON s.vendor_id = u.id
      JOIN clients c ON s.client_id = c.id
+     LEFT JOIN users ru ON s.registered_by = ru.id
      WHERE ${conditions.join(' AND ')}
      ORDER BY s.created_at DESC`,
     params
@@ -216,9 +180,21 @@ router.post('/:id/close', authenticateToken, requireAdminOperador, async (req, r
 // ============================================
 router.get('/history', authenticateToken, requireAdminOperador, async (req, res) => {
   try {
-    const { page, limit } = req.query;
+    const { page, limit, desde, hasta } = req.query;
 
-    const countResult = await pool.query('SELECT COUNT(*) as count FROM cierre_caja WHERE closed_at IS NOT NULL');
+    const conditions = ['cc.closed_at IS NOT NULL'];
+    const params = [];
+    if (desde) {
+      params.push(desde);
+      conditions.push(`cc.closed_at >= $${params.length}::date`);
+    }
+    if (hasta) {
+      params.push(hasta);
+      conditions.push(`cc.opened_at < ($${params.length}::date + INTERVAL '1 day')`);
+    }
+    const where = conditions.join(' AND ');
+
+    const countResult = await pool.query(`SELECT COUNT(*) as count FROM cierre_caja cc WHERE ${where}`, params);
     const total = parseInt(countResult.rows[0].count);
 
     let query = `
@@ -226,10 +202,9 @@ router.get('/history', authenticateToken, requireAdminOperador, async (req, res)
       FROM cierre_caja cc
       LEFT JOIN users ou ON cc.opened_by = ou.id
       LEFT JOIN users cu ON cc.closed_by = cu.id
-      WHERE cc.closed_at IS NOT NULL
+      WHERE ${where}
       ORDER BY cc.closed_at DESC
     `;
-    const params = [];
 
     let pageNum = null;
     let limitNum = null;
@@ -285,11 +260,99 @@ router.get('/:id', authenticateToken, requireAdminOperador, async (req, res) => 
     const por_forma_pago = await obtenerTotalesPorFormaPago(caja.opened_at, hasta);
     const totalesEnVivo = caja.closed_at ? null : await calcularTotales(caja.opened_at, hasta, caja.saldo_inicial, por_forma_pago);
 
-    res.json({ caja: totalesEnVivo ? { ...caja, ...totalesEnVivo } : caja, ventas, por_canal, por_forma_pago });
+    const gastos = await pool.query(
+      `SELECT g.*, u.name as created_by_name FROM gastos g LEFT JOIN users u ON g.created_by = u.id
+       WHERE g.created_at >= $1 AND g.created_at <= $2 ORDER BY g.created_at ASC`,
+      [caja.opened_at, hasta]
+    );
+    const ingresos = await pool.query(
+      `SELECT i.*, u.name as created_by_name FROM ingresos_caja i LEFT JOIN users u ON i.created_by = u.id
+       WHERE i.created_at >= $1 AND i.created_at <= $2 ORDER BY i.created_at ASC`,
+      [caja.opened_at, hasta]
+    );
+
+    res.json({
+      caja: totalesEnVivo ? { ...caja, ...totalesEnVivo } : caja,
+      ventas, por_canal, por_forma_pago,
+      gastos: gastos.rows,
+      ingresos: ingresos.rows,
+    });
 
   } catch (err) {
     console.error('Error al obtener detalle de caja:', err);
     res.status(500).json({ error: 'Error al obtener detalle de caja' });
+  }
+});
+
+// ============================================
+// PUT - Corregir un cierre ya cerrado (solo admin): saldo inicial, efectivo contado y notas.
+// Los totales y la diferencia se recalculan con lo que hay hoy en el período del cierre.
+// ============================================
+router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const user = req.user;
+    const { id } = req.params;
+    const { saldo_inicial, efectivo_contado, notas } = req.body;
+
+    const cajaResult = await pool.query('SELECT * FROM cierre_caja WHERE id = $1', [id]);
+    if (cajaResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Caja no encontrada' });
+    }
+    const caja = cajaResult.rows[0];
+    if (!caja.closed_at) {
+      return res.status(400).json({ error: 'Solo se pueden corregir cierres ya cerrados. La caja abierta se cierra desde su panel.' });
+    }
+
+    const parseMonto = (v, label) => {
+      const n = Number(v);
+      if (v === '' || v === null || !Number.isFinite(n) || n < 0) throw { status: 400, message: `${label} debe ser un número igual o mayor a 0` };
+      return n;
+    };
+    let nuevoSaldoInicial = caja.saldo_inicial;
+    let nuevoContado = caja.efectivo_contado;
+    try {
+      if (saldo_inicial !== undefined) nuevoSaldoInicial = parseMonto(saldo_inicial, 'El saldo inicial');
+      if (efectivo_contado !== undefined) nuevoContado = parseMonto(efectivo_contado, 'El efectivo contado');
+    } catch (e) {
+      return res.status(e.status || 400).json({ error: e.message });
+    }
+    const nuevasNotas = notas !== undefined ? (String(notas).trim() || null) : caja.notas;
+
+    await pool.query(
+      `UPDATE cierre_caja SET saldo_inicial = $1, efectivo_contado = $2, notas = $3 WHERE id = $4`,
+      [nuevoSaldoInicial, nuevoContado, nuevasNotas, id]
+    );
+    const actualizado = await recalcularCierre({ ...caja, saldo_inicial: nuevoSaldoInicial, efectivo_contado: nuevoContado }, user.id);
+
+    await logAudit({
+      userId: user.id, action: 'corregir_cierre_caja', tableName: 'cierre_caja', recordId: Number(id),
+      oldValues: { saldo_inicial: caja.saldo_inicial, efectivo_contado: caja.efectivo_contado, notas: caja.notas, saldo_real: caja.saldo_real, diferencia: caja.diferencia },
+      newValues: { saldo_inicial: actualizado.saldo_inicial, efectivo_contado: actualizado.efectivo_contado, notas: actualizado.notas, saldo_real: actualizado.saldo_real, diferencia: actualizado.diferencia },
+    });
+
+    res.json({ message: 'Cierre corregido', caja: actualizado });
+
+  } catch (err) {
+    console.error('Error al corregir cierre de caja:', err);
+    res.status(500).json({ error: 'Error al corregir cierre de caja' });
+  }
+});
+
+// ============================================
+// POST - Recalcular los totales de un cierre ya cerrado (solo admin)
+// ============================================
+router.post('/:id/recalcular', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const cajaResult = await pool.query('SELECT * FROM cierre_caja WHERE id = $1 AND closed_at IS NOT NULL', [req.params.id]);
+    if (cajaResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Cierre no encontrado' });
+    }
+    const actualizado = await recalcularCierre(cajaResult.rows[0], req.user.id);
+    res.json({ message: 'Cierre recalculado', caja: actualizado });
+
+  } catch (err) {
+    console.error('Error al recalcular cierre de caja:', err);
+    res.status(500).json({ error: 'Error al recalcular cierre de caja' });
   }
 });
 

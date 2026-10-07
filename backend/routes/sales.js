@@ -7,6 +7,8 @@ const { logAudit } = require('../utils/auditLog');
 const { MIN_MAYOR, MIN_MAYOR_MESSAGE, lookupComisionUnitaria, validateLines, summarizeLines } = require('../utils/saleLines');
 const { buildQrValue } = require('../utils/qrCode');
 const { esSinCobro, conCobroSql, aplicarTipoEnvio } = require('../utils/sinCobro');
+const { PAYMENT_METHODS, validatePaymentBreakdown, normalizePaymentBreakdown, formaPagoCondition } = require('../utils/paymentBreakdown');
+const { recalcularCierresQueContienen } = require('../utils/cierreCaja');
 
 const DELIVERY_STATUSES = ['listo_para_imprimir', 'impreso', 'en_camino', 'entregado', 'cancelado', 'reprogramado'];
 
@@ -31,6 +33,63 @@ const DELIVERY_TYPES = ['delivery', 'solo_envio_pagado', 'solo_entrega_incomplet
 const MANAGE_ROLES = ['admin', 'operador', 'caja'];
 const requireAdmin = (message) => requireRole(['admin'], message);
 const requireManage = (message) => requireRole(MANAGE_ROLES, message);
+
+// Filtros del Historial de Ventas y de Delivery Santiago (listado y resumen usan los mismos).
+// "retiro" = venta de tienda que salió de un retiro en tienda; "directa" = venta directa en caja.
+const CANALES = {
+  envio: `s.tipo_venta = 'ENVIO'`,
+  retiro: `(s.tipo_venta = 'TIENDA' AND s.retiro_id IS NOT NULL)`,
+  directa: `(s.tipo_venta = 'TIENDA' AND s.retiro_id IS NULL)`,
+  region: `s.tipo_venta = 'ENVIO_REGION'`,
+  prepagado: `s.tipo_venta = 'ENVIO_PREPAGADO'`,
+};
+const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
+const ESTADOS_FILTRO = [...DELIVERY_STATUSES, 'pendiente', 'completado'];
+
+// Agrega a `conditions`/`params` los filtros pedidos en la query. Los valores inválidos se ignoran.
+// "operador" (quién registró la venta) solo lo puede usar el personal; un vendedor ya queda
+// limitado a lo suyo (o al equipo, en Delivery Santiago) por la condición que pone la ruta.
+function applyFiltros(query, user, conditions, params) {
+  const { vendedor_id, operador_id, cliente, desde, hasta, forma_pago, canal, tipo_envio, courier_id, estado } = query;
+  const esInt = (v) => /^\d+$/.test(String(v || ''));
+
+  if (esInt(vendedor_id)) {
+    params.push(Number(vendedor_id));
+    conditions.push(`s.vendor_id = $${params.length}`);
+  }
+  if (esInt(operador_id) && MANAGE_ROLES.includes(user.role)) {
+    params.push(Number(operador_id));
+    conditions.push(`s.registered_by = $${params.length}`);
+  }
+  if (cliente && String(cliente).trim()) {
+    params.push(`%${String(cliente).trim()}%`);
+    conditions.push(`c.name ILIKE $${params.length}`);
+  }
+  if (FECHA_RE.test(String(desde || ''))) {
+    params.push(desde);
+    conditions.push(`s.created_at >= $${params.length}::date`);
+  }
+  if (FECHA_RE.test(String(hasta || ''))) {
+    params.push(hasta);
+    conditions.push(`s.created_at < ($${params.length}::date + INTERVAL '1 day')`);
+  }
+  if (PAYMENT_METHODS.includes(forma_pago) || forma_pago === 'mixto') {
+    conditions.push(forma_pago === 'mixto' ? `s.payment_method = 'mixto'` : formaPagoCondition(params, forma_pago));
+  }
+  if (CANALES[canal]) conditions.push(CANALES[canal]);
+  if (DELIVERY_TYPES.includes(tipo_envio)) {
+    params.push(tipo_envio);
+    conditions.push(`s.delivery_type = $${params.length}`);
+  }
+  if (esInt(courier_id)) {
+    params.push(Number(courier_id));
+    conditions.push(`s.courier_id = $${params.length}`);
+  }
+  if (ESTADOS_FILTRO.includes(estado)) {
+    params.push(estado);
+    conditions.push(`COALESCE(s.delivery_status, s.status) = $${params.length}`);
+  }
+}
 
 // ============================================
 // GET - Papelera (ventas/envíos eliminados, solo admin)
@@ -135,6 +194,8 @@ router.get('/summary', authenticateToken, async (req, res) => {
       const idx = params.length;
       conditions.push(`(u.name ILIKE $${idx} OR c.name ILIKE $${idx} OR s.product_name ILIKE $${idx} OR s.address ILIKE $${idx} OR s.comuna ILIKE $${idx} OR co.name ILIKE $${idx})`);
     }
+
+    applyFiltros(req.query, user, conditions, params);
 
     const result = await pool.query(
       `SELECT COUNT(*) as total,
@@ -292,6 +353,8 @@ router.get('/', authenticateToken, async (req, res) => {
         conditions.push(`s.tipo_venta = ANY($${params.length})`);
       }
     }
+
+    applyFiltros(req.query, user, conditions, params);
 
     const whereClause = `WHERE ${conditions.join(' AND ')}`;
 
@@ -495,10 +558,10 @@ router.post('/', authenticateToken, async (req, res) => {
     const courierId = defaultCourier.rows[0]?.id || null;
 
     const inserted = await dbClient.query(
-      `INSERT INTO sales (vendor_id, client_id, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region, precio_producto, precio_envio, comision, courier_id, price_type, items)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+      `INSERT INTO sales (vendor_id, client_id, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region, precio_producto, precio_envio, comision, courier_id, price_type, items, registered_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
        RETURNING *`,
-      [vendor_id, finalClientId, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region || null, precio_producto || null, precio_envio || null, comision, courierId, price_type, itemsJson]
+      [vendor_id, finalClientId, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region || null, precio_producto || null, precio_envio || null, comision, courierId, price_type, itemsJson, user.id]
     );
 
     const sale = inserted.rows[0];
@@ -808,6 +871,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
       oldValues: sale,
       newValues: result.rows[0]
     });
+    await recalcularCierresQueContienen(sale.created_at, user.id);
 
     res.json({
       message: 'Venta actualizada',
@@ -1034,6 +1098,62 @@ router.put('/:id/address', authenticateToken, async (req, res) => {
 });
 
 // ============================================
+// PUT - Corregir la forma de pago de una venta (solo admin). Sirve para arreglar un error de
+// caja de cualquier día: si la venta pertenece a un cierre ya cerrado, ese cierre se recalcula.
+// ============================================
+router.put('/:id/payment', authenticateToken, requireAdmin('Solo un admin puede corregir la forma de pago'), async (req, res) => {
+  try {
+    const user = req.user;
+    const { id } = req.params;
+    const { payment_method, payment_breakdown, transferencia_verificada } = req.body;
+
+    if (!PAYMENT_METHODS.includes(payment_method) && payment_method !== 'mixto') {
+      return res.status(400).json({ error: `Forma de pago inválida. Opciones: ${[...PAYMENT_METHODS, 'mixto'].join(', ')}` });
+    }
+
+    const saleResult = await pool.query('SELECT * FROM sales WHERE id = $1 AND deleted_at IS NULL', [id]);
+    if (saleResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Venta no encontrada' });
+    }
+    const sale = saleResult.rows[0];
+    if (esSinCobro(sale.delivery_type)) {
+      return res.status(400).json({ error: 'Un envío sin cobro no tiene forma de pago' });
+    }
+
+    let breakdownJson = null;
+    let verificada = false;
+    if (payment_method === 'mixto') {
+      const error = validatePaymentBreakdown(payment_breakdown, sale.total);
+      if (error) return res.status(400).json({ error });
+      const normalizado = normalizePaymentBreakdown(payment_breakdown);
+      breakdownJson = JSON.stringify(normalizado);
+      verificada = normalizado.every((l) => l.method !== 'transferencia' || l.transferencia_verificada);
+    } else if (payment_method === 'transferencia') {
+      verificada = !!transferencia_verificada;
+    }
+
+    const result = await pool.query(
+      `UPDATE sales SET payment_method = $1, payment_breakdown = $2, transferencia_verificada = $3, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $4 RETURNING *`,
+      [payment_method, breakdownJson, verificada, id]
+    );
+
+    await logAudit({
+      userId: user.id, action: 'corregir_forma_pago', tableName: 'sales', recordId: Number(id),
+      oldValues: { payment_method: sale.payment_method, payment_breakdown: sale.payment_breakdown, transferencia_verificada: sale.transferencia_verificada },
+      newValues: { payment_method: result.rows[0].payment_method, payment_breakdown: result.rows[0].payment_breakdown, transferencia_verificada: result.rows[0].transferencia_verificada },
+    });
+    await recalcularCierresQueContienen(sale.created_at, user.id);
+
+    res.json({ message: 'Forma de pago corregida', sale: result.rows[0] });
+
+  } catch (err) {
+    console.error('Error al corregir forma de pago:', err);
+    res.status(500).json({ error: 'Error al corregir forma de pago' });
+  }
+});
+
+// ============================================
 // PUT - Restaurar venta desde la papelera (solo admin)
 // ============================================
 router.put('/:id/restore', authenticateToken, requireAdmin('Solo un admin puede restaurar ventas'), async (req, res) => {
@@ -1050,6 +1170,7 @@ router.put('/:id/restore', authenticateToken, requireAdmin('Solo un admin puede 
     }
 
     await logAudit({ userId: req.user.id, action: 'restaurar_venta', tableName: 'sales', recordId: Number(id) });
+    await recalcularCierresQueContienen(result.rows[0].created_at, req.user.id);
 
     res.json({ message: 'Venta restaurada', sale: result.rows[0] });
 
@@ -1068,7 +1189,7 @@ router.delete('/:id', authenticateToken, requireAdmin('Solo un admin puede elimi
     const user = req.user;
 
     const result = await pool.query(
-      `UPDATE sales SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND deleted_at IS NULL RETURNING id`,
+      `UPDATE sales SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND deleted_at IS NULL RETURNING id, created_at`,
       [id]
     );
 
@@ -1077,6 +1198,8 @@ router.delete('/:id', authenticateToken, requireAdmin('Solo un admin puede elimi
     }
 
     await logAudit({ userId: user.id, action: 'eliminar_venta', tableName: 'sales', recordId: Number(id) });
+    // Si la venta era de un día ya cerrado, su cierre se recalcula sin ella.
+    await recalcularCierresQueContienen(result.rows[0].created_at, user.id);
 
     res.json({ message: 'Venta enviada a la papelera' });
 

@@ -3,6 +3,7 @@ import Layout from '../components/Layout';
 import Badge from '../components/Badge';
 import MetricsCard from '../components/MetricsCard';
 import Pagination from '../components/Pagination';
+import SalesFilters, { EMPTY_FILTERS, filtersToQuery, countActiveFilters } from '../components/SalesFilters';
 import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
 import useAuth from '../hooks/useAuth';
@@ -29,15 +30,29 @@ export default function SalesPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search);
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [showFilters, setShowFilters] = useState(false);
+  const debouncedFilters = useDebouncedValue(filters);
+  const filtersQuery = filtersToQuery(debouncedFilters);
+  const activeFilters = countActiveFilters(filters);
+  // Vendedor y operador solo tienen sentido para el personal; un vendedor ya ve solo lo suyo.
+  const filterFields = canManage
+    ? ['canal', 'vendedor_id', 'operador_id', 'cliente', 'desde', 'hasta', 'forma_pago']
+    : ['canal', 'cliente', 'desde', 'hasta', 'forma_pago'];
 
   const { data, loading, error, refetch } = useFetch(
-    `/api/sales?page=${page}&limit=${PAGE_SIZE}&search=${encodeURIComponent(debouncedSearch)}`,
-    { deps: [page, debouncedSearch] }
+    `/api/sales?page=${page}&limit=${PAGE_SIZE}&search=${encodeURIComponent(debouncedSearch)}&${filtersQuery}`,
+    { deps: [page, debouncedSearch, filtersQuery] }
   );
   const { data: summary } = useFetch(
-    `/api/sales/summary?search=${encodeURIComponent(debouncedSearch)}`,
-    { deps: [debouncedSearch] }
+    `/api/sales/summary?search=${encodeURIComponent(debouncedSearch)}&${filtersQuery}`,
+    { deps: [debouncedSearch, filtersQuery] }
   );
+
+  function handleFiltersChange(next) {
+    setFilters(next);
+    setPage(1);
+  }
   const { put, del } = useApi();
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [actionError, setActionError] = useState('');
@@ -88,13 +103,20 @@ export default function SalesPage() {
             Vista general de envíos y ventas en tienda. Para crear una etiqueta de envío ve a Delivery Santiago; para una venta en tienda ve a Caja.
           </p>
         </div>
-        <input
-          placeholder="Buscar por vendedor, cliente o producto..."
-          value={search}
-          onChange={(e) => handleSearchChange(e.target.value)}
-          style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', width: 300, background: 'var(--color-surface)', color: 'var(--color-text)' }}
-        />
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            placeholder="Buscar por vendedor, cliente o producto..."
+            value={search}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', width: 300, background: 'var(--color-surface)', color: 'var(--color-text)' }}
+          />
+          <button type="button" className="btn btn-secondary" onClick={() => setShowFilters((v) => !v)}>
+            Filtros{activeFilters > 0 ? ` (${activeFilters})` : ''} {showFilters ? '▴' : '▾'}
+          </button>
+        </div>
       </div>
+
+      {showFilters && <SalesFilters filters={filters} onChange={handleFiltersChange} fields={filterFields} canManage={canManage} />}
 
       {actionError && <div className="alert alert-error">{actionError}</div>}
 

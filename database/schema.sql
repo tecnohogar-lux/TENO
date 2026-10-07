@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS sales (
   )),
   motivo_estado VARCHAR(500),
   cobro_original JSONB,
+  registered_by INTEGER REFERENCES users(id),
   delivery_type VARCHAR(30) NOT NULL DEFAULT 'delivery' CHECK (delivery_type IN (
     'delivery', 'solo_envio_pagado', 'solo_entrega_incompleto', 'cambio_producto'
   )),
@@ -225,7 +226,12 @@ CREATE TABLE IF NOT EXISTS retiros_tienda (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Retiro en tienda del que salió una venta de tienda (se agrega aquí porque retiros_tienda se crea después de sales).
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS retiro_id INTEGER REFERENCES retiros_tienda(id) ON DELETE SET NULL;
+
 CREATE INDEX idx_sales_vendor_id ON sales(vendor_id);
+CREATE INDEX idx_sales_registered_by ON sales(registered_by);
+CREATE INDEX idx_sales_retiro_id ON sales(retiro_id);
 CREATE INDEX idx_sales_client_id ON sales(client_id);
 CREATE INDEX idx_sales_created_at ON sales(created_at);
 CREATE INDEX idx_sales_status ON sales(status);

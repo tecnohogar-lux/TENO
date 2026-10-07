@@ -5,6 +5,7 @@ import LabelPrint from '../components/LabelPrint';
 import LabelPrintBatch from '../components/LabelPrintBatch';
 import MotivoDialog from '../components/MotivoDialog';
 import SearchableSelect from '../components/SearchableSelect';
+import SalesFilters, { EMPTY_FILTERS, filtersToQuery, countActiveFilters } from '../components/SalesFilters';
 import ShipmentItemsInput from '../components/ShipmentItemsInput';
 import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
@@ -41,9 +42,19 @@ export default function ShippingPage() {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search);
 
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [showFilters, setShowFilters] = useState(false);
+  const debouncedFilters = useDebouncedValue(filters);
+  const filtersQuery = filtersToQuery(debouncedFilters);
+  const activeFilters = countActiveFilters(filters);
+  // El personal filtra por vendedor/operador/courier/pago; un vendedor ve el equipo pero no los datos de caja de otros.
+  const filterFields = canManage
+    ? ['vendedor_id', 'operador_id', 'cliente', 'desde', 'hasta', 'forma_pago', 'tipo_envio', 'courier_id']
+    : ['cliente', 'desde', 'hasta', 'tipo_envio'];
+
   const { data, loading, error, refetch } = useFetch(
-    `/api/sales?tipo_venta=ENVIO,ENVIO_PREPAGADO&equipo=1&search=${encodeURIComponent(debouncedSearch)}`,
-    { deps: [debouncedSearch] }
+    `/api/sales?tipo_venta=ENVIO,ENVIO_PREPAGADO&equipo=1&search=${encodeURIComponent(debouncedSearch)}&${filtersQuery}`,
+    { deps: [debouncedSearch, filtersQuery] }
   );
   const { data: usersData } = useFetch('/api/users', { enabled: canManage });
   const { data: productsData } = useFetch('/api/products/catalog');
@@ -272,6 +283,9 @@ export default function ShippingPage() {
               <option key={opt} value={opt}>{deliveryStatusLabel(opt)}</option>
             ))}
           </select>
+          <button type="button" className="btn btn-secondary" onClick={() => setShowFilters((v) => !v)}>
+            Filtros{activeFilters > 0 ? ` (${activeFilters})` : ''} {showFilters ? '▴' : '▾'}
+          </button>
 
           {canManage && (
             <>
@@ -353,6 +367,8 @@ export default function ShippingPage() {
       </div>
 
       {actionError && <div className="alert alert-error">{actionError}</div>}
+
+      {showFilters && <SalesFilters filters={filters} onChange={setFilters} fields={filterFields} canManage={canManage} />}
 
       {showCreateForm && (
         <form onSubmit={handleCreateSubmit} className="card" style={{ padding: 20, marginBottom: 24 }}>

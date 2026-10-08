@@ -9,12 +9,13 @@ const FREE_PRODUCT_OPTION = [{ value: '__free__', label: 'Producto libre (no reg
 
 // Lista de productos de un envío. El botón SOL / MARKETPLACE define el precio de la
 // línea que se agrega, así que el mismo producto puede repetirse con precios distintos.
-export default function ShipmentItemsInput({ products, items, onChange, defaultPriceType = 'marketplace', allowMayor = false, hideSol = false }) {
+export default function ShipmentItemsInput({ products, items, onChange, defaultPriceType = 'marketplace', allowMayor = false, hideSol = false, blockAgotado = false }) {
   const [priceType, setPriceType] = useState(defaultPriceType);
   const [selectedProductId, setSelectedProductId] = useState('');
   const [qty, setQty] = useState(1);
   const [free, setFree] = useState({ name: '', price: '' });
   const [mayorPrice, setMayorPrice] = useState('');
+  const [agotadoError, setAgotadoError] = useState('');
 
   const options = useMemo(
     () => products.map((p) => ({ value: p.id, label: priceType === 'mayor' ? `${p.title}${p.agotado ? ' (agotado)' : ''}` : `${p.title} · ${formatCurrency(productPrice(p, priceType))}${p.agotado ? ' (agotado)' : ''}` })),
@@ -37,9 +38,15 @@ export default function ShipmentItemsInput({ products, items, onChange, defaultP
     } else {
       const product = products.find((p) => String(p.id) === String(selectedProductId));
       if (!product) return;
+      // blockAgotado (vendedores): el producto agotado se ve en la lista, pero no se puede agregar.
+      if (blockAgotado && product.agotado) {
+        setAgotadoError(`Producto agotado: "${product.title}". No se puede agregar al envío.`);
+        return;
+      }
       onChange([...items, { key: Date.now(), product_name: product.title, quantity: Number(qty), price: mayor ? Number(mayorPrice) : productPrice(product, priceType), price_type: priceType }]);
       setMayorPrice('');
     }
+    setAgotadoError('');
     setSelectedProductId('');
     setQty(minQty);
   }
@@ -66,7 +73,7 @@ export default function ShipmentItemsInput({ products, items, onChange, defaultP
         <div style={{ flex: 1, minWidth: 200 }}>
           <SearchableSelect
             value={selectedProductId}
-            onChange={setSelectedProductId}
+            onChange={(v) => { setSelectedProductId(v); setAgotadoError(''); }}
             options={options}
             pinnedOptions={FREE_PRODUCT_OPTION}
             placeholder="Selecciona un producto"
@@ -77,6 +84,8 @@ export default function ShipmentItemsInput({ products, items, onChange, defaultP
           Agregar
         </button>
       </div>
+
+      {agotadoError && <div className="alert alert-error" role="alert">{agotadoError}</div>}
 
       {mayor && !isFree && selectedProductId && (
         <input

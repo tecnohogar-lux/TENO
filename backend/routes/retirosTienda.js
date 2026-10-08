@@ -27,15 +27,19 @@ async function resolverCliente(dbClient, client_name, userId) {
 }
 
 // El precio se toma siempre del catálogo (no se confía en un precio enviado por el cliente).
-async function resolverItems(dbClient, items, defaultPriceType) {
+// Un vendedor no puede registrar productos agotados (el personal sí, p. ej. al editar un retiro).
+async function resolverItems(dbClient, items, defaultPriceType, bloquearAgotados = false) {
   const resolvedItems = [];
   let total = 0;
   for (const item of items) {
-    const productResult = await dbClient.query('SELECT id, title, price, precio_tienda FROM products WHERE id = $1', [item.product_id]);
+    const productResult = await dbClient.query('SELECT id, title, price, precio_tienda, agotado FROM products WHERE id = $1', [item.product_id]);
     if (productResult.rows.length === 0) {
       throw { status: 400, message: 'Uno de los productos seleccionados no existe' };
     }
     const product = productResult.rows[0];
+    if (bloquearAgotados && product.agotado) {
+      throw { status: 400, message: `Producto agotado: "${product.title}". No se puede registrar el retiro.` };
+    }
     const quantity = Number(item.quantity);
     // Cada producto (línea) trae su propio tipo de precio; SOL usa el precio tienda y
     // MARKETPLACE el precio normal del producto.
@@ -162,7 +166,7 @@ router.post('/', authenticateToken, async (req, res) => {
     await dbClient.query('BEGIN');
 
     const clientId = await resolverCliente(dbClient, client_name, user.id);
-    const { resolvedItems, total, priceType } = await resolverItems(dbClient, items, price_type);
+    const { resolvedItems, total, priceType } = await resolverItems(dbClient, items, price_type, user.role === 'vendedor');
 
     const inserted = await dbClient.query(
       `INSERT INTO retiros_tienda (vendor_id, client_id, items, total, notes, price_type)

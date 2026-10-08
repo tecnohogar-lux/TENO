@@ -34,6 +34,15 @@ const MANAGE_ROLES = ['admin', 'operador', 'caja'];
 const requireAdmin = (message) => requireRole(['admin'], message);
 const requireManage = (message) => requireRole(MANAGE_ROLES, message);
 
+// Títulos (del catálogo) de los productos agotados entre los nombres dados. Los productos libres,
+// que no están en el catálogo, no se ven afectados.
+async function productosAgotados(nombres) {
+  const nombresMin = [...new Set(nombres.map((n) => String(n || '').trim().toLowerCase()).filter(Boolean))];
+  if (nombresMin.length === 0) return [];
+  const result = await pool.query('SELECT title FROM products WHERE agotado = true AND LOWER(title) = ANY($1::text[])', [nombresMin]);
+  return result.rows.map((r) => r.title);
+}
+
 // Filtros del Historial de Ventas y de Delivery Santiago (listado y resumen usan los mismos).
 // "retiro" = venta de tienda que salió de un retiro en tienda; "directa" = venta directa en caja.
 const CANALES = {
@@ -500,6 +509,15 @@ router.post('/', authenticateToken, async (req, res) => {
   }
   if (!lines && (!product_name || !quantity || !price)) {
     return res.status(400).json({ error: 'Campos requeridos faltantes' });
+  }
+
+  // Un vendedor no puede registrar envíos con productos agotados (se muestran en la lista, pero no se pueden usar).
+  if (user.role === 'vendedor') {
+    const agotados = await productosAgotados(lines ? lines.map((l) => l.product_name) : [product_name]);
+    if (agotados.length > 0) {
+      const detalle = agotados.map((t) => `"${t}"`).join(', ');
+      return res.status(400).json({ error: `${agotados.length === 1 ? 'Producto agotado' : 'Productos agotados'}: ${detalle}. No se puede registrar el envío.` });
+    }
   }
 
   const dbClient = await pool.connect();

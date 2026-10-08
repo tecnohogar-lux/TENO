@@ -415,6 +415,7 @@ export default function ShippingPage() {
             <ShipmentItemsInput
               allowMayor
               hideSol={user.role === 'vendedor'}
+              blockAgotado={user.role === 'vendedor'}
               products={productsData?.products || []}
               items={createForm.items}
               onChange={(items) => setCreateForm({ ...createForm, items })}

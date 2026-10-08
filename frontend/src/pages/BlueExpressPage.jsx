@@ -347,6 +347,7 @@ export default function BlueExpressPage() {
 
             <ShipmentItemsInput
               hideSol={user.role === 'vendedor'}
+              blockAgotado={user.role === 'vendedor'}
               products={productsData?.products || []}
               items={createForm.items}
               onChange={(items) => setCreateForm({ ...createForm, items })}

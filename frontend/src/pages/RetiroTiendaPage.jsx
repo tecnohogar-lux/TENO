@@ -56,6 +56,7 @@ export default function RetiroTiendaPage() {
   // En Retiro en Tienda el valor por defecto es MARKETPLACE.
   const [priceType, setPriceType] = useState('marketplace');
   const [mayorPrice, setMayorPrice] = useState('');
+  const [agotadoError, setAgotadoError] = useState('');
 
   const total = cart.reduce((sum, item) => sum + item.quantity * item.price, 0);
   const productOptions = useMemo(
@@ -66,6 +67,12 @@ export default function RetiroTiendaPage() {
   function addToCart() {
     const product = productsData?.products.find((p) => String(p.id) === selectedProductId);
     if (!product || selectedQty < 1) return;
+    // Los vendedores ven los productos agotados en la lista, pero no pueden agregarlos.
+    if (user.role === 'vendedor' && product.agotado) {
+      setAgotadoError(`Producto agotado: "${product.title}". No se puede agregar al retiro.`);
+      return;
+    }
+    setAgotadoError('');
     if (priceType === 'mayor' && (Number(selectedQty) < MIN_MAYOR || !(Number(mayorPrice) > 0))) return;
     setCart((prev) => [
       ...prev,
@@ -221,7 +228,7 @@ export default function RetiroTiendaPage() {
                 <div style={{ flex: 1 }}>
                   <SearchableSelect
                     value={selectedProductId}
-                    onChange={setSelectedProductId}
+                    onChange={(v) => { setSelectedProductId(v); setAgotadoError(''); }}
                     options={productOptions}
                     placeholder="Selecciona un producto"
                   />
@@ -236,6 +243,7 @@ export default function RetiroTiendaPage() {
                   Agregar
                 </button>
               </div>
+              {agotadoError && <div className="alert alert-error" role="alert">{agotadoError}</div>}
 
               {priceType === 'mayor' && selectedProductId && (
                 <input

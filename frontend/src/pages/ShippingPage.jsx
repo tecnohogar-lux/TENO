@@ -6,6 +6,9 @@ import LabelPrintBatch from '../components/LabelPrintBatch';
 import MotivoDialog from '../components/MotivoDialog';
 import { showNewSale } from '../store/useNuevaVentaStore';
 import SearchableSelect from '../components/SearchableSelect';
+import TablaCompacta from '../components/TablaCompacta';
+import VistaToggle from '../components/VistaToggle';
+import useVistaCompacta from '../hooks/useVistaCompacta';
 import SalesFilters, { EMPTY_FILTERS, filtersToQuery, countActiveFilters } from '../components/SalesFilters';
 import ShipmentItemsInput from '../components/ShipmentItemsInput';
 import useFetch from '../hooks/useFetch';
@@ -65,6 +68,12 @@ export default function ShippingPage() {
   const { confirm, dialog: confirmDialog } = useConfirm();
 
   const [statusFilter, setStatusFilter] = useState('todos');
+  // Vista completa (todos los datos y acciones) o compacta (cliente, vendedor, producto y día/mes). Se recuerda.
+  const [compacta, setCompactaVista] = useVistaCompacta('teno_delivery_vista');
+  function cambiarVista(esCompacta) {
+    setCompactaVista(esCompacta);
+    if (esCompacta) setSelectedIds([]); // la vista compacta no tiene casillas: no dejar una selección oculta
+  }
   const [selectedIds, setSelectedIds] = useState([]);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [bulkStatusPanel, setBulkStatusPanel] = useState(false);
@@ -460,7 +469,15 @@ export default function ShippingPage() {
       )}
       {error && <div className="alert alert-error">{error}</div>}
 
-      {data && (
+      <VistaToggle compacta={compacta} onChange={cambiarVista} />
+
+      {data && compacta && (
+        <div className="card" style={{ padding: 20 }}>
+          <TablaCompacta rows={shipments} vacio="Sin envíos que coincidan con el filtro" conEstado />
+        </div>
+      )}
+
+      {data && !compacta && (
         <div className="card" style={{ padding: 20 }}>
           <table className="responsive-stack">
             <thead>

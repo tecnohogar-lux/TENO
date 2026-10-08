@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Badge from '../components/Badge';
 import Pagination from '../components/Pagination';
+import TablaCompacta from '../components/TablaCompacta';
+import VistaToggle from '../components/VistaToggle';
+import useVistaCompacta from '../hooks/useVistaCompacta';
 import SearchableSelect from '../components/SearchableSelect';
 import PriceTypeToggle from '../components/PriceTypeToggle';
 import useFetch from '../hooks/useFetch';
@@ -20,6 +23,8 @@ const emptyForm = { nombre: '', apellido: '', notes: '' };
 
 export default function RetiroTiendaPage() {
   const { user } = useAuth();
+  // Vista completa (todos los datos) o compacta (cliente, vendedor, producto y día/mes). Se recuerda.
+  const [compacta, cambiarVista] = useVistaCompacta('teno_retiros_vista');
   const navigate = useNavigate();
   const canManage = user.role === 'operador' || user.role === 'admin' || user.role === 'caja';
   const [page, setPage] = useState(1);
@@ -288,7 +293,16 @@ export default function RetiroTiendaPage() {
       )}
       {error && <div className="alert alert-error">{error}</div>}
 
-      {data && (
+      <VistaToggle compacta={compacta} onChange={cambiarVista} />
+
+      {data && compacta && (
+        <div className="card" style={{ padding: 20 }}>
+          <TablaCompacta rows={data.retiros} vacio="Sin retiros en tienda registrados" />
+          <Pagination page={data.page} totalPages={data.totalPages} total={data.total} onPageChange={setPage} />
+        </div>
+      )}
+
+      {data && !compacta && (
         <div className="card" style={{ padding: 20 }}>
           <table className="responsive-stack">
             <thead>

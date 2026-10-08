@@ -23,7 +23,7 @@ export const FAQ = [
       },
       {
         q: 'Dice "Tu cuenta está desactivada" o me sacó de la sesión',
-        a: 'Puede ser que el administrador desactivara tu cuenta o cambiara algo en ella: habla con él.\nTambién puede que tu sesión (dura 24 horas) haya vencido: en ese caso solo vuelve a ingresar.',
+        a: 'Puede ser que el administrador desactivara tu cuenta o cambiara algo en ella: habla con él.\nTambién puede que tu sesión haya vencido (las sesiones se reinician todos los días a las 3:00 AM): en ese caso solo vuelve a ingresar.',
         palabras: 'sesión desactivada cerrar sesion',
       },
       {

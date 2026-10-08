@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
 import { defaultRouteFor } from '../utils/routes';
+import { peekSessionMessage, clearSessionMessage } from '../utils/session';
 
 export default function LoginPage() {
   const { login, loading, isAuthenticated, user } = useAuth();
@@ -10,6 +11,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  // Si llegaste aquí porque la sesión venció (o la cuenta se desactivó), se explica en pantalla.
+  const [aviso] = useState(() => peekSessionMessage());
+  useEffect(() => { clearSessionMessage(); }, []);
 
   if (isAuthenticated) {
     return <Navigate to={defaultRouteFor(user?.role)} replace />;
@@ -44,6 +48,7 @@ export default function LoginPage() {
           </div>
         </div>
 
+        {aviso && !error && <div className="alert" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-warning)', fontSize: 13 }}>{aviso}</div>}
         {error && <div className="alert alert-error">{error}</div>}
 
         <div className="form-field">

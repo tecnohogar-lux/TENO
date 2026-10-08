@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const bcryptjs = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
 const pool = require('../config/database');
+const { nextSessionExpiry } = require('../utils/sessionExpiry');
 
 // Frena la fuerza bruta de contraseñas: 10 intentos FALLIDOS cada 15 min por IP (los logins correctos no cuentan).
 const loginLimiter = rateLimit({
@@ -46,17 +47,18 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(403).json({ error: 'Tu cuenta está desactivada' });
     }
 
-    // Crear token JWT
+    // Crear token JWT. La sesión vence a una hora fija del día (3:00 AM de Chile), no a las 24 h del login.
+    const expiresAt = nextSessionExpiry();
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, name: user.name },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRATION || '24h' }
+      { id: user.id, email: user.email, role: user.role, name: user.name, exp: Math.floor(expiresAt.getTime() / 1000) },
+      process.env.JWT_SECRET
     );
 
     // Respuesta exitosa
     res.json({
       message: 'Login exitoso',
       token,
+      expires_at: expiresAt.toISOString(),
       user: {
         id: user.id,
         name: user.name,

@@ -15,7 +15,7 @@ Con tu **Usuario** y contraseña (ya no se pide correo). El admin crea tu usuari
 Después de 9 intentos con contraseña incorrecta desde el mismo equipo, el acceso se bloquea 15 minutos. Espera o pide al admin que revise tu contraseña.
 
 **Me sacó de la sesión sin avisar.**
-La sesión dura 24 horas. Además, si el admin desactiva tu cuenta o te cambia el rol, el efecto es inmediato. Vuelve a ingresar; si dice "Tu cuenta está desactivada", habla con el admin.
+La sesión se reinicia todos los días a las 3:00 AM (hora de Chile): si inicias sesión durante el día, dura hasta esa hora, y el sistema te avisa al volver al login. Además, si el admin desactiva tu cuenta o te cambia el rol, el efecto es inmediato. Vuelve a ingresar; si dice "Tu cuenta está desactivada", habla con el admin.
 
 **¿Puedo ver la contraseña de otro usuario?**
 No. Las contraseñas se guardan cifradas de forma irreversible. Si alguien la olvida, el admin le asigna una nueva desde **Usuarios → Editar**.

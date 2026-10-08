@@ -24,7 +24,7 @@ Avísale al administrador: él te asigna una nueva. Desde tu cuenta no se puede 
 Si escribes mal la contraseña varias veces seguidas, el acceso se bloquea 15 minutos. Espera ese tiempo y vuelve a intentar con calma; si sigues sin poder entrar, habla con el administrador.
 
 **Dice "Tu cuenta está desactivada" o me sacó de la sesión.**
-El administrador desactivó tu cuenta o cambió algo en ella. Habla con él. También puede pasar que tu sesión (dura 24 horas) haya vencido: en ese caso solo vuelve a ingresar.
+El administrador desactivó tu cuenta o cambió algo en ella. Habla con él. También puede pasar que tu sesión haya vencido (las sesiones se reinician todos los días a las 3:00 AM): en ese caso solo vuelve a ingresar.
 
 **¿Qué puedo ver y hacer con mi cuenta?**
 

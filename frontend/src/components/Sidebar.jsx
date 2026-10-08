@@ -70,6 +70,7 @@ const MODULE_GROUPS = [
     icon: 'administracion',
     color: 'administracion',
     items: [
+      { path: '/recepcion-pagos', label: 'Recepción de Pagos', roles: ['admin'] },
       { path: '/users', label: 'Usuarios', roles: ['admin'] },
       { path: '/trash', label: 'Papelera', roles: ['admin'] },
       { path: '/settings', label: 'Configuración', roles: ['admin'] },

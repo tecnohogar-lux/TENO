@@ -229,6 +229,51 @@ CREATE TABLE IF NOT EXISTS retiros_tienda (
 -- Retiro en tienda del que salió una venta de tienda (se agrega aquí porque retiros_tienda se crea después de sales).
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS retiro_id INTEGER REFERENCES retiros_tienda(id) ON DELETE SET NULL;
 
+-- Recepción de Pagos: cuentas por pagar / por cobrar y sus abonos (aparte de la caja).
+CREATE TABLE IF NOT EXISTS pago_contrapartes (
+  id SERIAL PRIMARY KEY,
+  nombre VARCHAR(150) NOT NULL,
+  notas TEXT,
+  created_by INTEGER REFERENCES users(id),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pago_contrapartes_nombre ON pago_contrapartes (LOWER(nombre));
+
+CREATE TABLE IF NOT EXISTS pago_cuentas (
+  id SERIAL PRIMARY KEY,
+  -- por_pagar: deuda de TecnoHogar con la contraparte. por_cobrar: la contraparte le debe a TecnoHogar.
+  tipo VARCHAR(10) NOT NULL CHECK (tipo IN ('por_pagar', 'por_cobrar')),
+  contraparte_id INTEGER NOT NULL REFERENCES pago_contrapartes(id),
+  concepto VARCHAR(255) NOT NULL,
+  monto_total DECIMAL(12, 2) NOT NULL CHECK (monto_total > 0),
+  fecha_emision DATE NOT NULL DEFAULT CURRENT_DATE,
+  fecha_vencimiento DATE,
+  periodo_desde DATE,
+  periodo_hasta DATE,
+  notas TEXT,
+  anulada_at TIMESTAMP,
+  created_by INTEGER REFERENCES users(id),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_pago_cuentas_contraparte ON pago_cuentas (contraparte_id);
+CREATE INDEX IF NOT EXISTS idx_pago_cuentas_tipo ON pago_cuentas (tipo);
+CREATE INDEX IF NOT EXISTS idx_pago_cuentas_emision ON pago_cuentas (fecha_emision DESC);
+
+CREATE TABLE IF NOT EXISTS pago_abonos (
+  id SERIAL PRIMARY KEY,
+  cuenta_id INTEGER NOT NULL REFERENCES pago_cuentas(id) ON DELETE CASCADE,
+  monto DECIMAL(12, 2) NOT NULL CHECK (monto > 0),
+  fecha_pago DATE NOT NULL DEFAULT CURRENT_DATE,
+  motivo VARCHAR(255),
+  periodo_desde DATE,
+  periodo_hasta DATE,
+  notas TEXT,
+  created_by INTEGER REFERENCES users(id),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_pago_abonos_cuenta ON pago_abonos (cuenta_id, fecha_pago DESC);
+
 CREATE INDEX idx_sales_vendor_id ON sales(vendor_id);
 CREATE INDEX idx_sales_registered_by ON sales(registered_by);
 CREATE INDEX idx_sales_retiro_id ON sales(retiro_id);

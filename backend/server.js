@@ -31,6 +31,7 @@ const descuentosRoutes = require('./routes/descuentos');
 const settingsRoutes = require('./routes/settings');
 const retirosTiendaRoutes = require('./routes/retirosTienda');
 const couriersRoutes = require('./routes/couriers');
+const recepcionPagosRoutes = require('./routes/recepcionPagos');
 
 // Crear aplicación
 const app = express();
@@ -73,6 +74,7 @@ app.use('/api/descuentos', descuentosRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/retiros-tienda', retirosTiendaRoutes);
 app.use('/api/couriers', couriersRoutes);
+app.use('/api/recepcion-pagos', recepcionPagosRoutes);
 
 // ============================================
 // RUTAS DE PRUEBA

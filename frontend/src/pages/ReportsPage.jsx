@@ -10,7 +10,11 @@ import { formatCurrency, formatDate } from '../utils/format';
 import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, TIPO_VENTA_LABELS, saleStatusLabel, deliveryStatusLabel, tipoVentaLabel, paymentMethodLabel, paymentBreakdownLines, PAYMENT_METHODS, isSinCobro } from '../utils/labels';
 import { PRICE_TYPE_LABELS, priceTypeLabel } from '../utils/priceType';
 
-const emptyFilters = { dateFrom: '', dateTo: '', nombre: '', producto: '', vendedor: '', cliente: '', canal: '', tipoPrecio: '', formaPago: '' };
+const emptyFilters = { dateFrom: '', dateTo: '', nombre: '', producto: '', vendedor: '', cliente: '', canal: '', tipoPrecio: '', formaPago: '', courier: '' };
+
+// Tipos de venta que se despachan con courier (los de tienda no tienen).
+const TIPOS_ENVIO = ['ENVIO', 'ENVIO_PREPAGADO', 'ENVIO_REGION'];
+const SIN_COURIER = '__none__';
 
 // "YYYY-MM-DD" de un <input type="date"> se parsea como medianoche UTC si se usa
 // new Date(str) directamente; mezclarlo con setHours (que opera en hora local)
@@ -71,6 +75,14 @@ export default function ReportsPage() {
 
   const productos = useMemo(() => [...new Set((data?.sales || []).map((s) => s.product_name))].sort(), [data]);
   const vendedores = useMemo(() => [...new Set((data?.sales || []).map((s) => s.vendor_name))].sort(), [data]);
+  // Couriers que aparecen en las ventas (para filtrar qué courier se llevó cada paquete).
+  const couriers = useMemo(() => {
+    const byId = new Map();
+    for (const s of data?.sales || []) {
+      if (s.courier_id && s.courier_name) byId.set(String(s.courier_id), s.courier_name);
+    }
+    return [...byId.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [data]);
   const clientes = useMemo(() => [...new Set((data?.sales || []).map((s) => s.client_name))].sort(), [data]);
 
   const filteredSales = useMemo(() => {
@@ -100,6 +112,8 @@ export default function ReportsPage() {
     if (filters.cliente) rows = rows.filter((s) => s.client_name === filters.cliente);
     if (filters.canal) rows = rows.filter((s) => s.tipo_venta === filters.canal);
     if (filters.tipoPrecio) rows = rows.filter((s) => s.price_type === filters.tipoPrecio);
+    if (filters.courier === SIN_COURIER) rows = rows.filter((s) => TIPOS_ENVIO.includes(s.tipo_venta) && !s.courier_id);
+    else if (filters.courier) rows = rows.filter((s) => String(s.courier_id) === filters.courier);
 
     return rows;
   }, [data, filters]);
@@ -161,6 +175,7 @@ export default function ReportsPage() {
         'Forma de pago': s._pagoLabel,
         Estado: saleStatusLabel(s.status),
         Envío: ['ENVIO', 'ENVIO_PREPAGADO', 'ENVIO_REGION'].includes(s.tipo_venta) ? deliveryStatusLabel(s.delivery_status) : '-',
+        Courier: TIPOS_ENVIO.includes(s.tipo_venta) ? (s.courier_name || 'Sin asignar') : '-',
         Fecha: formatDate(s.created_at),
         'Tipo de precio': priceTypeLabel(s.price_type),
       }));
@@ -456,6 +471,14 @@ export default function ReportsPage() {
               {clientes.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
+          <div className="form-field">
+            <label>Courier</label>
+            <select value={filters.courier} onChange={(e) => setFilters({ ...filters, courier: e.target.value })}>
+              <option value="">Todos</option>
+              {couriers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              <option value={SIN_COURIER}>Envíos sin courier asignado</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -495,13 +518,14 @@ export default function ReportsPage() {
                   <th>Forma de pago</th>
                   <th>Estado</th>
                   <th>Envío</th>
+                  <th>Courier</th>
                   <th>Fecha</th>
                 </tr>
               </thead>
               <tbody>
                 {displayRows.length === 0 ? (
                   <tr>
-                    <td colSpan={14} style={{ color: 'var(--color-text-muted)' }}>Sin ventas que coincidan con los filtros</td>
+                    <td colSpan={15} style={{ color: 'var(--color-text-muted)' }}>Sin ventas que coincidan con los filtros</td>
                   </tr>
                 ) : (
                   displayRows.map((s, i) => (
@@ -528,6 +552,11 @@ export default function ReportsPage() {
                         ) : (
                           <span style={{ color: 'var(--color-text-muted)' }}>-</span>
                         )}
+                      </td>
+                      <td data-label="Courier">
+                        {TIPOS_ENVIO.includes(s.tipo_venta)
+                          ? (s.courier_name || <span style={{ color: 'var(--color-text-muted)' }}>Sin asignar</span>)
+                          : <span style={{ color: 'var(--color-text-muted)' }}>-</span>}
                       </td>
                       <td data-label="Fecha">{formatDate(s.created_at)}</td>
                     </tr>

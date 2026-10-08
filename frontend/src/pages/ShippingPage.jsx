@@ -4,6 +4,7 @@ import Badge from '../components/Badge';
 import LabelPrint from '../components/LabelPrint';
 import LabelPrintBatch from '../components/LabelPrintBatch';
 import MotivoDialog from '../components/MotivoDialog';
+import { showNewSale } from '../store/useNuevaVentaStore';
 import SearchableSelect from '../components/SearchableSelect';
 import SalesFilters, { EMPTY_FILTERS, filtersToQuery, countActiveFilters } from '../components/SalesFilters';
 import ShipmentItemsInput from '../components/ShipmentItemsInput';
@@ -260,6 +261,11 @@ export default function ShippingPage() {
 
     const result = await post('/api/sales', payload);
     if (result.success) {
+      // Animación de "¡Nueva venta!" para el vendedor que registra un delivery
+      if (user.role === 'vendedor') {
+        const sale = result.data?.sale;
+        showNewSale({ type: 'delivery', seller: user.name, orderId: sale?.id, total: Number(sale?.total) });
+      }
       setCreateForm(emptyCreateForm);
       setShowCreateForm(false);
       refetch();

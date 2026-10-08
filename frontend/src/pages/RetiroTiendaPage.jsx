@@ -12,6 +12,7 @@ import useConfirm from '../hooks/useConfirm';
 import useDebouncedValue from '../hooks/useDebouncedValue';
 import { formatCurrency, formatDate } from '../utils/format';
 import PriceTypeBadge from '../components/PriceTypeBadge';
+import { showNewSale } from '../store/useNuevaVentaStore';
 import { MIN_MAYOR, productPrice } from '../utils/priceType';
 
 const PAGE_SIZE = 25;
@@ -94,6 +95,11 @@ export default function RetiroTiendaPage() {
       ? await put(`/api/retiros-tienda/${editingRetiro.id}`, payload)
       : await post('/api/retiros-tienda', payload);
     if (result.success) {
+      // Animación de "¡Nueva venta!" para el vendedor que registra un retiro nuevo
+      if (!editingRetiro && user.role === 'vendedor') {
+        const retiro = result.data?.retiro;
+        showNewSale({ type: 'retiro', seller: user.name, orderId: retiro?.id, total: Number(retiro?.total ?? total) });
+      }
       setSuccessMsg(editingRetiro
         ? 'Retiro actualizado correctamente'
         : `Retiro registrado: ${cart.length} producto(s), total ${formatCurrency(total)}`);
@@ -218,7 +224,7 @@ export default function RetiroTiendaPage() {
                 <input type="number" min={priceType === 'mayor' ? MIN_MAYOR : 1} value={selectedQty} onChange={(e) => setSelectedQty(e.target.value)} style={{ width: 70 }} />
                 <button
                   type="button"
-                  className="btn btn-secondary"
+                  className="btn btn-add"
                   onClick={addToCart}
                   disabled={!selectedProductId || (priceType === 'mayor' && (Number(selectedQty) < MIN_MAYOR || !(Number(mayorPrice) > 0)))}
                 >

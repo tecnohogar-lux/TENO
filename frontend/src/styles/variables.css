@@ -22,6 +22,12 @@
   --color-success: #4c7a52;
   --color-warning: #b98a2e;
 
+  /* Botón "Agregar" (verde suave, bien visible) */
+  --color-add-bg: #d4f1dc;
+  --color-add-bg-hover: #bfe9cb;
+  --color-add-border: #5fb778;
+  --color-add-text: #17592f;
+
   /* Color por categoría del sidebar, para diferenciar los grupos de módulos a simple vista. */
   --color-group-ventas: #2f8a5b;
   --color-group-ventas-bg: #e6f4ec;
@@ -71,6 +77,11 @@
   --color-danger: #e0685c;
   --color-success: #6fae77;
   --color-warning: #d9a54a;
+
+  --color-add-bg: rgba(111, 174, 119, 0.22);
+  --color-add-bg-hover: rgba(111, 174, 119, 0.34);
+  --color-add-border: #6fae77;
+  --color-add-text: #b7e6bd;
 
   --color-group-ventas: #4ade80;
   --color-group-ventas-bg: rgba(74, 222, 128, 0.14);

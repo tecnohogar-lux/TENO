@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
+import NuevaVentaAnimacion from './components/NuevaVentaAnimacion';
 import LoginPage from './pages/LoginPage';
 import useAuth from './hooks/useAuth';
 import apiClient from './api/client';
@@ -59,6 +60,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <NuevaVentaAnimacion />
       <Suspense fallback={<PageLoader />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />

@@ -6,12 +6,8 @@ const { authenticateToken } = require('../middleware/auth');
 const { totalesPorFormaPago } = require('../utils/paymentBreakdown');
 const { conCobroSql } = require('../utils/sinCobro');
 
-// "Hoy" se mide en hora de Chile (el servidor corre en UTC: sin esto el día se reiniciaría
-// a las 21:00 hora chilena). Las columnas created_at/delivered_at son TIMESTAMP sin zona,
-// guardadas en la hora de la sesión de la base; se pasan a hora de Chile para comparar.
-const TZ_CHILE = 'America/Santiago';
-const HOY = `(NOW() AT TIME ZONE '${TZ_CHILE}')::date`;
-const diaChile = (col) => `((${col} AT TIME ZONE current_setting('TimeZone')) AT TIME ZONE '${TZ_CHILE}')::date`;
+// "Hoy" se mide en hora de Chile (ver utils/diaChile.js).
+const { HOY, diaChile } = require('../utils/diaChile');
 
 // Los envíos sin cobro (solo envío, solo entrega, cambio de producto) no cuentan en
 // ninguna métrica ni conteo de ventas.

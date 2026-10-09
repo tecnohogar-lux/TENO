@@ -7,6 +7,34 @@ const { logAudit } = require('../utils/auditLog');
 const { MIN_MAYOR, MIN_MAYOR_MESSAGE, comisionDeLineas, summarizeLines } = require('../utils/saleLines');
 const { PAYMENT_METHODS, validatePaymentBreakdown, normalizePaymentBreakdown } = require('../utils/paymentBreakdown');
 const { buildQrValue } = require('../utils/qrCode');
+const { conCobroSql } = require('../utils/sinCobro');
+const { HOY, diaChile } = require('../utils/diaChile');
+
+// ============================================
+// GET - Ventas registradas en Caja durante el día en curso (hora de Chile): ventas de tienda
+// (incluye las que salen de un retiro) y envíos prepagados. Los deliveries no pasan por caja.
+// ============================================
+router.get('/ventas-hoy', authenticateToken, requireRole(['operador', 'admin', 'caja'], 'Solo operadores, admins o caja pueden usar Caja'), async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT s.id, s.tipo_venta, s.retiro_id, s.product_name, s.items, s.quantity, s.total, s.status,
+              s.payment_method, s.payment_breakdown, s.transferencia_verificada, s.created_at,
+              u.name AS vendor_name, c.name AS client_name, ru.name AS registered_by_name
+       FROM sales s
+       JOIN users u ON s.vendor_id = u.id
+       JOIN clients c ON s.client_id = c.id
+       LEFT JOIN users ru ON s.registered_by = ru.id
+       WHERE s.deleted_at IS NULL AND s.tipo_venta IN ('TIENDA', 'ENVIO_PREPAGADO') AND s.status <> 'cancelado' AND ${conCobroSql('s.')}
+         AND ${diaChile('s.created_at')} = ${HOY}
+       ORDER BY s.created_at DESC`
+    );
+    res.json({ ventas: result.rows, total: result.rows.reduce((acc, v) => acc + Number(v.total), 0) });
+
+  } catch (err) {
+    console.error('Error al obtener las ventas de caja de hoy:', err);
+    res.status(500).json({ error: 'Error al obtener las ventas de hoy' });
+  }
+});
 
 // ============================================
 // POST - Crear venta desde Caja (tienda o envío prepagado)

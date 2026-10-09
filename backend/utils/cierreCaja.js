@@ -4,6 +4,7 @@
 const pool = require('../config/database');
 const { totalesPorFormaPago } = require('./paymentBreakdown');
 const { conCobroSql } = require('./sinCobro');
+const { cuentaEnCajaSql } = require('./cajaFiltros');
 const { logAudit } = require('./auditLog');
 
 // Cuánto dinero debería existir por cada forma de pago en el período (para cuadrar caja:
@@ -17,9 +18,9 @@ async function obtenerTotalesPorFormaPago(desde, hasta) {
 // porFormaPago se puede pasar ya calculado para no repetir la misma consulta.
 async function calcularTotales(desde, hasta, saldoInicial, porFormaPago = null) {
   const ventas = await pool.query(
-    `SELECT COALESCE(SUM(total) FILTER (WHERE status = 'completado'), 0) as total_vendido
+    `SELECT COALESCE(SUM(total) FILTER (WHERE ${cuentaEnCajaSql()}), 0) as total_vendido
      FROM sales
-     WHERE deleted_at IS NULL AND tipo_venta != 'ENVIO_REGION' AND ${conCobroSql()} AND created_at >= $1 AND created_at <= $2`,
+     WHERE deleted_at IS NULL AND tipo_venta NOT IN ('ENVIO', 'ENVIO_REGION') AND ${conCobroSql()} AND created_at >= $1 AND created_at <= $2`,
     [desde, hasta]
   );
   if (!porFormaPago) porFormaPago = await obtenerTotalesPorFormaPago(desde, hasta);

@@ -223,7 +223,7 @@ export default function CashRegisterPage() {
                       <h5 style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--color-text-muted)' }}>Ventas del período por canal</h5>
                       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
                         <MetricsCard label="Tienda" value={detailData.por_canal.tienda.cantidad} subtext={formatCurrency(detailData.por_canal.tienda.total)} />
-                        <MetricsCard label="Delivery Santiago" value={detailData.por_canal.envio_rm.cantidad} subtext={formatCurrency(detailData.por_canal.envio_rm.total)} />
+                        <MetricsCard label="Envío prepagado" value={detailData.por_canal.prepagado.cantidad} subtext={formatCurrency(detailData.por_canal.prepagado.total)} />
                       </div>
                     </>
                   )}
@@ -263,7 +263,7 @@ export default function CashRegisterPage() {
               <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>Ventas del período por canal</h3>
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
                 <MetricsCard label="Tienda" value={detailData.por_canal.tienda.cantidad} subtext={formatCurrency(detailData.por_canal.tienda.total)} />
-                <MetricsCard label="Delivery Santiago" value={detailData.por_canal.envio_rm.cantidad} subtext={formatCurrency(detailData.por_canal.envio_rm.total)} />
+                <MetricsCard label="Envío prepagado" value={detailData.por_canal.prepagado.cantidad} subtext={formatCurrency(detailData.por_canal.prepagado.total)} />
               </div>
 
               {detailData.por_forma_pago && (

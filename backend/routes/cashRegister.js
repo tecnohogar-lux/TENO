@@ -8,16 +8,19 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
 const { formaPagoCondition } = require('../utils/paymentBreakdown');
 const { conCobroSql } = require('../utils/sinCobro');
+const { cuentaEnCaja } = require('../utils/cajaFiltros');
 const { obtenerTotalesPorFormaPago, calcularTotales, recalcularCierre } = require('../utils/cierreCaja');
 
 const requireAdminOperador = requireRole(['admin', 'operador', 'caja'], 'No tienes permiso para acceder a Apertura/Cierre de Caja');
 const requireAdmin = requireRole(['admin'], 'Solo un admin puede corregir cierres de caja');
 
-// Ventas del período separadas por canal (Tienda / Envío RM / Envíos a Región), con filtros opcionales.
+// Ventas del período separadas por canal (Tienda / Envío prepagado), con filtros opcionales.
+// Solo entra lo que pasa por caja: los deliveries (Delivery Santiago) y los envíos a regiones no.
 async function obtenerVentasPeriodo(desde, hasta, filtros = {}) {
-  // Envíos a Regiones no entran a la caja (se llevan aparte, ver Envíos Regiones).
-  // Los envíos sin cobro (solo envío, solo entrega, cambio de producto) no entran a la caja.
-  const conditions = ['s.deleted_at IS NULL', `s.tipo_venta != 'ENVIO_REGION'`, conCobroSql('s.'), 's.created_at >= $1', 's.created_at <= $2'];
+  // Delivery Santiago (ENVIO) y Envíos a Regiones no entran a la caja: el delivery se cobra al entregar y las
+  // regiones se llevan aparte. El envío prepagado sí entra (se cobra en el mostrador). Los envíos sin cobro
+  // (solo envío, solo entrega, cambio de producto) tampoco.
+  const conditions = ['s.deleted_at IS NULL', `s.tipo_venta NOT IN ('ENVIO', 'ENVIO_REGION')`, conCobroSql('s.'), 's.created_at >= $1', 's.created_at <= $2'];
   const params = [desde, hasta];
 
   if (filtros.order_id) {
@@ -52,7 +55,7 @@ async function obtenerVentasPeriodo(desde, hasta, filtros = {}) {
     `SELECT s.*, u.name as vendor_name, c.name as client_name, ru.name as registered_by_name,
             CASE
               WHEN s.tipo_venta = 'TIENDA' THEN 'tienda'
-              ELSE 'envio_rm'
+              ELSE 'prepagado'
             END as canal
      FROM sales s
      JOIN users u ON s.vendor_id = u.id
@@ -63,10 +66,10 @@ async function obtenerVentasPeriodo(desde, hasta, filtros = {}) {
     params
   );
 
-  const porCanal = { tienda: { cantidad: 0, total: 0 }, envio_rm: { cantidad: 0, total: 0 } };
+  const porCanal = { tienda: { cantidad: 0, total: 0 }, prepagado: { cantidad: 0, total: 0 } };
   for (const s of result.rows) {
     porCanal[s.canal].cantidad += 1;
-    if (s.status === 'completado') porCanal[s.canal].total += parseFloat(s.total);
+    if (cuentaEnCaja(s)) porCanal[s.canal].total += parseFloat(s.total);
   }
 
   return { ventas: result.rows, por_canal: porCanal };

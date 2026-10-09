@@ -1,5 +1,6 @@
 import Badge from './Badge';
 import { DELIVERY_STATUS_LABELS, deliveryStatusLabel } from '../utils/labels';
+import { formatCurrency } from '../utils/format';
 
 // Vista compacta de una lista de órdenes: cliente, vendedor, producto y día/mes, nada más.
 // En computador el producto va cortado a 15 caracteres; en teléfono cada orden ocupa dos líneas y
@@ -13,6 +14,11 @@ function productoCompacto(row) {
   return { largo, corto, extra: Math.max(items.length - 1, 0) };
 }
 
+function hora(value) {
+  if (!value) return '-';
+  return new Date(value).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
 function diaMes(value) {
   if (!value) return '-';
   const d = new Date(value);
@@ -21,17 +27,20 @@ function diaMes(value) {
 
 // rows: cualquier lista con client_name, vendor_name, created_at y (items o product_name).
 // conEstado: agrega el estado del envío (Delivery Santiago) entre el producto y la fecha.
-export default function TablaCompacta({ rows, vacio = 'Sin registros', conEstado = false }) {
-  const columnas = conEstado ? 5 : 4;
+// conTotal: agrega el total de la venta y muestra la hora en vez del día/mes (ventas de caja de hoy).
+export default function TablaCompacta({ rows, vacio = 'Sin registros', conEstado = false, conTotal = false }) {
+  const columnaExtra = conEstado || conTotal;
+  const columnas = columnaExtra ? 5 : 4;
   return (
-    <table className={`tabla-compacta${conEstado ? ' tabla-compacta--estado' : ''}`}>
+    <table className={`tabla-compacta${columnaExtra ? ' tabla-compacta--estado' : ''}`}>
       <thead>
         <tr>
           <th>Cliente</th>
           <th>Vendedor</th>
           <th>Producto</th>
           {conEstado && <th>Estado</th>}
-          <th>Fecha</th>
+          {conTotal && <th>Total</th>}
+          <th>{conTotal ? 'Hora' : 'Fecha'}</th>
         </tr>
       </thead>
       <tbody>
@@ -59,7 +68,8 @@ export default function TablaCompacta({ rows, vacio = 'Sin registros', conEstado
                     <Badge label={deliveryStatusLabel(r.delivery_status)} color={DELIVERY_STATUS_LABELS[r.delivery_status]?.color} />
                   </td>
                 )}
-                <td data-label="Fecha" style={{ whiteSpace: 'nowrap' }}>{diaMes(r.created_at)}</td>
+                {conTotal && <td data-label="Total" style={{ whiteSpace: 'nowrap', fontWeight: 700 }}>{formatCurrency(r.total)}</td>}
+                <td data-label={conTotal ? 'Hora' : 'Fecha'} style={{ whiteSpace: 'nowrap' }}>{conTotal ? hora(r.created_at) : diaMes(r.created_at)}</td>
               </tr>
             );
           })

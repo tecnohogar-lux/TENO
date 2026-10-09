@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
+import VentasCajaHoy from '../components/VentasCajaHoy';
 import SearchableSelect from '../components/SearchableSelect';
 import PriceTypeToggle from '../components/PriceTypeToggle';
 import PriceTypeBadge from '../components/PriceTypeBadge';
@@ -49,6 +50,8 @@ export default function CajaPage() {
       ? retiro.items.map((item, idx) => ({ key: `retiro-${idx}`, product_id: item.product_id, product_name: item.product_name, price: Number(item.price), quantity: Number(item.quantity), price_type: item.price_type || retiro.priceType || 'marketplace' }))
       : []
   );
+  // Cambia cada vez que se registra una venta, para refrescar la lista de ventas de hoy.
+  const [ventasRefresh, setVentasRefresh] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('efectivo');
   const [transferenciaVerificada, setTransferenciaVerificada] = useState(false);
   // Pago mixto: monto por cada forma de pago (string vacío = no se usa esa forma).
@@ -166,6 +169,7 @@ export default function CajaPage() {
 
     const result = await post('/api/caja/sale', payload);
     if (result.success) {
+      setVentasRefresh((n) => n + 1);
       setSuccessMsg(
         isEnvioPrepagado
           ? `Envío prepagado registrado. Total ${formatCurrency(total)}`
@@ -451,6 +455,9 @@ export default function CajaPage() {
       </form>
       </>
       )}
+
+      {/* Ventas de caja del día en curso, debajo del formulario de registro */}
+      <VentasCajaHoy refreshKey={ventasRefresh} />
     </Layout>
   );
 }

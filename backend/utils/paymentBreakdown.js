@@ -2,6 +2,7 @@
 // Pago mixto: una venta puede pagarse con más de una forma de pago a la vez
 // (ej. parte efectivo + parte transferencia). payment_method queda en 'mixto'
 // y el detalle (método, monto, verificación) se guarda en payment_breakdown (JSON).
+const { cuentaEnCajaSql } = require('./cajaFiltros');
 const PAYMENT_METHODS = ['efectivo', 'debito', 'credito', 'transferencia', 'link_pago'];
 
 // Valida el detalle de un pago mixto contra el total de la venta.
@@ -48,12 +49,12 @@ async function totalesPorFormaPago(pool, desde, hasta) {
     `SELECT method, COALESCE(SUM(amount), 0) as total FROM (
        SELECT payment_method AS method, total AS amount
        FROM sales
-       WHERE deleted_at IS NULL AND tipo_venta != 'ENVIO_REGION' AND status = 'completado' AND payment_method IS NOT NULL
+       WHERE deleted_at IS NULL AND tipo_venta NOT IN ('ENVIO', 'ENVIO_REGION') AND ${cuentaEnCajaSql()} AND payment_method IS NOT NULL
          AND payment_method != 'mixto' AND COALESCE(delivery_type, 'delivery') = 'delivery' AND created_at >= $1 AND created_at <= $2
        UNION ALL
        SELECT leg->>'method' AS method, (leg->>'amount')::numeric AS amount
        FROM sales, json_array_elements(payment_breakdown) AS leg
-       WHERE deleted_at IS NULL AND tipo_venta != 'ENVIO_REGION' AND status = 'completado' AND payment_method = 'mixto'
+       WHERE deleted_at IS NULL AND tipo_venta NOT IN ('ENVIO', 'ENVIO_REGION') AND ${cuentaEnCajaSql()} AND payment_method = 'mixto'
          AND COALESCE(delivery_type, 'delivery') = 'delivery' AND created_at >= $1 AND created_at <= $2
      ) combined
      GROUP BY method`,

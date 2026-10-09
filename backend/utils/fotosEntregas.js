@@ -15,7 +15,8 @@ const { logAudit } = require('./auditLog');
 const TZ_CHILE = 'America/Santiago';
 const LOCK_KEY = 340034; // pg_advisory_lock: evita dos actualizaciones a la vez (botón + tarea automática)
 const DIAS_ATRAS_MAX = 7; // la descripción puede mover una foto hasta 7 días antes del envío
-const NO_EXISTE = /no messages to forward|message to forward not found|message not found|MESSAGE_ID_INVALID/i;
+// Telegram contesta "Message was not forwarded" cuando el mensaje que se pide reenviar ya fue borrado.
+const NO_EXISTE = /no messages to forward|message to forward not found|message not found|message was not forwarded|MESSAGE_ID_INVALID/i;
 
 function config() {
   return {
@@ -328,6 +329,9 @@ async function revisarBorradas(client, { fecha, userId }) {
   }
 
   const borrar = r.rows.filter((f) => faltantes.has(`${f.chat_id}:${f.message_id}`));
+  // Si "faltan" todas las fotos revisadas, lo más probable es un problema con la revisión y no que
+  // las hayan borrado todas: no se borra nada.
+  if (r.rows.length >= 5 && borrar.length === r.rows.length) return { revisadas: r.rows.length, borradas: 0, sinRevisar: true };
   if (borrar.length > 0) {
     await client.query('DELETE FROM fotos_entregas WHERE id = ANY($1::int[])', [borrar.map((f) => f.id)]);
     for (const f of borrar) {

@@ -256,6 +256,19 @@ async function leerNuevas(client) {
   return { nuevas, editadas, recibidos, otrosChats };
 }
 
+// Cuando Telegram no entrega nada, ayuda a ver por qué: qué bot es, si ve el grupo y si tiene mensajes en cola.
+async function diagnosticoSinMensajes() {
+  const d = {};
+  const probar = async (clave, fn) => { try { d[clave] = await fn(); } catch (err) { d[clave] = `error: ${err.description || err.message}`; } };
+  await probar('bot', async () => { const b = await tg('getMe'); return `@${b.username}`; });
+  await probar('grupo', async () => { const c = await tg('getChat', { chat_id: config().chatId }); return `${c.type}: ${c.title || ''}`; });
+  await probar('webhook', async () => {
+    const w = await tg('getWebhookInfo');
+    return { activo: Boolean(w.url), enCola: w.pending_update_count, ultimoError: w.last_error_message || null };
+  });
+  return d;
+}
+
 // ---------- Fotos borradas ----------
 // Telegram no avisa a los bots cuando se borra un mensaje. Se reenvían las fotos (sin sonido) al
 // chat privado TELEGRAM_CHECK_CHAT_ID y se borran las copias: las que Telegram no puede reenviar
@@ -340,6 +353,7 @@ async function actualizar({ origen, userId = null, fecha = null }) {
       const { nuevas, editadas, recibidos, otrosChats } = await leerNuevas(client);
       const { revisadas, borradas, sinRevisar } = await revisarBorradas(client, { fecha, userId });
       const resultado = { nuevas, editadas, revisadas, borradas, sinRevisar, recibidos, otrosChats };
+      if (recibidos === 0) resultado.diagnostico = await diagnosticoSinMensajes();
       await client.query(
         `UPDATE fotos_entregas_estado
          SET ultima_actualizacion = NOW(), ultima_actualizacion_origen = $1, ultimo_resultado = $2 WHERE id = 1`,

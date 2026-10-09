@@ -15,6 +15,7 @@ const RetiroTiendaPage = lazy(() => import('./pages/RetiroTiendaPage'));
 const ShippingPage = lazy(() => import('./pages/ShippingPage'));
 const BlueExpressPage = lazy(() => import('./pages/BlueExpressPage'));
 const CouriersPage = lazy(() => import('./pages/CouriersPage'));
+const FotosEntregasPage = lazy(() => import('./pages/FotosEntregasPage'));
 const ScanPage = lazy(() => import('./pages/ScanPage'));
 const RecepcionPagosPage = lazy(() => import('./pages/RecepcionPagosPage'));
 const TrashPage = lazy(() => import('./pages/TrashPage'));
@@ -73,6 +74,7 @@ export default function App() {
         <Route path="/shipping" element={<ProtectedRoute roles={[...STAFF_ROLES, 'escaneo']}><ShippingPage /></ProtectedRoute>} />
         <Route path="/envios-regiones" element={<ProtectedRoute roles={STAFF_ROLES}><BlueExpressPage /></ProtectedRoute>} />
         <Route path="/couriers" element={<ProtectedRoute roles={ADMIN_OPERADOR}><CouriersPage /></ProtectedRoute>} />
+        <Route path="/fotos-entregas" element={<ProtectedRoute roles={['admin']}><FotosEntregasPage /></ProtectedRoute>} />
         <Route path="/scan" element={<ProtectedRoute roles={['operador', 'admin', 'escaneo', 'caja']}><ScanPage /></ProtectedRoute>} />
         <Route path="/products" element={<ProtectedRoute roles={STAFF_ROLES}><ProductsPage /></ProtectedRoute>} />
         <Route path="/reports" element={<ProtectedRoute roles={STAFF_ROLES}><ReportsPage /></ProtectedRoute>} />

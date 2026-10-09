@@ -34,6 +34,7 @@ const MODULE_GROUPS = [
     items: [
       { path: '/shipping', label: 'Delivery Santiago', roles: ['vendedor', 'operador', 'admin', 'escaneo', 'caja'] },
       { path: '/couriers', label: 'Couriers', roles: ['operador', 'admin', 'caja'] },
+      { path: '/fotos-entregas', label: 'Fotos de entregas', roles: ['admin'] },
       { path: '/envios-regiones', label: 'Envíos Regiones', roles: ['vendedor', 'operador', 'admin', 'caja'] },
       { path: '/shipping-costs', label: 'Costos de envío', roles: ['vendedor', 'operador', 'admin', 'caja'] },
     ],

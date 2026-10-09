@@ -26,6 +26,17 @@ services:
       # peticiones del frontend al backend.
       - key: CORS_ORIGIN
         sync: false
+      # Fotos de entregas (bot de Telegram). Se completan a mano en el panel de Render.
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: TELEGRAM_CHECK_CHAT_ID
+        sync: false
+      # Clave de la tarea automática de las 22:00: copiar este valor al secreto
+      # FOTOS_CRON_SECRET del repositorio en GitHub.
+      - key: FOTOS_CRON_SECRET
+        generateValue: true
       - key: DB_HOST
         fromDatabase:
           name: teno-db

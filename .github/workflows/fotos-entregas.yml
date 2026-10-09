@@ -1,0 +1,43 @@
+# Fotos de entregas: todos los días a las 22:00 (hora de Chile) le pide a TENO que lea del bot de
+# Telegram las fotos nuevas y revise las borradas. Telegram guarda las fotos solo 24 horas, así que
+# esto asegura que no se pierda ninguna aunque nadie pulse "Actualizar".
+#
+# Configuración en GitHub (Settings → Secrets and variables → Actions):
+#   Variable  TENO_API_URL       URL del backend en Render, p. ej. https://teno-backend.onrender.com
+#   Secreto   FOTOS_CRON_SECRET  el mismo valor que FOTOS_CRON_SECRET en Render
+name: Fotos de entregas (22:00)
+
+on:
+  schedule:
+    # GitHub usa hora UTC. Chile cambia entre UTC-3 (verano) y UTC-4 (invierno): se programan las
+    # dos y solo corre la que corresponde a las 22:00 de Chile ese día.
+    - cron: '0 1 * * *'
+    - cron: '0 2 * * *'
+  workflow_dispatch: # botón "Run workflow" para correrla a mano
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ver si es la ejecución de las 22:00 de Chile
+        id: hora
+        # Hora de Chile que corresponde a la hora UTC programada (01:00 o 02:00 UTC de hoy).
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "correr=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          utc=$(echo "${{ github.event.schedule }}" | cut -d' ' -f2)
+          hora=$(node -e 'const d = new Date(); d.setUTCHours(Number(process.argv[1]), 0, 0, 0); console.log(new Intl.DateTimeFormat("en-US", { timeZone: "America/Santiago", hour: "numeric", hourCycle: "h23" }).format(d))' "$utc")
+          echo "Programada ${utc}:00 UTC = ${hora}:00 en Chile"
+          if [ "$hora" = "22" ]; then echo "correr=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Actualizar fotos en TENO
+        if: steps.hora.outputs.correr == 'true'
+        env:
+          API_URL: ${{ vars.TENO_API_URL }}
+          CRON_SECRET: ${{ secrets.FOTOS_CRON_SECRET }}
+        # Render (plan gratis) puede estar dormido: los reintentos le dan tiempo de despertar.
+        run: |
+          curl -fsS --retry 4 --retry-delay 30 --retry-all-errors --max-time 120 \
+            -X POST "$API_URL/api/fotos-entregas/cron" -H "x-cron-secret: $CRON_SECRET"
+          echo

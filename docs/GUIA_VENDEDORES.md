@@ -31,7 +31,7 @@ El administrador desactivó tu cuenta o cambió algo en ella. Habla con él. Tam
 | Módulo | Qué puedes hacer |
 |---|---|
 | Dashboard | Ver tu resumen, la hora límite de envíos y las noticias |
-| Historial de ventas | Ver **tus** ventas y su detalle |
+| Todas Las Etiquetas | Ver **tus** ventas y su detalle |
 | Retiro en tienda | Registrar retiros y ver los tuyos |
 | Delivery Santiago | Crear etiquetas y ver las tuyas |
 | Envíos Regiones | Crear etiquetas a regiones, con acceso al cotizador de Blue Express |
@@ -46,7 +46,7 @@ El administrador desactivó tu cuenta o cambió algo en ella. Habla con él. Tam
 Son módulos de operadores y administradores; no forman parte de tu cuenta.
 
 **¿Puedo ver las ventas de otros vendedores?**
-Solo en dos módulos: en **Retiro en tienda** y **Delivery Santiago** ves los de todos los vendedores (solo lectura, sin su comisión, su pago ni si el cliente ya fue atendido en tienda: eso solo lo ves en lo tuyo). En el Historial de ventas, Reportes y Envíos Regiones solo ves lo tuyo; las ventas directas de tienda son de operadores y administradores.
+Solo en dos módulos: en **Retiro en tienda** y **Delivery Santiago** ves los de todos los vendedores (solo lectura, sin su comisión, su pago ni si el cliente ya fue atendido en tienda: eso solo lo ves en lo tuyo). En Todas Las Etiquetas, Reportes y Envíos Regiones solo ves lo tuyo; las ventas directas de tienda son de operadores y administradores.
 
 **¿Dónde veo las novedades y las reglas del equipo?**
 En **Noticias** y **Reglas** (categoría Comunicación del menú). Las noticias también aparecen en tu Dashboard.
@@ -202,7 +202,7 @@ Ganas una **comisión por cada venta**. Puedes revisarla en tres lugares.
 4. Arriba de la tabla, **Comisión total del filtro actual** te da la suma del período que elegiste.
 5. Para llevarte los datos, pulsa **Exportar a Excel** (incluye la comisión de cada venta y el total).
 
-**2. Historial de ventas**
+**2. Todas Las Etiquetas**
 Pulsa **Detalles** en una venta para ver el desglose por producto y la **Comisión** de esa venta.
 
 **3. Delivery Santiago**

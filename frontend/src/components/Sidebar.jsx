@@ -20,7 +20,7 @@ const MODULE_GROUPS = [
     icon: 'ventas',
     color: 'ventas',
     items: [
-      { path: '/sales', label: 'Historial de Ventas', roles: ['vendedor', 'operador', 'admin', 'caja'] },
+      { path: '/sales', label: 'Todas Las Etiquetas', roles: ['vendedor', 'operador', 'admin', 'caja'] },
       { path: '/retiro-tienda', label: 'Retiro en Tienda', roles: ['vendedor', 'operador', 'admin', 'caja'] },
       { path: '/caja', label: 'Caja', roles: ['operador', 'admin', 'caja'] },
       { path: '/cash-register', label: 'Apertura/Cierre de Caja', roles: ['operador', 'admin', 'caja'] },

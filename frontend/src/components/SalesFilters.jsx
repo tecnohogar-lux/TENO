@@ -1,7 +1,7 @@
 import useFetch from '../hooks/useFetch';
 import { PAYMENT_METHODS, paymentMethodLabel, DELIVERY_TYPE_OPTIONS, deliveryTypeLabel } from '../utils/labels';
 
-// Filtros compartidos por Historial de Ventas y Delivery Santiago. Se mandan al servidor
+// Filtros compartidos por Todas Las Etiquetas y por Delivery Santiago. Se mandan al servidor
 // (los valores vacíos no se envían), así que listado, resumen y paginación van de acuerdo.
 export const EMPTY_FILTERS = {
   canal: '', vendedor_id: '', operador_id: '', cliente: '', desde: '', hasta: '', forma_pago: '', tipo_envio: '', courier_id: '',

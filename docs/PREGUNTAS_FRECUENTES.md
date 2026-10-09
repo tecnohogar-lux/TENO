@@ -24,7 +24,7 @@ No. Las contraseñas se guardan cifradas de forma irreversible. Si alguien la ol
 
 | Módulo | Vendedor | Operador | Admin |
 |---|---|---|---|
-| Historial de ventas (solo las propias para vendedor) | Sí | Sí | Sí |
+| Todas Las Etiquetas (solo las propias para vendedor) | Sí | Sí | Sí |
 | Retiro en tienda: registrar | Sí | Sí | Sí |
 | Retiro en tienda: editar, eliminar, entregar | No | Sí | Sí |
 | Delivery Santiago y Envíos Regiones: crear etiquetas | Sí | Sí | Sí |
@@ -143,7 +143,7 @@ En **Gastos y egresos**. Se restan del saldo esperado al cerrar la caja.
 Cualquier usuario registra un retiro (una propuesta de venta para un cliente que pasará a buscar). **No cuenta como venta** hasta que un operador o admin pulsa **Entregado**, lo que lo lleva a Caja con los productos y sus precios ya cargados; ahí se elige la forma de pago y se registra la venta real.
 
 **¿Se puede corregir o eliminar un retiro?**
-Sí, un operador o admin, con **Editar** y **Eliminar**. Si el retiro ya fue entregado, la venta que se creó en Caja no cambia: para borrarla, hazlo desde el Historial de ventas.
+Sí, un operador o admin, con **Editar** y **Eliminar**. Si el retiro ya fue entregado, la venta que se creó en Caja no cambia: para borrarla, hazlo desde Todas Las Etiquetas.
 
 **Registré un retiro con dos tipos de precio.**
 Es válido; queda marcado como MIXTO y al pasar a Caja cada producto conserva su precio.
@@ -181,7 +181,7 @@ El rol `escaneo` y los operadores escanean el QR de cada paquete en la página d
 
 ---
 
-## 6b. Historial de ventas
+## 6b. Todas Las Etiquetas
 
 **¿Por qué una venta con varios productos aparece como "2 productos"?**
 En el listado se muestra solo la cantidad de productos cuando son más de uno; si es uno solo se muestra su nombre. Pulsa **Detalles** para ver cada producto, su tipo de precio, cantidad, precio, envío, total y comisión.

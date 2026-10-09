@@ -28,12 +28,12 @@ export const FAQ = [
       },
       {
         q: '¿Qué puedo ver y hacer con mi cuenta?',
-        a: '- Dashboard: tu resumen, la hora límite de envíos y las noticias.\n- Historial de ventas: solo tus ventas y su detalle.\n- Retiro en tienda: registrar retiros y ver los de todo el equipo.\n- Delivery Santiago: crear etiquetas y ver los envíos de todo el equipo.\n- Envíos Regiones: crear etiquetas y ver las tuyas.\n- Costos de envío, Productos y Clientes: consultar (puedes crear clientes).\n- Reportes: tus ventas y tus comisiones, con exportación a Excel.\n- Noticias y Reglas: leer.\n- Preferencias: cambiar el tema y anotar tus cuentas de marketplace.',
+        a: '- Dashboard: tu resumen, la hora límite de envíos y las noticias.\n- Todas Las Etiquetas: solo tus ventas y su detalle.\n- Retiro en tienda: registrar retiros y ver los de todo el equipo.\n- Delivery Santiago: crear etiquetas y ver los envíos de todo el equipo.\n- Envíos Regiones: crear etiquetas y ver las tuyas.\n- Costos de envío, Productos y Clientes: consultar (puedes crear clientes).\n- Reportes: tus ventas y tus comisiones, con exportación a Excel.\n- Noticias y Reglas: leer.\n- Preferencias: cambiar el tema y anotar tus cuentas de marketplace.',
         palabras: 'permisos modulos menu acceso',
       },
       {
         q: '¿Puedo ver las ventas de otros vendedores?',
-        a: 'Solo en dos módulos: en Retiro en tienda y en Delivery Santiago ves los de todos los vendedores (solo lectura, sin su comisión, su pago ni si el cliente ya fue atendido en tienda: eso solo lo ves en lo tuyo). En el Historial de ventas, Reportes y Envíos Regiones solo ves lo tuyo; las ventas directas de tienda son de operadores y administradores.',
+        a: 'Solo en dos módulos: en Retiro en tienda y en Delivery Santiago ves los de todos los vendedores (solo lectura, sin su comisión, su pago ni si el cliente ya fue atendido en tienda: eso solo lo ves en lo tuyo). En Todas Las Etiquetas, Reportes y Envíos Regiones solo ves lo tuyo; las ventas directas de tienda son de operadores y administradores.',
       },
     ],
   },
@@ -108,7 +108,7 @@ export const FAQ = [
     preguntas: [
       {
         q: '¿Dónde veo mis comisiones?',
-        a: '- Reportes: columna "Comisión" de cada venta y "Comisión total del filtro actual".\n- Historial de ventas: botón "Detalles" en cada venta.\n- Delivery Santiago: columna "Comisión" de la tabla.',
+        a: '- Reportes: columna "Comisión" de cada venta y "Comisión total del filtro actual".\n- Todas Las Etiquetas: botón "Detalles" en cada venta.\n- Delivery Santiago: columna "Comisión" de la tabla.',
         palabras: 'comision ganancia pago reportes',
       },
       {
@@ -200,7 +200,7 @@ export const TUTORIALES = [
       'En "Vista previa" verás la columna "Comisión" de cada venta.',
       'Sobre la tabla, "Comisión total del filtro actual" es la suma del período que elegiste.',
       'Para llevarte los datos pulsa "Exportar a Excel".',
-      'Para el desglose por producto, ve a Historial de ventas y pulsa "Detalles" en la venta.',
+      'Para el desglose por producto, ve a Todas Las Etiquetas y pulsa "Detalles" en la venta.',
     ],
     despues: 'Solo se pagan las ventas cerradas y con pago confirmado: tienda o retiro completados, o envíos entregados; las transferencias deben estar verificadas; las canceladas no cuentan. En una venta al mayor la comisión es el 25% de (tu precio − el costo). Los productos libres no tienen comisión.',
   },

@@ -43,7 +43,7 @@ async function productosAgotados(nombres) {
   return result.rows.map((r) => r.title);
 }
 
-// Filtros del Historial de Ventas y de Delivery Santiago (listado y resumen usan los mismos).
+// Filtros de Todas Las Etiquetas y de Delivery Santiago (listado y resumen usan los mismos).
 // "retiro" = venta de tienda que salió de un retiro en tienda; "directa" = venta directa en caja.
 const CANALES = {
   envio: `s.tipo_venta = 'ENVIO'`,

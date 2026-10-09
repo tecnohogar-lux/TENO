@@ -222,6 +222,9 @@ async function leerNuevas(client) {
   let offset = Number((await client.query('SELECT telegram_offset FROM fotos_entregas_estado WHERE id = 1')).rows[0].telegram_offset);
   let nuevas = 0;
   let editadas = 0;
+  // Diagnóstico: cuántos mensajes entregó Telegram y de qué chats no son el del grupo configurado.
+  let recibidos = 0;
+  const otrosChats = {};
   for (;;) {
     let updates;
     try {
@@ -236,6 +239,9 @@ async function leerNuevas(client) {
     await client.query('BEGIN');
     try {
       for (const u of updates) {
+        const m = u.message || u.edited_message;
+        recibidos += 1;
+        if (m && !delGrupo(m)) otrosChats[m.chat?.id] = (otrosChats[m.chat?.id] || 0) + 1;
         if (u.message) nuevas += await guardarFoto(client, u.message);
         else if (u.edited_message) editadas += await aplicarEdicion(client, u.edited_message);
       }
@@ -247,7 +253,7 @@ async function leerNuevas(client) {
       throw err;
     }
   }
-  return { nuevas, editadas };
+  return { nuevas, editadas, recibidos, otrosChats };
 }
 
 // ---------- Fotos borradas ----------
@@ -331,9 +337,9 @@ async function actualizar({ origen, userId = null, fecha = null }) {
     const lock = await client.query('SELECT pg_try_advisory_lock($1) AS ok', [LOCK_KEY]);
     if (!lock.rows[0].ok) throw httpError(409, 'Ya hay una actualización en curso, espera unos segundos');
     try {
-      const { nuevas, editadas } = await leerNuevas(client);
+      const { nuevas, editadas, recibidos, otrosChats } = await leerNuevas(client);
       const { revisadas, borradas, sinRevisar } = await revisarBorradas(client, { fecha, userId });
-      const resultado = { nuevas, editadas, revisadas, borradas, sinRevisar };
+      const resultado = { nuevas, editadas, revisadas, borradas, sinRevisar, recibidos, otrosChats };
       await client.query(
         `UPDATE fotos_entregas_estado
          SET ultima_actualizacion = NOW(), ultima_actualizacion_origen = $1, ultimo_resultado = $2 WHERE id = 1`,

@@ -329,9 +329,6 @@ async function revisarBorradas(client, { fecha, userId }) {
   }
 
   const borrar = r.rows.filter((f) => faltantes.has(`${f.chat_id}:${f.message_id}`));
-  // Si "faltan" todas las fotos revisadas, lo más probable es un problema con la revisión y no que
-  // las hayan borrado todas: no se borra nada.
-  if (r.rows.length >= 5 && borrar.length === r.rows.length) return { revisadas: r.rows.length, borradas: 0, sinRevisar: true };
   if (borrar.length > 0) {
     await client.query('DELETE FROM fotos_entregas WHERE id = ANY($1::int[])', [borrar.map((f) => f.id)]);
     for (const f of borrar) {

@@ -396,7 +396,7 @@ tbody tr:hover {
     top: 0;
     left: 0;
     right: 0;
-    height: 52px;
+    height: 74px;
     box-sizing: border-box;
     z-index: 40;
   }
@@ -447,7 +447,7 @@ tbody tr:hover {
 
   .page-content {
     padding: 20px 16px;
-    padding-top: calc(52px + 20px);
+    padding-top: calc(74px + 20px);
     width: 100%;
   }
 

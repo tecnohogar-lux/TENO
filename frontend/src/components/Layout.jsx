@@ -13,8 +13,8 @@ export default function Layout({ children }) {
             <path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
         </button>
-        <div style={{ background: '#fff', borderRadius: 'var(--radius-sm)', padding: '4px 8px' }}>
-          <Logo height={18} />
+        <div style={{ background: '#fff', borderRadius: 'var(--radius-sm)', padding: '2px 8px' }}>
+          <Logo height={46} />
         </div>
       </div>
 

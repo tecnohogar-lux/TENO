@@ -9,6 +9,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import { formatCurrency, formatDate } from '../utils/format';
 import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, TIPO_VENTA_LABELS, saleStatusLabel, deliveryStatusLabel, tipoVentaLabel, paymentMethodLabel, paymentBreakdownLines, PAYMENT_METHODS, isSinCobro } from '../utils/labels';
 import { PRICE_TYPE_LABELS, priceTypeLabel } from '../utils/priceType';
+import { cuentaParaComision, comisionContada } from '../utils/comisiones';
 
 const emptyFilters = { dateFrom: '', dateTo: '', nombre: '', producto: '', vendedor: '', cliente: '', canal: '', tipoPrecio: '', formaPago: '', courier: '' };
 
@@ -146,7 +147,7 @@ export default function ReportsPage() {
   }
 
   const totalComisionPreview = useMemo(
-    () => filteredSales.reduce((acc, s) => acc + (s.comision !== null && s.comision !== undefined ? Number(s.comision) : 0), 0),
+    () => filteredSales.reduce((acc, s) => acc + comisionContada(s), 0),
     [filteredSales]
   );
 
@@ -171,7 +172,7 @@ export default function ReportsPage() {
         'Precio producto': !formaPagoActiva && s.precio_producto !== null && s.precio_producto !== undefined ? Number(s.precio_producto) : '',
         'Precio envío': !formaPagoActiva && s.precio_envio !== null && s.precio_envio !== undefined ? Number(s.precio_envio) : '',
         Total: s._displayTotal,
-        Comisión: s.comision !== null && s.comision !== undefined ? Number(s.comision) : '',
+        Comisión: cuentaParaComision(s) && s.comision !== null && s.comision !== undefined ? Number(s.comision) : '',
         'Forma de pago': s._pagoLabel,
         Estado: saleStatusLabel(s.status),
         Envío: ['ENVIO', 'ENVIO_PREPAGADO', 'ENVIO_REGION'].includes(s.tipo_venta) ? deliveryStatusLabel(s.delivery_status) : '-',
@@ -200,7 +201,7 @@ export default function ReportsPage() {
           totalProductos += producto;
           totalEnvios += envio;
         }
-        totalComision += s.comision !== null && s.comision !== undefined ? Number(s.comision) : 0;
+        totalComision += comisionContada(s);
       }
       const totalGeneral = formaPagoActiva ? totalDisplay : totalProductos + totalEnvios;
 
@@ -498,7 +499,7 @@ export default function ReportsPage() {
             </button>
           </div>
           <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 16 }}>
-            Comisión total del filtro actual: <strong style={{ color: 'var(--color-text)' }}>{formatCurrency(totalComisionPreview)}</strong>
+            Comisión total del filtro actual (solo ventas completadas y deliveries entregados): <strong style={{ color: 'var(--color-text)' }}>{formatCurrency(totalComisionPreview)}</strong>
           </div>
 
           <div style={{ overflowX: 'auto' }}>
@@ -541,7 +542,7 @@ export default function ReportsPage() {
                       <td data-label="Precio producto">{!filters.formaPago && s.precio_producto !== null && s.precio_producto !== undefined ? formatCurrency(s.precio_producto) : '-'}</td>
                       <td data-label="Precio envío">{!filters.formaPago && s.precio_envio !== null && s.precio_envio !== undefined ? formatCurrency(s.precio_envio) : '-'}</td>
                       <td data-label="Total">{formatCurrency(s._displayTotal)}</td>
-                      <td data-label="Comisión">{s.comision !== null && s.comision !== undefined ? formatCurrency(s.comision) : '-'}</td>
+                      <td data-label="Comisión">{cuentaParaComision(s) && s.comision !== null && s.comision !== undefined ? formatCurrency(s.comision) : '-'}</td>
                       <td data-label="Forma de pago">{s._pagoLabel}</td>
                       <td data-label="Estado">
                         <Badge label={saleStatusLabel(s.status)} color={SALE_STATUS_LABELS[s.status]?.color} />

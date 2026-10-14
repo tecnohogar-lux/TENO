@@ -249,6 +249,7 @@ router.get('/comisiones', authenticateToken, requireManage('No tienes permiso pa
       's.deleted_at IS NULL',
       conCobroSql('s.'),
       `s.status = 'completado'`,
+      `COALESCE(s.delivery_status, '') <> 'cancelado'`,
       `(s.tipo_venta = 'TIENDA' OR s.delivery_status = 'entregado')`,
       `(
          (COALESCE(s.payment_method, '') NOT IN ('transferencia', 'mixto'))

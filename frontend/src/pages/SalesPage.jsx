@@ -122,7 +122,7 @@ export default function SalesPage() {
 
       {summary && (
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
-          <MetricsCard label="Total ventas" value={summary.total} />
+          <MetricsCard label="Total etiquetas" value={summary.total} />
           <MetricsCard label="Envíos" value={summary.envios} />
           <MetricsCard label="Tienda" value={summary.tienda} />
         </div>

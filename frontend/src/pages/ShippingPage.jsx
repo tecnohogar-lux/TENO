@@ -413,6 +413,7 @@ export default function ShippingPage() {
             </div>
 
             <ShipmentItemsInput
+              addButtonGreen
               allowMayor
               hideSol={user.role === 'vendedor'}
               blockAgotado={user.role === 'vendedor'}

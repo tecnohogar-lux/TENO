@@ -9,7 +9,7 @@ const FREE_PRODUCT_OPTION = [{ value: '__free__', label: 'Producto libre (no reg
 
 // Lista de productos de un envío. El botón SOL / MARKETPLACE define el precio de la
 // línea que se agrega, así que el mismo producto puede repetirse con precios distintos.
-export default function ShipmentItemsInput({ products, items, onChange, defaultPriceType = 'marketplace', allowMayor = false, hideSol = false, blockAgotado = false }) {
+export default function ShipmentItemsInput({ products, items, onChange, defaultPriceType = 'marketplace', allowMayor = false, hideSol = false, blockAgotado = false, addButtonGreen = false }) {
   const [priceType, setPriceType] = useState(defaultPriceType);
   const [selectedProductId, setSelectedProductId] = useState('');
   const [qty, setQty] = useState(1);
@@ -80,7 +80,7 @@ export default function ShipmentItemsInput({ products, items, onChange, defaultP
           />
         </div>
         <input type="number" min={minQty} value={qty} onChange={(e) => setQty(e.target.value)} style={{ width: 70 }} />
-        <button type="button" className="btn btn-secondary" onClick={addItem} disabled={!canAdd}>
+        <button type="button" className={`btn ${addButtonGreen ? 'btn-add' : 'btn-secondary'}`} onClick={addItem} disabled={!canAdd}>
           Agregar
         </button>
       </div>

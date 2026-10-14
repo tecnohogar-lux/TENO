@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import useNuevaVentaStore from '../store/useNuevaVentaStore';
 import { installSoundUnlock, playNewSaleSound, stopNewSaleSound } from '../utils/nuevaVentaSound';
 
-// Animación "¡Nueva venta!" que aparece cuando un vendedor registra un retiro en tienda o un
+// Animación "¡Etiqueta Enviada!" que aparece cuando un vendedor registra un retiro en tienda o un
 // delivery. Se monta una sola vez en App; se dispara con showNewSale() (store/useNuevaVentaStore).
 
 const ICONS = {
@@ -106,7 +106,7 @@ export default function NuevaVentaAnimacion() {
   const subtitulo = [sale.orderId && `Pedido #${sale.orderId}`, sale.seller && `por ${sale.seller}`].filter(Boolean).join(' · ');
 
   return (
-    <div key={sale.key} className={`ns-overlay${closing ? ' ns-out' : ''}`} role="alertdialog" aria-live="assertive" aria-label={isRetiro ? 'Etiqueta enviada' : 'Nueva venta registrada'} onClick={close}>
+    <div key={sale.key} className={`ns-overlay${closing ? ' ns-out' : ''}`} role="alertdialog" aria-live="assertive" aria-label="Etiqueta enviada" onClick={close}>
       <div className={`ns-card ${isRetiro ? 'retiro' : 'delivery'}`}>
         <div className="ns-check">
           <svg width="22" height="22" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -118,7 +118,7 @@ export default function NuevaVentaAnimacion() {
           {isRetiro ? ICONS.retiro : ICONS.delivery}
         </div>
         <span className="ns-badge">{isRetiro ? '🏬 Retiro en tienda' : '🛵 Delivery'}</span>
-        <h2 className="ns-title">{isRetiro ? '¡Etiqueta Enviada!' : '¡Nueva venta!'}</h2>
+        <h2 className="ns-title">¡Etiqueta Enviada!</h2>
         {subtitulo && <p className="ns-sub">{subtitulo}</p>}
         {typeof sale.total === 'number' && <p className="ns-total" ref={totalRef}>{formatTotal(0)}</p>}
         <div className="ns-bar" style={{ animationDuration: `${sale.duration}ms` }} />

@@ -35,7 +35,7 @@ function parseLocalDayBoundary(value, endOfDay = false) {
 export default function ReportsPage() {
   const { user } = useAuth();
   const canManage = user.role === 'operador' || user.role === 'admin' || user.role === 'caja';
-  const { data, loading, error } = useFetch('/api/sales');
+  const { data, loading, error } = useFetch('/api/sales?costos=1');
   const [filters, setFilters] = useState(emptyFilters);
   const [exporting, setExporting] = useState(false);
 
@@ -165,64 +165,54 @@ export default function ReportsPage() {
       // La librería de Excel es pesada: se descarga recién al exportar, no al abrir Reportes.
       const XLSX = await import('xlsx');
       const formaPagoActiva = !!filters.formaPago;
-      const rows = displayRows.map((s) => ({
-        Producto: s.product_name,
-        Cliente: s.client_name,
-        Vendedor: s.vendor_name,
-        Tipo: tipoVentaLabel(s.tipo_venta),
-        Cantidad: s.quantity,
-        'Precio producto': !formaPagoActiva && s.precio_producto !== null && s.precio_producto !== undefined ? Number(s.precio_producto) : '',
-        'Precio envío': !formaPagoActiva && s.precio_envio !== null && s.precio_envio !== undefined ? Number(s.precio_envio) : '',
-        Total: s._displayTotal,
-        Comisión: cuentaParaComision(s) && s.comision !== null && s.comision !== undefined ? Number(s.comision) : '',
-        'Forma de pago': s._pagoLabel,
-        Estado: saleStatusLabel(s.status),
-        Envío: ['ENVIO', 'ENVIO_PREPAGADO', 'ENVIO_REGION'].includes(s.tipo_venta) ? deliveryStatusLabel(s.delivery_status) : '-',
-        Courier: TIPOS_ENVIO.includes(s.tipo_venta) ? (s.courier_name || 'Sin asignar') : '-',
-        'Fecha creación': formatDate(fechaRegistro(s)),
-        'Fecha en camino / retiro': fechaSalida(s) ? formatDate(fechaSalida(s)) : '',
-        'Tipo de precio': priceTypeLabel(s.price_type),
-      }));
-
       // Ventas viejas (previas al desglose precio_producto/precio_envio) solo
       // tienen "total" sin separar; ante la falta de desglose se asume que todo
-      // el monto es de producto (no hubo envío), para que las tres sumas nunca
-      // pierdan dinero: total productos + total envíos siempre da el total real.
+      // el monto es de producto (no hubo envío), para que las sumas nunca pierdan
+      // dinero: total productos + total envíos siempre da el total real.
       // Con filtro de forma de pago, el total es la suma de los montos parciales
       // de esa forma de pago (no se desglosa producto/envío a nivel de línea de pago).
-      let totalProductos = 0;
-      let totalEnvios = 0;
-      let totalComision = 0;
-      let totalDisplay = 0;
-      for (const s of displayRows) {
-        totalDisplay += s._displayTotal;
-        if (!formaPagoActiva) {
-          const envio = s.precio_envio !== null && s.precio_envio !== undefined ? Number(s.precio_envio) : 0;
-          const producto = s.precio_producto !== null && s.precio_producto !== undefined
-            ? Number(s.precio_producto)
-            : Number(s.total) - envio;
-          totalProductos += producto;
-          totalEnvios += envio;
-        }
-        totalComision += comisionContada(s);
-      }
-      const totalGeneral = formaPagoActiva ? totalDisplay : totalProductos + totalEnvios;
+      const num = (v) => (v !== null && v !== undefined ? Number(v) : null);
+      const envioDe = (s) => (formaPagoActiva ? null : (num(s.precio_envio) ?? 0));
+      const productoDe = (s) => {
+        if (formaPagoActiva) return null;
+        return num(s.precio_producto) ?? Number(s.total) - (num(s.precio_envio) ?? 0);
+      };
+      const esEnvio = (s) => TIPOS_ENVIO.includes(s.tipo_venta);
 
-      const sheet = XLSX.utils.json_to_sheet(rows);
-      XLSX.utils.sheet_add_aoa(
-        sheet,
-        [
-          [],
-          [
-            'TOTALES', '', '', '', '',
-            totalProductos || '',
-            totalEnvios || '',
-            totalGeneral || '',
-            totalComision || '',
-          ],
-        ],
-        { origin: -1 }
-      );
+      // Orden de las columnas: primero las pedidas por operaciones, luego el resto de la información.
+      // `total` suma la columna en la fila TOTALES (si no se define, queda vacía).
+      const columnas = [
+        { titulo: 'Fecha de ingreso', valor: (s) => formatDate(fechaRegistro(s)) },
+        { titulo: 'Cantidad', valor: (s) => s.quantity },
+        { titulo: 'Producto', valor: (s) => s.product_name },
+        // El costo de compra es un dato interno: solo lo reciben admin/operador/caja.
+        ...(canManage ? [{ titulo: 'Costo', valor: (s) => num(s.costo_total) ?? '', total: (s) => num(s.costo_total) ?? 0 }] : []),
+        { titulo: 'Precio del producto', valor: (s) => productoDe(s) ?? '', total: (s) => productoDe(s) ?? 0 },
+        { titulo: 'Vendedor', valor: (s) => s.vendor_name },
+        { titulo: 'Cliente', valor: (s) => s.client_name },
+        { titulo: 'Delivery', valor: (s) => (esEnvio(s) ? (s.courier_name || 'Sin asignar') : '-') },
+        { titulo: 'Fecha de envío', valor: (s) => (fechaSalida(s) ? formatDate(fechaSalida(s)) : '') },
+        // ---- resto de la información
+        { titulo: 'Tipo', valor: (s) => tipoVentaLabel(s.tipo_venta) },
+        { titulo: 'Precio envío', valor: (s) => envioDe(s) ?? '', total: (s) => envioDe(s) ?? 0 },
+        { titulo: 'Total', valor: (s) => s._displayTotal, total: (s) => s._displayTotal },
+        { titulo: 'Comisión', valor: (s) => (cuentaParaComision(s) && num(s.comision) !== null ? Number(s.comision) : ''), total: (s) => comisionContada(s) },
+        { titulo: 'Forma de pago', valor: (s) => s._pagoLabel },
+        { titulo: 'Estado', valor: (s) => saleStatusLabel(s.status) },
+        { titulo: 'Estado del envío', valor: (s) => (esEnvio(s) ? deliveryStatusLabel(s.delivery_status) : '-') },
+        { titulo: 'Tipo de precio', valor: (s) => priceTypeLabel(s.price_type) },
+      ];
+
+      const rows = displayRows.map((s) => Object.fromEntries(columnas.map((c) => [c.titulo, c.valor(s)])));
+      const totales = columnas.map((c, i) => {
+        if (i === 0) return 'TOTALES';
+        if (!c.total) return '';
+        const suma = displayRows.reduce((acc, s) => acc + c.total(s), 0);
+        return suma || '';
+      });
+
+      const sheet = XLSX.utils.json_to_sheet(rows, { header: columnas.map((c) => c.titulo) });
+      XLSX.utils.sheet_add_aoa(sheet, [[], totales], { origin: -1 });
 
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, sheet, 'Ventas');

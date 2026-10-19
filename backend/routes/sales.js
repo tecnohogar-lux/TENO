@@ -10,6 +10,7 @@ const { esSinCobro, conCobroSql, aplicarTipoEnvio } = require('../utils/sinCobro
 const { PAYMENT_METHODS, validatePaymentBreakdown, normalizePaymentBreakdown, formaPagoCondition } = require('../utils/paymentBreakdown');
 const { recalcularCierresQueContienen } = require('../utils/cierreCaja');
 const { condicionBusqueda } = require('../utils/busqueda');
+const { agregarCostos } = require('../utils/costosVenta');
 
 const DELIVERY_STATUSES = ['listo_para_imprimir', 'impreso', 'en_camino', 'entregado', 'cancelado', 'reprogramado'];
 
@@ -398,12 +399,17 @@ router.get('/', authenticateToken, async (req, res) => {
 
     const result = await pool.query(query, params);
 
+    // Con ?costos=1 (Reportes) admin/operador/caja reciben además el costo de compra de cada venta.
+    const filas = req.query.costos === '1' && MANAGE_ROLES.includes(user.role)
+      ? await agregarCostos(result.rows)
+      : result.rows;
+
     // De un envío ajeno el vendedor no ve la comisión ni nada del cobro (forma de pago, transferencia).
     const sales = user.role === 'vendedor'
-      ? result.rows.map((s) => (s.vendor_id === user.id
+      ? filas.map((s) => (s.vendor_id === user.id
           ? s
           : { ...s, comision: null, cobro_original: null, payment_method: null, payment_breakdown: null, transferencia_verificada: null }))
-      : result.rows;
+      : filas;
 
     res.json({
       total,

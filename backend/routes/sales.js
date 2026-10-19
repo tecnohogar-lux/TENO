@@ -4,7 +4,7 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
-const { MIN_MAYOR, MIN_MAYOR_MESSAGE, lookupComisionUnitaria, validateLines, summarizeLines } = require('../utils/saleLines');
+const { MIN_MAYOR, MIN_MAYOR_MESSAGE, lookupComisionUnitaria, validateLines, summarizeLines, buscarProductoId } = require('../utils/saleLines');
 const { buildQrValue } = require('../utils/qrCode');
 const { esSinCobro, conCobroSql, aplicarTipoEnvio } = require('../utils/sinCobro');
 const { PAYMENT_METHODS, validatePaymentBreakdown, normalizePaymentBreakdown, formaPagoCondition } = require('../utils/paymentBreakdown');
@@ -554,6 +554,7 @@ router.post('/', authenticateToken, async (req, res) => {
 
     let itemsJson = null;
     let comision = null;
+    let productId = null;
     let total;
     if (lines) {
       const resumen = await summarizeLines(dbClient, lines);
@@ -568,9 +569,11 @@ router.post('/', authenticateToken, async (req, res) => {
       price_type = resumen.priceType;
       itemsJson = resumen.itemsJson;
       comision = resumen.comision;
+      productId = resumen.productId;
     } else {
       total = quantity * price;
-      const comisionUnitaria = await lookupComisionUnitaria(dbClient, product_name, price_type);
+      productId = await buscarProductoId(dbClient, product_name);
+      const comisionUnitaria = await lookupComisionUnitaria(dbClient, product_name, price_type, null, productId);
       comision = comisionUnitaria !== null ? comisionUnitaria * quantity : null;
     }
 
@@ -583,10 +586,10 @@ router.post('/', authenticateToken, async (req, res) => {
     const courierId = defaultCourier.rows[0]?.id || null;
 
     const inserted = await dbClient.query(
-      `INSERT INTO sales (vendor_id, client_id, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region, precio_producto, precio_envio, comision, courier_id, price_type, items, registered_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+      `INSERT INTO sales (vendor_id, client_id, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region, precio_producto, precio_envio, comision, courier_id, price_type, items, registered_by, product_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
        RETURNING *`,
-      [vendor_id, finalClientId, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region || null, precio_producto || null, precio_envio || null, comision, courierId, price_type, itemsJson, user.id]
+      [vendor_id, finalClientId, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region || null, precio_producto || null, precio_envio || null, comision, courierId, price_type, itemsJson, user.id, productId]
     );
 
     const sale = inserted.rows[0];
@@ -817,12 +820,16 @@ router.put('/:id', authenticateToken, async (req, res) => {
     // comisión vigente del producto en ese momento, pudiendo quedar en null si
     // el nuevo producto no tiene comisión cargada); si no cambian, se conserva.
     let comision = sale.comision;
+    // Si se cambia el nombre del producto, la venta pasa a apuntar al producto del catálogo con ese nombre
+    // (o a ninguno si es libre); si no se cambia, conserva el producto que ya tenía aunque se haya renombrado.
+    const cambiaProducto = product_name !== undefined && product_name !== sale.product_name;
+    const nuevoProductId = cambiaProducto ? await buscarProductoId(pool, product_name) : (sale.product_id || null);
     if (product_name !== undefined || quantity !== undefined) {
       if (sale.price_type === 'mayor' && newQuantity < MIN_MAYOR) {
         return res.status(400).json({ error: MIN_MAYOR_MESSAGE });
       }
       const unitProducto = sale.precio_producto !== null && sale.precio_producto !== undefined ? Number(sale.precio_producto) / newQuantity : newPrice;
-      const comisionUnitaria = await lookupComisionUnitaria(pool, product_name || sale.product_name, sale.price_type, unitProducto);
+      const comisionUnitaria = await lookupComisionUnitaria(pool, product_name || sale.product_name, sale.price_type, unitProducto, nuevoProductId);
       comision = comisionUnitaria !== null ? comisionUnitaria * newQuantity : null;
     }
 
@@ -877,6 +884,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
            comision = $17,
            payment_breakdown = COALESCE($18, payment_breakdown),
            motivo_estado = CASE WHEN $19::boolean THEN $20 ELSE motivo_estado END,
+           product_id = CASE WHEN $21::boolean THEN $22 ELSE product_id END,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $15
        RETURNING *`,
@@ -887,6 +895,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
         deliveredAt, transferencia_verificada !== undefined ? !!transferencia_verificada : null, id,
         clearDeliveredAt, comision, breakdownJson,
         statusChanging, motivoValue,
+        cambiaProducto, nuevoProductId,
       ]
     );
 

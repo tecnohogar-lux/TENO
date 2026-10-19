@@ -11,6 +11,20 @@ const { logAudit } = require('../utils/auditLog');
 const fs = require('fs');
 const { condicionBusqueda } = require('../utils/busqueda');
 
+// Cuando un producto se renombra se guarda el nombre que tenía, para que las ventas hechas con ese
+// nombre se sigan asociando al producto (costo, comisión). Nunca debe romper la edición.
+async function registrarNombreAnterior(db, productId, nombreAnterior) {
+  if (!nombreAnterior || !String(nombreAnterior).trim()) return;
+  try {
+    await db.query(
+      'INSERT INTO producto_nombres_anteriores (product_id, nombre) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [productId, String(nombreAnterior).trim()]
+    );
+  } catch (err) {
+    console.error('Error al guardar el nombre anterior del producto:', err.message);
+  }
+}
+
 const requireManage = (message) => requireRole(['admin', 'operador', 'caja'], message);
 
 // Configurar multer para archivos Excel
@@ -594,7 +608,7 @@ router.post('/bulk-edit/excel', authenticateToken, requireManage('No tienes perm
         continue;
       }
 
-      updates.push({ id: producto.id, ...nuevo, ...computeDerived(finalCosto, finalPrecio) });
+      updates.push({ id: producto.id, tituloAnterior: producto.title, ...nuevo, ...computeDerived(finalCosto, finalPrecio) });
     }
 
     if (updates.length === 0) {
@@ -627,6 +641,9 @@ router.post('/bulk-edit/excel', authenticateToken, requireManage('No tienes perm
           [u.title, u.sku, u.price, u.cover_image_url, u.caracteristicas, u.costo, u.rentabilidad, u.margen_75, u.comision_venta, u.id,
            u.costo_tienda, u.precio_tienda, u.rentabilidad_tienda, u.margen_75_tienda, u.comision_venta_tienda]
         );
+        if ((u.tituloAnterior || '').trim().toLowerCase() !== (u.title || '').trim().toLowerCase()) {
+          await registrarNombreAnterior(dbClient, u.id, u.tituloAnterior);
+        }
       }
       await dbClient.query('COMMIT');
     } catch (dbErr) {
@@ -708,6 +725,9 @@ router.put('/:id', authenticateToken, requireManage('No tienes permiso para edit
     }
 
     const product = result.rows[0];
+    if ((existing.rows[0].title || '').trim().toLowerCase() !== (product.title || '').trim().toLowerCase()) {
+      await registrarNombreAnterior(pool, product.id, existing.rows[0].title);
+    }
     // La noticia detalla qué cambió (precio con su nuevo valor, título, descripción);
     // si el guardado no cambió nada no se publica.
     const cambios = detectarCambios(existing.rows[0], product);

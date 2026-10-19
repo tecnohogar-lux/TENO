@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS sales (
   )),
   motivo_estado VARCHAR(500),
   en_camino_at TIMESTAMP,
+  product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
   cobro_original JSONB,
   registered_by INTEGER REFERENCES users(id),
   delivery_type VARCHAR(30) NOT NULL DEFAULT 'delivery' CHECK (delivery_type IN (
@@ -229,6 +230,17 @@ CREATE TABLE IF NOT EXISTS retiros_tienda (
 
 -- Retiro en tienda del que salió una venta de tienda (se agrega aquí porque retiros_tienda se crea después de sales).
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS retiro_id INTEGER REFERENCES retiros_tienda(id) ON DELETE SET NULL;
+
+-- Nombres que tuvo cada producto antes de renombrarse (para encontrar su costo/comisión en ventas antiguas).
+CREATE TABLE IF NOT EXISTS producto_nombres_anteriores (
+  id SERIAL PRIMARY KEY,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  nombre VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pna_producto_nombre ON producto_nombres_anteriores (product_id, LOWER(TRIM(nombre)));
+CREATE INDEX IF NOT EXISTS idx_pna_nombre ON producto_nombres_anteriores (LOWER(TRIM(nombre)));
+CREATE INDEX IF NOT EXISTS idx_sales_product_id ON sales (product_id);
 
 -- Recepción de Pagos: cuentas por pagar / por cobrar y sus abonos (aparte de la caja).
 CREATE TABLE IF NOT EXISTS pago_contrapartes (

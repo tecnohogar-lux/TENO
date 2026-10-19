@@ -7,11 +7,15 @@ const MIN_MAYOR_MESSAGE = `Venta al mayor: el mínimo es ${MIN_MAYOR} unidades p
 //  - sol / marketplace: comisión guardada en el producto.
 //  - mayor (precio libre): 25% de (precio - costo), sin negativos.
 // Sin coincidencia en el catálogo (producto libre) o sin costo cargado => null.
-async function lookupComisionUnitaria(dbClient, productName, priceType = 'marketplace', unitPrice = null) {
-  if (!productName) return null;
+// Si se conoce el id del producto se busca por id (sigue funcionando aunque el producto se haya renombrado);
+// si no, por nombre.
+async function lookupComisionUnitaria(dbClient, productName, priceType = 'marketplace', unitPrice = null, productId = null) {
+  if (!productName && !productId) return null;
+  const donde = productId ? 'id = $1' : 'LOWER(title) = LOWER($1)';
+  const clave = productId || productName;
 
   if (priceType === 'mayor') {
-    const r = await dbClient.query('SELECT costo FROM products WHERE LOWER(title) = LOWER($1) LIMIT 1', [productName]);
+    const r = await dbClient.query(`SELECT costo FROM products WHERE ${donde} LIMIT 1`, [clave]);
     const costo = r.rows[0]?.costo;
     if (costo === undefined || costo === null || unitPrice === null) return null;
     return Math.max(0, Math.round((Number(unitPrice) - parseFloat(costo)) * 0.25 * 100) / 100);
@@ -19,8 +23,8 @@ async function lookupComisionUnitaria(dbClient, productName, priceType = 'market
 
   const columna = priceType === 'sol' ? 'comision_venta_tienda' : 'comision_venta';
   const result = await dbClient.query(
-    `SELECT ${columna} as comision FROM products WHERE LOWER(title) = LOWER($1) LIMIT 1`,
-    [productName]
+    `SELECT ${columna} as comision FROM products WHERE ${donde} LIMIT 1`,
+    [clave]
   );
   const valor = result.rows[0]?.comision;
   return valor !== undefined && valor !== null ? parseFloat(valor) : null;
@@ -30,10 +34,28 @@ async function lookupComisionUnitaria(dbClient, productName, priceType = 'market
 async function comisionDeLineas(dbClient, lines) {
   let comision = null;
   for (const l of lines) {
-    const unit = await lookupComisionUnitaria(dbClient, l.product_name, l.price_type, l.price);
+    const unit = await lookupComisionUnitaria(dbClient, l.product_name, l.price_type, l.price, l.product_id || null);
     if (unit !== null) comision = (comision || 0) + unit * l.quantity;
   }
   return comision;
+}
+
+// Id del producto del catálogo que corresponde a un nombre (sin distinguir mayúsculas), o null si es un
+// producto libre. Se guarda en la venta para encontrar el producto aunque después se renombre.
+async function buscarProductoId(dbClient, nombre) {
+  if (!nombre || !String(nombre).trim()) return null;
+  const r = await dbClient.query(
+    'SELECT id FROM products WHERE LOWER(TRIM(title)) = LOWER(TRIM($1)) ORDER BY id LIMIT 1',
+    [nombre]
+  );
+  return r.rows[0]?.id ?? null;
+}
+
+// Agrega product_id a cada línea (por su nombre actual en el catálogo; null si es un producto libre).
+async function adjuntarProductIds(dbClient, lines) {
+  const resultado = [];
+  for (const l of lines) resultado.push({ ...l, product_id: await buscarProductoId(dbClient, l.product_name) });
+  return resultado;
 }
 
 // Devuelve un mensaje de error si alguna línea es inválida, o null si todas lo son.
@@ -47,7 +69,8 @@ function validateLines(lines) {
 
 // Resume una transacción: totales, nombre a mostrar, tipo de precio (o 'mixto') y comisión.
 // Con más de una línea, las líneas se guardan en `itemsJson`; con una sola, queda como venta simple.
-async function summarizeLines(dbClient, lines) {
+async function summarizeLines(dbClient, rawLines) {
+  const lines = await adjuntarProductIds(dbClient, rawLines);
   const productosTotal = lines.reduce((sum, l) => sum + l.quantity * l.price, 0);
   const totalQty = lines.reduce((sum, l) => sum + l.quantity, 0);
   const nombre = lines.length === 1 ? lines[0].product_name : lines.map((l) => `${l.product_name} x${l.quantity}`).join(' + ');
@@ -59,8 +82,10 @@ async function summarizeLines(dbClient, lines) {
     productName: nombre.length > 255 ? nombre.slice(0, 254) + '…' : nombre,
     priceType: tipos.size > 1 ? 'mixto' : lines[0].price_type,
     itemsJson: lines.length > 1 ? JSON.stringify(lines) : null,
+    // Venta de un solo producto: su id va en sales.product_id (las de varios lo llevan en cada línea de items).
+    productId: lines.length === 1 ? lines[0].product_id : null,
     comision: await comisionDeLineas(dbClient, lines),
   };
 }
 
-module.exports = { MIN_MAYOR, MIN_MAYOR_MESSAGE, lookupComisionUnitaria, comisionDeLineas, validateLines, summarizeLines };
+module.exports = { MIN_MAYOR, MIN_MAYOR_MESSAGE, lookupComisionUnitaria, comisionDeLineas, validateLines, summarizeLines, buscarProductoId, adjuntarProductIds };

@@ -10,6 +10,7 @@ import useAuth from '../hooks/useAuth';
 import useConfirm from '../hooks/useConfirm';
 import useDebouncedValue from '../hooks/useDebouncedValue';
 import { formatCurrency, formatDate } from '../utils/format';
+import { fechaRegistro, fechaSalida } from '../utils/fechas';
 import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, TIPO_VENTA_LABELS, saleStatusLabel, deliveryStatusLabel, tipoVentaLabel, paymentMethodLabel, paymentBreakdownLines, isSinCobro, deliveryTypeLabel } from '../utils/labels';
 import { PRICE_TYPE_LABELS, priceTypeLabel } from '../utils/priceType';
 import PriceTypeBadge from '../components/PriceTypeBadge';
@@ -151,14 +152,15 @@ export default function SalesPage() {
                 <th>Estado</th>
                 <th>Envío</th>
                 <th>Pago</th>
-                <th>Fecha</th>
+                <th>Fecha creación</th>
+                <th>En camino / Retirado</th>
                 <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {data.sales.length === 0 ? (
                 <tr>
-                  <td colSpan={12} style={{ color: 'var(--color-text-muted)' }}>Sin ventas que coincidan</td>
+                  <td colSpan={13} style={{ color: 'var(--color-text-muted)' }}>Sin ventas que coincidan</td>
                 </tr>
               ) : (
                 data.sales.map((s) => (
@@ -227,7 +229,8 @@ export default function SalesPage() {
                         <span style={{ color: 'var(--color-text-muted)' }}>-</span>
                       )}
                     </td>
-                    <td data-label="Fecha">{formatDate(s.created_at)}</td>
+                    <td data-label="Fecha creación">{formatDate(fechaRegistro(s))}</td>
+                    <td data-label="En camino / Retirado">{formatDate(fechaSalida(s))}</td>
                     <td data-label="Acciones">
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => setDetailSale(s)}>
@@ -265,7 +268,7 @@ export default function SalesPage() {
               <div>
                 <h3 style={{ margin: '0 0 4px', fontSize: 17 }}>Detalle de la venta</h3>
                 <div style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
-                  {detailSale.client_name} · {detailSale.vendor_name} · {formatDate(detailSale.created_at)}
+                  {detailSale.client_name} · {detailSale.vendor_name} · Creada: {formatDate(fechaRegistro(detailSale))} · {['ENVIO', 'ENVIO_PREPAGADO', 'ENVIO_REGION'].includes(detailSale.tipo_venta) ? 'En camino' : 'Retirada'}: {formatDate(fechaSalida(detailSale))}
                 </div>
               </div>
               <Badge label={tipoVentaLabel(detailSale.tipo_venta)} color={TIPO_VENTA_LABELS[detailSale.tipo_venta]?.color} />

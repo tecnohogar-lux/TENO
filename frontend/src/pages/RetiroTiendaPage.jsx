@@ -321,14 +321,15 @@ export default function RetiroTiendaPage() {
                 <th>Total</th>
                 <th>Precios</th>
                 <th>Estado</th>
-                <th>Fecha</th>
+                <th>Fecha registro</th>
+                <th>Fecha retiro</th>
                 {canManage && <th>Acciones</th>}
               </tr>
             </thead>
             <tbody>
               {data.retiros.length === 0 ? (
                 <tr>
-                  <td colSpan={canManage ? 8 : 7} style={{ color: 'var(--color-text-muted)' }}>Sin retiros en tienda registrados</td>
+                  <td colSpan={canManage ? 9 : 8} style={{ color: 'var(--color-text-muted)' }}>Sin retiros en tienda registrados</td>
                 </tr>
               ) : (
                 data.retiros.map((r) => (
@@ -353,7 +354,8 @@ export default function RetiroTiendaPage() {
                         <span style={{ color: 'var(--color-text-muted)' }}>—</span>
                       )}
                     </td>
-                    <td data-label="Fecha">{formatDate(r.created_at)}</td>
+                    <td data-label="Fecha registro">{formatDate(r.created_at)}</td>
+                    <td data-label="Fecha retiro">{formatDate(r.delivered_at)}</td>
                     {canManage && (
                       <td data-label="Acciones">
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>

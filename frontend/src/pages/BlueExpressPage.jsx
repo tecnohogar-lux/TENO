@@ -419,14 +419,15 @@ export default function BlueExpressPage() {
                 <th>Dirección</th>
                 <th>Total</th>
                 <th>Estado</th>
-                <th>Fecha</th>
+                <th>Fecha creación</th>
+                <th>Fecha en camino</th>
                 {canManage && <th>Acciones</th>}
               </tr>
             </thead>
             <tbody>
               {shipments.length === 0 ? (
                 <tr>
-                  <td colSpan={canManage ? 11 : 9} style={{ color: 'var(--color-text-muted)' }}>Sin envíos a regiones que coincidan con el filtro</td>
+                  <td colSpan={canManage ? 12 : 10} style={{ color: 'var(--color-text-muted)' }}>Sin envíos a regiones que coincidan con el filtro</td>
                 </tr>
               ) : (
                 shipments.map((s) => (
@@ -461,7 +462,8 @@ export default function BlueExpressPage() {
                         <Badge label={deliveryStatusLabel(s.delivery_status)} color={DELIVERY_STATUS_LABELS[s.delivery_status]?.color} />
                       )}
                     </td>
-                    <td data-label="Fecha">{formatDate(s.created_at)}</td>
+                    <td data-label="Fecha creación">{formatDate(s.created_at)}</td>
+                    <td data-label="Fecha en camino">{formatDate(s.en_camino_at)}</td>
                     {canManage && (
                       <td data-label="Acciones">
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>

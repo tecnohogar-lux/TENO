@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS sales (
     'listo_para_imprimir', 'impreso', 'en_camino', 'entregado', 'cancelado', 'reprogramado'
   )),
   motivo_estado VARCHAR(500),
+  en_camino_at TIMESTAMP,
   cobro_original JSONB,
   registered_by INTEGER REFERENCES users(id),
   delivery_type VARCHAR(30) NOT NULL DEFAULT 'delivery' CHECK (delivery_type IN (

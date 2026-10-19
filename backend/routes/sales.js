@@ -380,11 +380,13 @@ router.get('/', authenticateToken, async (req, res) => {
     const total = parseInt(countResult.rows[0].count);
 
     let query = `
-      SELECT s.*, u.name as vendor_name, c.name as client_name, c.email as client_email, co.name as courier_name
+      SELECT s.*, u.name as vendor_name, c.name as client_name, c.email as client_email, co.name as courier_name,
+             rt.created_at as retiro_registrado_at, rt.delivered_at as retiro_retirado_at
       FROM sales s
       JOIN users u ON s.vendor_id = u.id
       JOIN clients c ON s.client_id = c.id
       LEFT JOIN couriers co ON s.courier_id = co.id
+      LEFT JOIN retiros_tienda rt ON s.retiro_id = rt.id
       ${whereClause}
       ORDER BY s.created_at DESC
     `;
@@ -430,11 +432,13 @@ router.get('/:id', authenticateToken, async (req, res) => {
     const user = req.user;
 
     const result = await pool.query(
-      `SELECT s.*, u.name as vendor_name, c.name as client_name, c.email as client_email, co.name as courier_name
+      `SELECT s.*, u.name as vendor_name, c.name as client_name, c.email as client_email, co.name as courier_name,
+              rt.created_at as retiro_registrado_at, rt.delivered_at as retiro_retirado_at
        FROM sales s
        JOIN users u ON s.vendor_id = u.id
        JOIN clients c ON s.client_id = c.id
        LEFT JOIN couriers co ON s.courier_id = co.id
+       LEFT JOIN retiros_tienda rt ON s.retiro_id = rt.id
        WHERE s.id = $1 AND s.deleted_at IS NULL`,
       [id]
     );
@@ -654,7 +658,8 @@ router.put('/batch-status', authenticateToken, async (req, res) => {
 
     const result = await dbClient.query(
       `UPDATE sales
-       SET delivery_status = $1,
+       SET en_camino_at = CASE WHEN $1::text = 'en_camino' AND delivery_status IS DISTINCT FROM 'en_camino' THEN CURRENT_TIMESTAMP ELSE en_camino_at END,
+           delivery_status = $1,
            status = COALESCE($2, status),
            delivered_at = COALESCE($3, delivered_at),
            motivo_estado = $5,
@@ -852,7 +857,8 @@ router.put('/:id', authenticateToken, async (req, res) => {
 
     const result = await pool.query(
       `UPDATE sales
-       SET status = COALESCE($1, status),
+       SET en_camino_at = CASE WHEN $2::text = 'en_camino' AND delivery_status IS DISTINCT FROM 'en_camino' THEN CURRENT_TIMESTAMP ELSE en_camino_at END,
+           status = COALESCE($1, status),
            delivery_status = COALESCE($2, delivery_status),
            notes = COALESCE($3, notes),
            product_name = COALESCE($4, product_name),
@@ -943,7 +949,8 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
 
     const result = await pool.query(
       `UPDATE sales
-       SET delivery_status = $1,
+       SET en_camino_at = CASE WHEN $1::text = 'en_camino' AND delivery_status IS DISTINCT FROM 'en_camino' THEN CURRENT_TIMESTAMP ELSE en_camino_at END,
+           delivery_status = $1,
            status = $2,
            delivered_at = $3,
            motivo_estado = $5,

@@ -10,6 +10,7 @@ import { formatCurrency, formatDate } from '../utils/format';
 import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, TIPO_VENTA_LABELS, saleStatusLabel, deliveryStatusLabel, tipoVentaLabel, paymentMethodLabel, paymentBreakdownLines, PAYMENT_METHODS, isSinCobro } from '../utils/labels';
 import { PRICE_TYPE_LABELS, priceTypeLabel } from '../utils/priceType';
 import { cuentaParaComision, comisionContada } from '../utils/comisiones';
+import { fechaRegistro, fechaSalida } from '../utils/fechas';
 
 const emptyFilters = { dateFrom: '', dateTo: '', nombre: '', producto: '', vendedor: '', cliente: '', canal: '', tipoPrecio: '', formaPago: '', courier: '' };
 
@@ -177,7 +178,8 @@ export default function ReportsPage() {
         Estado: saleStatusLabel(s.status),
         Envío: ['ENVIO', 'ENVIO_PREPAGADO', 'ENVIO_REGION'].includes(s.tipo_venta) ? deliveryStatusLabel(s.delivery_status) : '-',
         Courier: TIPOS_ENVIO.includes(s.tipo_venta) ? (s.courier_name || 'Sin asignar') : '-',
-        Fecha: formatDate(s.created_at),
+        'Fecha creación': formatDate(fechaRegistro(s)),
+        'Fecha en camino / retiro': fechaSalida(s) ? formatDate(fechaSalida(s)) : '',
         'Tipo de precio': priceTypeLabel(s.price_type),
       }));
 
@@ -520,13 +522,14 @@ export default function ReportsPage() {
                   <th>Estado</th>
                   <th>Envío</th>
                   <th>Courier</th>
-                  <th>Fecha</th>
+                  <th>Fecha creación</th>
+                  <th>En camino / Retirado</th>
                 </tr>
               </thead>
               <tbody>
                 {displayRows.length === 0 ? (
                   <tr>
-                    <td colSpan={15} style={{ color: 'var(--color-text-muted)' }}>Sin ventas que coincidan con los filtros</td>
+                    <td colSpan={16} style={{ color: 'var(--color-text-muted)' }}>Sin ventas que coincidan con los filtros</td>
                   </tr>
                 ) : (
                   displayRows.map((s, i) => (
@@ -559,7 +562,8 @@ export default function ReportsPage() {
                           ? (s.courier_name || <span style={{ color: 'var(--color-text-muted)' }}>Sin asignar</span>)
                           : <span style={{ color: 'var(--color-text-muted)' }}>-</span>}
                       </td>
-                      <td data-label="Fecha">{formatDate(s.created_at)}</td>
+                      <td data-label="Fecha creación">{formatDate(fechaRegistro(s))}</td>
+                      <td data-label="En camino / Retirado">{formatDate(fechaSalida(s))}</td>
                     </tr>
                   ))
                 )}

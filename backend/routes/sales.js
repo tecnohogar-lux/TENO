@@ -9,6 +9,7 @@ const { buildQrValue } = require('../utils/qrCode');
 const { esSinCobro, conCobroSql, aplicarTipoEnvio } = require('../utils/sinCobro');
 const { PAYMENT_METHODS, validatePaymentBreakdown, normalizePaymentBreakdown, formaPagoCondition } = require('../utils/paymentBreakdown');
 const { recalcularCierresQueContienen } = require('../utils/cierreCaja');
+const { condicionBusqueda } = require('../utils/busqueda');
 
 const DELIVERY_STATUSES = ['listo_para_imprimir', 'impreso', 'en_camino', 'entregado', 'cancelado', 'reprogramado'];
 
@@ -71,8 +72,7 @@ function applyFiltros(query, user, conditions, params) {
     conditions.push(`s.registered_by = $${params.length}`);
   }
   if (cliente && String(cliente).trim()) {
-    params.push(`%${String(cliente).trim()}%`);
-    conditions.push(`c.name ILIKE $${params.length}`);
+    conditions.push(condicionBusqueda(['c.name'], String(cliente).trim(), params));
   }
   if (FECHA_RE.test(String(desde || ''))) {
     params.push(desde);
@@ -199,9 +199,7 @@ router.get('/summary', authenticateToken, async (req, res) => {
     }
 
     if (search) {
-      params.push(`%${search}%`);
-      const idx = params.length;
-      conditions.push(`(u.name ILIKE $${idx} OR c.name ILIKE $${idx} OR s.product_name ILIKE $${idx} OR s.address ILIKE $${idx} OR s.comuna ILIKE $${idx} OR co.name ILIKE $${idx})`);
+      conditions.push(condicionBusqueda(['u.name', 'c.name', 's.product_name', 's.address', 's.comuna', 'co.name'], search, params));
     }
 
     applyFiltros(req.query, user, conditions, params);
@@ -351,9 +349,7 @@ router.get('/', authenticateToken, async (req, res) => {
     }
 
     if (search) {
-      params.push(`%${search}%`);
-      const idx = params.length;
-      conditions.push(`(u.name ILIKE $${idx} OR c.name ILIKE $${idx} OR s.product_name ILIKE $${idx} OR s.address ILIKE $${idx} OR s.comuna ILIKE $${idx} OR co.name ILIKE $${idx})`);
+      conditions.push(condicionBusqueda(['u.name', 'c.name', 's.product_name', 's.address', 's.comuna', 'co.name'], search, params));
     }
 
     if (tipo_venta) {

@@ -11,6 +11,7 @@ import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, TIPO_VENTA_LABELS, saleStat
 import { PRICE_TYPE_LABELS, priceTypeLabel } from '../utils/priceType';
 import { cuentaParaComision, comisionContada } from '../utils/comisiones';
 import { fechaRegistro, fechaSalida } from '../utils/fechas';
+import { normalizarTexto } from '../utils/texto';
 
 const emptyFilters = { dateFrom: '', dateTo: '', nombre: '', producto: '', vendedor: '', cliente: '', canal: '', tipoPrecio: '', formaPago: '', courier: '' };
 
@@ -100,12 +101,12 @@ export default function ReportsPage() {
       rows = rows.filter((s) => new Date(s.created_at) <= to);
     }
 
-    const term = filters.nombre.trim().toLowerCase();
+    const term = normalizarTexto(filters.nombre.trim());
     if (term) {
       rows = rows.filter((s) =>
-        s.product_name?.toLowerCase().includes(term) ||
-        s.client_name?.toLowerCase().includes(term) ||
-        s.vendor_name?.toLowerCase().includes(term)
+        normalizarTexto(s.product_name).includes(term) ||
+        normalizarTexto(s.client_name).includes(term) ||
+        normalizarTexto(s.vendor_name).includes(term)
       );
     }
 

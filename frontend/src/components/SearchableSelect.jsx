@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { normalizarTexto } from '../utils/texto';
 
 // Con catálogos grandes (1800+ productos) solo se dibujan las primeras coincidencias; el resto se alcanza escribiendo.
 const MAX_VISIBLE = 100;
@@ -36,8 +37,8 @@ export default function SearchableSelect({
 
   const filtered = useMemo(() => {
     if (!query.trim()) return options;
-    const q = query.trim().toLowerCase();
-    return options.filter((o) => o.label.toLowerCase().includes(q));
+    const q = normalizarTexto(query.trim());
+    return options.filter((o) => normalizarTexto(o.label).includes(q));
   }, [options, query]);
 
   function handleSelect(opt) {

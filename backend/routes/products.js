@@ -9,6 +9,7 @@ const { crearNoticia } = require('./noticias');
 const { noticiaProducto, detectarCambios } = require('../utils/noticiasTexto');
 const { logAudit } = require('../utils/auditLog');
 const fs = require('fs');
+const { condicionBusqueda } = require('../utils/busqueda');
 
 const requireManage = (message) => requireRole(['admin', 'operador', 'caja'], message);
 
@@ -78,9 +79,7 @@ router.get('/', authenticateToken, async (req, res) => {
     const params = [];
 
     if (search) {
-      params.push(`%${search}%`);
-      const idx = params.length;
-      conditions.push(`(p.title ILIKE $${idx} OR p.sku ILIKE $${idx})`);
+      conditions.push(condicionBusqueda(['p.title', 'p.sku'], search, params));
     }
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -133,8 +132,7 @@ router.get('/ids', authenticateToken, requireManage('No tienes permiso para sele
     const params = [];
     let where = '';
     if (req.query.search) {
-      params.push(`%${req.query.search}%`);
-      where = 'WHERE title ILIKE $1 OR sku ILIKE $1';
+      where = `WHERE ${condicionBusqueda(['title', 'sku'], req.query.search, params)}`;
     }
     const result = await pool.query(`SELECT id FROM products ${where} ORDER BY created_at DESC`, params);
     res.json({ ids: result.rows.map((r) => r.id) });

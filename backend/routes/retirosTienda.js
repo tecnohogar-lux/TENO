@@ -8,6 +8,7 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
+const { condicionBusqueda } = require('../utils/busqueda');
 
 function validarPayload(client_name, items) {
   if (!client_name) return 'Nombre del cliente requerido';
@@ -78,9 +79,7 @@ router.get('/', authenticateToken, async (req, res) => {
     const params = [];
 
     if (search) {
-      params.push(`%${search}%`);
-      const idx = params.length;
-      conditions.push(`(u.name ILIKE $${idx} OR c.name ILIKE $${idx} OR r.items::text ILIKE $${idx})`);
+      conditions.push(condicionBusqueda(['u.name', 'c.name', 'r.items::text'], search, params));
     }
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';

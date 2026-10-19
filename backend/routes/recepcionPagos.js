@@ -7,6 +7,7 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
+const { condicionBusqueda } = require('../utils/busqueda');
 
 const requireAdmin = requireRole(['admin'], 'Solo un admin puede usar Recepción de Pagos');
 router.use(authenticateToken, requireAdmin);
@@ -213,9 +214,7 @@ router.get('/cuentas', async (req, res) => {
     if (fechaValida(desde)) { params.push(desde); conditions.push(`fecha_emision::date >= $${params.length}::date`); }
     if (fechaValida(hasta)) { params.push(hasta); conditions.push(`fecha_emision::date <= $${params.length}::date`); }
     if (q && String(q).trim()) {
-      params.push(`%${String(q).trim()}%`);
-      const i = params.length;
-      conditions.push(`(concepto ILIKE $${i} OR contraparte_nombre ILIKE $${i} OR notas ILIKE $${i})`);
+      conditions.push(condicionBusqueda(['concepto', 'contraparte_nombre', 'notas'], String(q).trim(), params));
     }
 
     // Por defecto no se muestran las anuladas (se ven pidiendo ese estado).

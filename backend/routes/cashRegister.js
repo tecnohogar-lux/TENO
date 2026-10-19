@@ -10,6 +10,7 @@ const { formaPagoCondition } = require('../utils/paymentBreakdown');
 const { conCobroSql } = require('../utils/sinCobro');
 const { cuentaEnCaja } = require('../utils/cajaFiltros');
 const { obtenerTotalesPorFormaPago, calcularTotales, recalcularCierre } = require('../utils/cierreCaja');
+const { condicionBusqueda } = require('../utils/busqueda');
 
 const requireAdminOperador = requireRole(['admin', 'operador', 'caja'], 'No tienes permiso para acceder a Apertura/Cierre de Caja');
 const requireAdmin = requireRole(['admin'], 'Solo un admin puede corregir cierres de caja');
@@ -28,20 +29,17 @@ async function obtenerVentasPeriodo(desde, hasta, filtros = {}) {
     conditions.push(`s.id = $${params.length}`);
   }
   if (filtros.cliente) {
-    params.push(`%${filtros.cliente}%`);
-    conditions.push(`c.name ILIKE $${params.length}`);
+    conditions.push(condicionBusqueda(['c.name'], filtros.cliente, params));
   }
   if (filtros.vendedor) {
-    params.push(`%${filtros.vendedor}%`);
-    conditions.push(`u.name ILIKE $${params.length}`);
+    conditions.push(condicionBusqueda(['u.name'], filtros.vendedor, params));
   }
   if (filtros.fecha) {
     params.push(filtros.fecha);
     conditions.push(`DATE(s.created_at) = $${params.length}`);
   }
   if (filtros.producto) {
-    params.push(`%${filtros.producto}%`);
-    conditions.push(`s.product_name ILIKE $${params.length}`);
+    conditions.push(condicionBusqueda(['s.product_name'], filtros.producto, params));
   }
   if (filtros.estado) {
     params.push(filtros.estado);

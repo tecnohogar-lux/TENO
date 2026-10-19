@@ -2,6 +2,7 @@
   --color-bg: #f4f5f9;
   --color-surface: #ffffff;
   --color-border: #e9eaf1;
+  --color-card-frame: #9aa1bb;
   --color-text: #20232e;
   --color-text-muted: #8a8fa3;
   --color-text-inverse: #ffffff;
@@ -58,6 +59,7 @@
   --color-bg: #18181a;
   --color-surface: #232326;
   --color-border: #38383d;
+  --color-card-frame: #6b6b75;
   --color-text: #ece9e4;
   --color-text-muted: #9a978f;
   --color-text-inverse: #ffffff;

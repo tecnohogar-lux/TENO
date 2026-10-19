@@ -502,11 +502,18 @@ tbody tr:hover {
     width: 100%;
   }
 
+  /* Cada fila es una tarjeta con marco bien visible y buen espacio entre una y otra,
+     para distinguir dónde termina una etiqueta y empieza la siguiente. */
   table.responsive-stack tr {
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    margin-bottom: 10px;
+    border: 2px solid var(--color-card-frame);
+    border-radius: 12px;
+    margin-bottom: 24px;
     overflow: hidden;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.14);
+  }
+
+  table.responsive-stack tr:last-child {
+    margin-bottom: 0;
   }
 
   table.responsive-stack td {

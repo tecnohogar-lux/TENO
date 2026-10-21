@@ -12,6 +12,7 @@ import useDebouncedValue from '../hooks/useDebouncedValue';
 import { formatCurrency } from '../utils/format';
 import { TIPO_CUENTA, ESTADO_CUENTA, ESTADO_FILTROS, fechaCorta, rangoPeriodo } from '../utils/pagos';
 import BuscadorConBoton from '../components/BuscadorConBoton';
+import BarraCarga from '../components/BarraCarga';
 
 const PAGE_SIZE = 12;
 const EMPTY_FILTERS = { contraparte_id: '', usuario_id: '', desde: '', hasta: '', q: '' };
@@ -245,6 +246,7 @@ export default function RecepcionPagosPage() {
 
       {error && <div className="alert alert-error">{error}</div>}
       {loading && !data && <div className="page-loading"><div className="spinner" /></div>}
+      <BarraCarga activo={loading && !!data} />
 
       {data && cuentas.length === 0 && (
         <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--color-text-muted)' }}>
@@ -254,7 +256,7 @@ export default function RecepcionPagosPage() {
       )}
 
       {cuentas.length > 0 && (
-        <div className="pago-grid">
+        <div className={`pago-grid${loading ? ' cargando' : ''}`}>
           {cuentas.map((c) => (
             <CuentaCard
               key={c.id}

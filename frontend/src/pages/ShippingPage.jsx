@@ -20,6 +20,7 @@ import { formatCurrency, formatDate } from '../utils/format';
 import { productPrice } from '../utils/priceType';
 import { DELIVERY_STATUS_LABELS, DELIVERY_STATUS_OPTIONS, DELIVERY_TYPE_LABELS, DELIVERY_TYPE_OPTIONS, deliveryStatusLabel, deliveryTypeLabel, isSinCobro } from '../utils/labels';
 import BuscadorConBoton from '../components/BuscadorConBoton';
+import BarraCarga from '../components/BarraCarga';
 
 // Cancelar o reprogramar un envío exige dejar el motivo (lo ve el vendedor).
 const MOTIVO_STATUSES = ['cancelado', 'reprogramado'];
@@ -459,23 +460,24 @@ export default function ShippingPage() {
         </form>
       )}
 
-      {loading && (
+      {loading && !data && (
         <div className="page-loading">
           <div className="spinner" />
         </div>
       )}
+      <BarraCarga activo={loading && !!data} />
       {error && <div className="alert alert-error">{error}</div>}
 
       <VistaToggle compacta={compacta} onChange={cambiarVista} />
 
       {data && compacta && (
-        <div className="card" style={{ padding: 20 }}>
+        <div className={`card${loading ? ' cargando' : ''}`} style={{ padding: 20 }}>
           <TablaCompacta rows={shipments} vacio="Sin envíos que coincidan con el filtro" conEstado />
         </div>
       )}
 
       {data && !compacta && (
-        <div className="card" style={{ padding: 20 }}>
+        <div className={`card${loading ? ' cargando' : ''}`} style={{ padding: 20 }}>
           <table className="responsive-stack">
             <thead>
               <tr>

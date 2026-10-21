@@ -14,6 +14,7 @@ import { formatCurrency, formatDate } from '../utils/format';
 import { productPrice } from '../utils/priceType';
 import { DELIVERY_STATUS_LABELS, DELIVERY_STATUS_OPTIONS, deliveryStatusLabel } from '../utils/labels';
 import BuscadorConBoton from '../components/BuscadorConBoton';
+import BarraCarga from '../components/BarraCarga';
 
 const FREE_PRODUCT_OPTION = [{ value: '__free__', label: 'Producto libre (no registrado)' }];
 
@@ -387,15 +388,16 @@ export default function BlueExpressPage() {
         </form>
       )}
 
-      {loading && (
+      {loading && !data && (
         <div className="page-loading">
           <div className="spinner" />
         </div>
       )}
+      <BarraCarga activo={loading && !!data} />
       {error && <div className="alert alert-error">{error}</div>}
 
       {data && (
-        <div className="card" style={{ padding: 20 }}>
+        <div className={`card${loading ? ' cargando' : ''}`} style={{ padding: 20 }}>
           <div style={{ overflowX: 'auto' }}>
           <table className="responsive-stack">
             <thead>

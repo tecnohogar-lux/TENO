@@ -10,6 +10,7 @@ import useConfirm from '../hooks/useConfirm';
 import { formatCurrency } from '../utils/format';
 import apiClient from '../api/client';
 import BuscadorConBoton from '../components/BuscadorConBoton';
+import BarraCarga from '../components/BarraCarga';
 
 const emptyForm = { title: '', sku: '', price: '', costo: '', cover_image_url: '', caracteristicas: '' };
 const PAGE_SIZE = 25;
@@ -336,15 +337,16 @@ export default function ProductsPage() {
         </form>
       )}
 
-      {loading && (
+      {loading && !data && (
         <div className="page-loading">
           <div className="spinner" />
         </div>
       )}
+      <BarraCarga activo={loading && !!data} />
       {error && <div className="alert alert-error">{error}</div>}
 
       {data && (
-        <div className="card" style={{ padding: 20 }}>
+        <div className={`card${loading ? ' cargando' : ''}`} style={{ padding: 20 }}>
           {canManage && selectedIds.size > 0 && (
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '10px 14px', marginBottom: 16, border: '1px solid var(--color-danger)', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)' }}>
               <strong style={{ fontSize: 14 }}>{selectedIds.size} seleccionado{selectedIds.size === 1 ? '' : 's'}</strong>

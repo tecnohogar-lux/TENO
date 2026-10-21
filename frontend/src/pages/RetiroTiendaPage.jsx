@@ -17,6 +17,7 @@ import PriceTypeBadge from '../components/PriceTypeBadge';
 import { showNewSale } from '../store/useNuevaVentaStore';
 import { MIN_MAYOR, productPrice } from '../utils/priceType';
 import BuscadorConBoton from '../components/BuscadorConBoton';
+import BarraCarga from '../components/BarraCarga';
 
 const PAGE_SIZE = 25;
 const emptyForm = { nombre: '', apellido: '', notes: '' };
@@ -288,24 +289,25 @@ export default function RetiroTiendaPage() {
         </form>
       )}
 
-      {loading && (
+      {loading && !data && (
         <div className="page-loading">
           <div className="spinner" />
         </div>
       )}
+      <BarraCarga activo={loading && !!data} />
       {error && <div className="alert alert-error">{error}</div>}
 
       <VistaToggle compacta={compacta} onChange={cambiarVista} />
 
       {data && compacta && (
-        <div className="card" style={{ padding: 20 }}>
+        <div className={`card${loading ? ' cargando' : ''}`} style={{ padding: 20 }}>
           <TablaCompacta rows={data.retiros} vacio="Sin retiros en tienda registrados" />
           <Pagination page={data.page} totalPages={data.totalPages} total={data.total} onPageChange={setPage} />
         </div>
       )}
 
       {data && !compacta && (
-        <div className="card" style={{ padding: 20 }}>
+        <div className={`card${loading ? ' cargando' : ''}`} style={{ padding: 20 }}>
           <table className="responsive-stack">
             <thead>
               <tr>

@@ -204,6 +204,51 @@ tbody tr:hover {
   }
 }
 
+/* Spinner pequeño dentro del botón "Buscando..." (blanco sobre el botón de color). */
+.spinner--boton {
+  width: 14px;
+  height: 14px;
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+}
+
+/* Barra fina de progreso arriba de la pantalla mientras se recarga una lista. */
+.barra-carga {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  overflow: hidden;
+  z-index: 200;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.barra-carga__avance {
+  height: 100%;
+  width: 40%;
+  background: var(--color-primary);
+  border-radius: 3px;
+  animation: barra-carga-mover 1s ease-in-out infinite;
+}
+
+@keyframes barra-carga-mover {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(260%); }
+}
+
+/* Resultados que se están recargando: se atenúan hasta que llegan los nuevos. */
+.cargando {
+  opacity: 0.5;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .barra-carga__avance { animation-duration: 2.4s; }
+}
+
 .page-loading {
   display: flex;
   align-items: center;

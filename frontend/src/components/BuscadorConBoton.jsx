@@ -29,7 +29,10 @@ export default function BuscadorConBoton({ value, onSearch, placeholder, width =
         enterKeyHint="search"
         style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', width, maxWidth: '100%', background: 'var(--color-surface)', color: 'var(--color-text)' }}
       />
-      <button type="submit" className="btn btn-primary" disabled={loading}>Buscar</button>
+      <button type="submit" className="btn btn-primary" disabled={loading} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+        {loading && <span className="spinner spinner--boton" aria-hidden="true" />}
+        {loading ? 'Buscando...' : 'Buscar'}
+      </button>
       {(value || texto) && (
         <button type="button" className="btn btn-secondary" onClick={limpiar}>Limpiar</button>
       )}

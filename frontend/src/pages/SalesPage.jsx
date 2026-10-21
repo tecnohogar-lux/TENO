@@ -17,6 +17,7 @@ import PriceTypeBadge from '../components/PriceTypeBadge';
 import { shareSaleViaWhatsApp } from '../utils/whatsapp';
 import { saleLines } from '../utils/saleLines';
 import BuscadorConBoton from '../components/BuscadorConBoton';
+import BarraCarga from '../components/BarraCarga';
 
 const PAGE_SIZE = 25;
 
@@ -124,15 +125,16 @@ export default function SalesPage() {
         </div>
       )}
 
-      {loading && (
+      {loading && !data && (
         <div className="page-loading">
           <div className="spinner" />
         </div>
       )}
+      <BarraCarga activo={loading && !!data} />
       {error && <div className="alert alert-error">{error}</div>}
 
       {data && (
-        <div className="card" style={{ padding: 20 }}>
+        <div className={`card${loading ? ' cargando' : ''}`} style={{ padding: 20 }}>
           <div style={{ overflowX: 'auto' }}>
           <table className="responsive-stack">
             <thead>

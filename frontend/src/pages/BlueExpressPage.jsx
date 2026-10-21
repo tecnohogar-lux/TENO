@@ -9,11 +9,11 @@ import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
 import useAuth from '../hooks/useAuth';
 import useConfirm from '../hooks/useConfirm';
-import useDebouncedValue from '../hooks/useDebouncedValue';
 import MetricsCard from '../components/MetricsCard';
 import { formatCurrency, formatDate } from '../utils/format';
 import { productPrice } from '../utils/priceType';
 import { DELIVERY_STATUS_LABELS, DELIVERY_STATUS_OPTIONS, deliveryStatusLabel } from '../utils/labels';
+import BuscadorConBoton from '../components/BuscadorConBoton';
 
 const FREE_PRODUCT_OPTION = [{ value: '__free__', label: 'Producto libre (no registrado)' }];
 
@@ -41,11 +41,10 @@ export default function BlueExpressPage() {
   const isAdmin = user.role === 'admin';
 
   const [search, setSearch] = useState('');
-  const debouncedSearch = useDebouncedValue(search);
 
   const { data, loading, error, refetch } = useFetch(
-    `/api/sales?tipo_venta=ENVIO_REGION&search=${encodeURIComponent(debouncedSearch)}`,
-    { deps: [debouncedSearch] }
+    `/api/sales?tipo_venta=ENVIO_REGION&search=${encodeURIComponent(search)}`,
+    { deps: [search] }
   );
   const { data: movimientos } = useFetch('/api/sales/regiones/movimientos', { enabled: isAdmin, deps: [data] });
   const { data: usersData } = useFetch('/api/users', { enabled: canManage });
@@ -232,12 +231,7 @@ export default function BlueExpressPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <input
-            placeholder="Buscar por vendedor, cliente, producto, comuna..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', width: 260, background: 'var(--color-surface)', color: 'var(--color-text)' }}
-          />
+          <BuscadorConBoton value={search} onSearch={setSearch} placeholder="Buscar por vendedor, cliente, producto, comuna..." loading={loading} />
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)' }}>
             <option value="todos">Todos los estados</option>
             {DELIVERY_STATUS_OPTIONS.map((opt) => (

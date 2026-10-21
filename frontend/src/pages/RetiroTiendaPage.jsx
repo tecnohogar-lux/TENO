@@ -12,11 +12,11 @@ import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
 import useAuth from '../hooks/useAuth';
 import useConfirm from '../hooks/useConfirm';
-import useDebouncedValue from '../hooks/useDebouncedValue';
 import { formatCurrency, formatDate } from '../utils/format';
 import PriceTypeBadge from '../components/PriceTypeBadge';
 import { showNewSale } from '../store/useNuevaVentaStore';
 import { MIN_MAYOR, productPrice } from '../utils/priceType';
+import BuscadorConBoton from '../components/BuscadorConBoton';
 
 const PAGE_SIZE = 25;
 const emptyForm = { nombre: '', apellido: '', notes: '' };
@@ -29,11 +29,10 @@ export default function RetiroTiendaPage() {
   const canManage = user.role === 'operador' || user.role === 'admin' || user.role === 'caja';
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
-  const debouncedSearch = useDebouncedValue(search);
 
   const { data, loading, error, refetch } = useFetch(
-    `/api/retiros-tienda?page=${page}&limit=${PAGE_SIZE}&search=${encodeURIComponent(debouncedSearch)}`,
-    { deps: [page, debouncedSearch] }
+    `/api/retiros-tienda?page=${page}&limit=${PAGE_SIZE}&search=${encodeURIComponent(search)}`,
+    { deps: [page, search] }
   );
   const { data: productsData } = useFetch('/api/products/catalog');
   const { post, put, del, loading: saving, error: saveError } = useApi();
@@ -173,12 +172,7 @@ export default function RetiroTiendaPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <input
-            placeholder="Buscar por cliente, vendedor o producto..."
-            value={search}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', width: 260, background: 'var(--color-surface)', color: 'var(--color-text)' }}
-          />
+          <BuscadorConBoton value={search} onSearch={handleSearchChange} placeholder="Buscar por cliente, vendedor o producto..." loading={loading} />
           <button className="btn btn-primary" onClick={() => (showForm ? closeForm() : setShowForm(true))}>
             {showForm ? 'Cancelar' : 'Registrar Retiro En Tienda'}
           </button>

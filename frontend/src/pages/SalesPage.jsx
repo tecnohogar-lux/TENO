@@ -16,6 +16,7 @@ import { PRICE_TYPE_LABELS, priceTypeLabel } from '../utils/priceType';
 import PriceTypeBadge from '../components/PriceTypeBadge';
 import { shareSaleViaWhatsApp } from '../utils/whatsapp';
 import { saleLines } from '../utils/saleLines';
+import BuscadorConBoton from '../components/BuscadorConBoton';
 
 const PAGE_SIZE = 25;
 
@@ -30,7 +31,6 @@ export default function SalesPage() {
   const canManage = user.role === 'admin' || user.role === 'operador' || user.role === 'caja';
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
-  const debouncedSearch = useDebouncedValue(search);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
   const debouncedFilters = useDebouncedValue(filters);
@@ -42,12 +42,12 @@ export default function SalesPage() {
     : ['canal', 'cliente', 'desde', 'hasta', 'forma_pago'];
 
   const { data, loading, error, refetch } = useFetch(
-    `/api/sales?page=${page}&limit=${PAGE_SIZE}&search=${encodeURIComponent(debouncedSearch)}&${filtersQuery}`,
-    { deps: [page, debouncedSearch, filtersQuery] }
+    `/api/sales?page=${page}&limit=${PAGE_SIZE}&search=${encodeURIComponent(search)}&${filtersQuery}`,
+    { deps: [page, search, filtersQuery] }
   );
   const { data: summary } = useFetch(
-    `/api/sales/summary?search=${encodeURIComponent(debouncedSearch)}&${filtersQuery}`,
-    { deps: [debouncedSearch, filtersQuery] }
+    `/api/sales/summary?search=${encodeURIComponent(search)}&${filtersQuery}`,
+    { deps: [search, filtersQuery] }
   );
 
   function handleFiltersChange(next) {
@@ -59,8 +59,8 @@ export default function SalesPage() {
   const [actionError, setActionError] = useState('');
   const [detailSale, setDetailSale] = useState(null);
 
-  function handleSearchChange(value) {
-    setSearch(value);
+  function buscarTexto(texto) {
+    setSearch(texto);
     setPage(1);
   }
 
@@ -105,12 +105,7 @@ export default function SalesPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <input
-            placeholder="Buscar por vendedor, cliente o producto..."
-            value={search}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', width: 300, background: 'var(--color-surface)', color: 'var(--color-text)' }}
-          />
+          <BuscadorConBoton value={search} onSearch={buscarTexto} placeholder="Buscar por vendedor, cliente o producto..." width={300} loading={loading} />
           <button type="button" className="btn btn-secondary" onClick={() => setShowFilters((v) => !v)}>
             Filtros{activeFilters > 0 ? ` (${activeFilters})` : ''} {showFilters ? '▴' : '▾'}
           </button>

@@ -19,6 +19,7 @@ import useDebouncedValue from '../hooks/useDebouncedValue';
 import { formatCurrency, formatDate } from '../utils/format';
 import { productPrice } from '../utils/priceType';
 import { DELIVERY_STATUS_LABELS, DELIVERY_STATUS_OPTIONS, DELIVERY_TYPE_LABELS, DELIVERY_TYPE_OPTIONS, deliveryStatusLabel, deliveryTypeLabel, isSinCobro } from '../utils/labels';
+import BuscadorConBoton from '../components/BuscadorConBoton';
 
 // Cancelar o reprogramar un envío exige dejar el motivo (lo ve el vendedor).
 const MOTIVO_STATUSES = ['cancelado', 'reprogramado'];
@@ -44,7 +45,6 @@ export default function ShippingPage() {
   const canCreate = user.role !== 'escaneo';
 
   const [search, setSearch] = useState('');
-  const debouncedSearch = useDebouncedValue(search);
 
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
@@ -57,8 +57,8 @@ export default function ShippingPage() {
     : ['cliente', 'desde', 'hasta', 'tipo_envio'];
 
   const { data, loading, error, refetch } = useFetch(
-    `/api/sales?tipo_venta=ENVIO,ENVIO_PREPAGADO&equipo=1&search=${encodeURIComponent(debouncedSearch)}&${filtersQuery}`,
-    { deps: [debouncedSearch, filtersQuery] }
+    `/api/sales?tipo_venta=ENVIO,ENVIO_PREPAGADO&equipo=1&search=${encodeURIComponent(search)}&${filtersQuery}`,
+    { deps: [search, filtersQuery] }
   );
   const { data: usersData } = useFetch('/api/users', { enabled: canManage });
   const { data: productsData } = useFetch('/api/products/catalog');
@@ -286,12 +286,7 @@ export default function ShippingPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <h1 style={{ fontSize: 22, margin: 0 }}>Delivery Santiago</h1>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <input
-            placeholder="Buscar por vendedor, cliente, producto, comuna..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', width: 260, background: 'var(--color-surface)', color: 'var(--color-text)' }}
-          />
+          <BuscadorConBoton value={search} onSearch={setSearch} placeholder="Buscar por vendedor, cliente, producto, comuna..." loading={loading} />
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)' }}>
             <option value="todos">Todos los estados</option>
             {DELIVERY_STATUS_OPTIONS.map((opt) => (

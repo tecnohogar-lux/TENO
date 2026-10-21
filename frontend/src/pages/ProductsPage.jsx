@@ -7,9 +7,9 @@ import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
 import useAuth from '../hooks/useAuth';
 import useConfirm from '../hooks/useConfirm';
-import useDebouncedValue from '../hooks/useDebouncedValue';
 import { formatCurrency } from '../utils/format';
 import apiClient from '../api/client';
+import BuscadorConBoton from '../components/BuscadorConBoton';
 
 const emptyForm = { title: '', sku: '', price: '', costo: '', cover_image_url: '', caracteristicas: '' };
 const PAGE_SIZE = 25;
@@ -28,11 +28,10 @@ export default function ProductsPage() {
   const canManage = user.role === 'operador' || user.role === 'admin' || user.role === 'caja';
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
-  const debouncedSearch = useDebouncedValue(search);
 
   const { data, loading, error, refetch } = useFetch(
-    `/api/products?page=${page}&limit=${PAGE_SIZE}&search=${encodeURIComponent(debouncedSearch)}`,
-    { deps: [page, debouncedSearch] }
+    `/api/products?page=${page}&limit=${PAGE_SIZE}&search=${encodeURIComponent(search)}`,
+    { deps: [page, search] }
   );
   const { post, put, del, loading: saving, error: saveError } = useApi();
   const { post: postImport, loading: importing, error: importError } = useApi();
@@ -91,7 +90,7 @@ export default function ProductsPage() {
     setSelectingAll(true);
     setActionError('');
     try {
-      const { data: res } = await apiClient.get(`/api/products/ids?search=${encodeURIComponent(debouncedSearch)}`);
+      const { data: res } = await apiClient.get(`/api/products/ids?search=${encodeURIComponent(search)}`);
       setSelectedIds(new Set(res.ids));
     } catch (err) {
       setActionError(err.response?.data?.error || 'No se pudo seleccionar los productos');
@@ -241,12 +240,7 @@ export default function ProductsPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <h1 style={{ fontSize: 22, margin: 0 }}>Productos</h1>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <input
-            placeholder="Buscar por título o SKU..."
-            value={search}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', width: 220, background: 'var(--color-surface)', color: 'var(--color-text)' }}
-          />
+          <BuscadorConBoton value={search} onSearch={handleSearchChange} placeholder="Buscar por título o SKU..." width={220} loading={loading} />
           {canManage && (
             <>
               <button className="btn btn-secondary" onClick={openImportInfo} disabled={importing}>
@@ -356,7 +350,7 @@ export default function ProductsPage() {
               <strong style={{ fontSize: 14 }}>{selectedIds.size} seleccionado{selectedIds.size === 1 ? '' : 's'}</strong>
               {allPageSelected && selectedIds.size < data.total && (
                 <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={selectAllMatching} disabled={selectingAll}>
-                  {selectingAll ? 'Seleccionando...' : `Seleccionar los ${data.total} productos${debouncedSearch ? ' que coinciden con la búsqueda' : ''}`}
+                  {selectingAll ? 'Seleccionando...' : `Seleccionar los ${data.total} productos${search ? ' que coinciden con la búsqueda' : ''}`}
                 </button>
               )}
               <div style={{ flex: 1 }} />

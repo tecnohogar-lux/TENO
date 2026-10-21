@@ -11,6 +11,7 @@ import useFetch from '../hooks/useFetch';
 import useDebouncedValue from '../hooks/useDebouncedValue';
 import { formatCurrency } from '../utils/format';
 import { TIPO_CUENTA, ESTADO_CUENTA, ESTADO_FILTROS, fechaCorta, rangoPeriodo } from '../utils/pagos';
+import BuscadorConBoton from '../components/BuscadorConBoton';
 
 const PAGE_SIZE = 12;
 const EMPTY_FILTERS = { contraparte_id: '', usuario_id: '', desde: '', hasta: '', q: '' };
@@ -184,12 +185,7 @@ export default function RecepcionPagosPage() {
           ))}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <input
-            placeholder="Buscar por nombre, motivo o nota..."
-            value={filters.q}
-            onChange={(e) => cambiarFiltros({ ...filters, q: e.target.value })}
-            style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', width: 250, background: 'var(--color-surface)', color: 'var(--color-text)' }}
-          />
+          <BuscadorConBoton value={filters.q} onSearch={(q) => cambiarFiltros({ ...filters, q })} placeholder="Buscar por nombre, motivo o nota..." width={250} loading={loading} />
           <button type="button" className="btn btn-secondary" onClick={() => setShowFilters((v) => !v)}>
             Filtros{activeFilters > 0 ? ` (${activeFilters})` : ''} {showFilters ? '▴' : '▾'}
           </button>

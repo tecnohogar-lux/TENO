@@ -14,11 +14,14 @@ function lineasDe(venta) {
 const clave = (nombre) => String(nombre || '').trim().toLowerCase();
 
 // Agrega `costo_total` (costo unitario x cantidad, sumado por línea) a cada venta.
+// Se usa el costo que la venta guardó al crearse (sales.costo_total): no cambia si después sube o baja el
+// costo del producto. Solo las ventas sin costo guardado se calculan con el costo actual del catálogo.
 // Si alguna línea no está en el catálogo o no tiene costo cargado, queda null (un costo parcial confundiría).
 async function agregarCostos(ventas) {
   const ids = new Set();
   const nombres = new Set();
   for (const v of ventas) {
+    if (v.costo_total !== null && v.costo_total !== undefined) continue;
     for (const l of lineasDe(v)) {
       if (l.product_id) ids.add(Number(l.product_id));
       if (l.product_name) nombres.add(clave(l.product_name)); // respaldo si el producto con ese id ya no existe
@@ -52,6 +55,7 @@ async function agregarCostos(ventas) {
     || porNombreAnterior.get(clave(l.product_name));
 
   return ventas.map((v) => {
+    if (v.costo_total !== null && v.costo_total !== undefined) return { ...v, costo_total: parseFloat(v.costo_total) };
     let total = 0;
     for (const l of lineasDe(v)) {
       const p = producto(l);

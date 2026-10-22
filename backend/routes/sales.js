@@ -4,7 +4,7 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
-const { MIN_MAYOR, MIN_MAYOR_MESSAGE, lookupComisionUnitaria, validateLines, summarizeLines, buscarProductoId } = require('../utils/saleLines');
+const { MIN_MAYOR, MIN_MAYOR_MESSAGE, lookupComisionUnitaria, validateLines, summarizeLines, buscarProductoId, costoDeLineas } = require('../utils/saleLines');
 const { buildQrValue } = require('../utils/qrCode');
 const { esSinCobro, conCobroSql, aplicarTipoEnvio } = require('../utils/sinCobro');
 const { PAYMENT_METHODS, validatePaymentBreakdown, normalizePaymentBreakdown, formaPagoCondition } = require('../utils/paymentBreakdown');
@@ -33,6 +33,19 @@ function resolveMotivo(status, rawMotivo, exigir) {
 // tipos solo los puede poner/cambiar operador/admin/caja.
 const DELIVERY_TYPES = ['delivery', 'solo_envio_pagado', 'solo_entrega_incompleto', 'cambio_producto'];
 const MANAGE_ROLES = ['admin', 'operador', 'caja'];
+
+// El costo de compra (sales.costo_total) es un dato interno: ninguna respuesta de este módulo se lo entrega
+// a quien no sea admin/operador/caja (vendedor, escaneo), sea una lista, un detalle o lo que devuelve una edición.
+router.use((req, res, next) => {
+  const enviar = res.json.bind(res);
+  res.json = (body) => {
+    if (req.user && !MANAGE_ROLES.includes(req.user.role) && body && typeof body === 'object') {
+      return enviar(JSON.parse(JSON.stringify(body, (clave, valor) => (clave === 'costo_total' ? undefined : valor))));
+    }
+    return enviar(body);
+  };
+  next();
+});
 const requireAdmin = (message) => requireRole(['admin'], message);
 const requireManage = (message) => requireRole(MANAGE_ROLES, message);
 
@@ -555,6 +568,7 @@ router.post('/', authenticateToken, async (req, res) => {
     let itemsJson = null;
     let comision = null;
     let productId = null;
+    let costoTotal = null;
     let total;
     if (lines) {
       const resumen = await summarizeLines(dbClient, lines);
@@ -570,11 +584,13 @@ router.post('/', authenticateToken, async (req, res) => {
       itemsJson = resumen.itemsJson;
       comision = resumen.comision;
       productId = resumen.productId;
+      costoTotal = resumen.costoTotal;
     } else {
       total = quantity * price;
       productId = await buscarProductoId(dbClient, product_name);
       const comisionUnitaria = await lookupComisionUnitaria(dbClient, product_name, price_type, null, productId);
       comision = comisionUnitaria !== null ? comisionUnitaria * quantity : null;
+      costoTotal = await costoDeLineas(dbClient, [{ product_id: productId, quantity, price_type }]);
     }
 
     // Courier predeterminado (configurable en Configuración) para que todo envío
@@ -586,10 +602,10 @@ router.post('/', authenticateToken, async (req, res) => {
     const courierId = defaultCourier.rows[0]?.id || null;
 
     const inserted = await dbClient.query(
-      `INSERT INTO sales (vendor_id, client_id, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region, precio_producto, precio_envio, comision, courier_id, price_type, items, registered_by, product_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+      `INSERT INTO sales (vendor_id, client_id, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region, precio_producto, precio_envio, comision, courier_id, price_type, items, registered_by, product_id, costo_total)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
        RETURNING *`,
-      [vendor_id, finalClientId, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region || null, precio_producto || null, precio_envio || null, comision, courierId, price_type, itemsJson, user.id, productId]
+      [vendor_id, finalClientId, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region || null, precio_producto || null, precio_envio || null, comision, courierId, price_type, itemsJson, user.id, productId, costoTotal]
     );
 
     const sale = inserted.rows[0];
@@ -816,21 +832,40 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const recalcTotal = quantity !== undefined || price !== undefined;
     const total = recalcTotal ? newQuantity * newPrice : null;
 
-    // La comisión se recalcula si cambia el producto o la cantidad (usando la
-    // comisión vigente del producto en ese momento, pudiendo quedar en null si
-    // el nuevo producto no tiene comisión cargada); si no cambian, se conserva.
+    // Una venta ya hecha conserva la comisión y el costo con que se cerró: editar un dato cualquiera
+    // (dirección, notas...) no los toca, y un cambio posterior del costo del producto tampoco.
+    //  - Cambia el producto: pasa a valer el producto nuevo, con su comisión y costo vigentes.
+    //  - Cambia solo la cantidad: se ajusta proporcionalmente con lo que ya tenía la venta.
+    //  - Precio mayor (comisión = 25% de precio - costo): si cambia precio o cantidad, se recalcula con el
+    //    costo que la venta ya tenía guardado.
+    // Los formularios de edición mandan siempre producto, cantidad y precio; por eso se compara con lo
+    // guardado y solo se actúa si de verdad cambió.
     let comision = sale.comision;
-    // Si se cambia el nombre del producto, la venta pasa a apuntar al producto del catálogo con ese nombre
-    // (o a ninguno si es libre); si no se cambia, conserva el producto que ya tenía aunque se haya renombrado.
+    let costoTotal = sale.costo_total;
     const cambiaProducto = product_name !== undefined && product_name !== sale.product_name;
     const nuevoProductId = cambiaProducto ? await buscarProductoId(pool, product_name) : (sale.product_id || null);
-    if (product_name !== undefined || quantity !== undefined) {
+    const cambiaCantidad = newQuantity !== Number(sale.quantity);
+    const cambiaPrecio = recalcTotal && Math.abs(newPrice - Number(sale.price)) > 0.005;
+    if (cambiaProducto || cambiaCantidad || (sale.price_type === 'mayor' && cambiaPrecio)) {
       if (sale.price_type === 'mayor' && newQuantity < MIN_MAYOR) {
         return res.status(400).json({ error: MIN_MAYOR_MESSAGE });
       }
       const unitProducto = sale.precio_producto !== null && sale.precio_producto !== undefined ? Number(sale.precio_producto) / newQuantity : newPrice;
-      const comisionUnitaria = await lookupComisionUnitaria(pool, product_name || sale.product_name, sale.price_type, unitProducto, nuevoProductId);
-      comision = comisionUnitaria !== null ? comisionUnitaria * newQuantity : null;
+      if (cambiaProducto) {
+        const comisionUnitaria = await lookupComisionUnitaria(pool, product_name, sale.price_type, unitProducto, nuevoProductId);
+        comision = comisionUnitaria !== null ? comisionUnitaria * newQuantity : null;
+        costoTotal = await costoDeLineas(pool, [{ product_id: nuevoProductId, quantity: newQuantity, price_type: sale.price_type }]);
+      } else {
+        const porUnidadCosto = sale.costo_total !== null && sale.costo_total !== undefined && Number(sale.quantity) > 0 ? Number(sale.costo_total) / Number(sale.quantity) : null;
+        costoTotal = porUnidadCosto !== null ? Math.round(porUnidadCosto * newQuantity * 100) / 100 : null;
+        if (sale.price_type === 'mayor' && porUnidadCosto !== null) {
+          comision = Math.max(0, Math.round((unitProducto - porUnidadCosto) * 0.25 * 100) / 100) * newQuantity;
+        } else if (sale.comision !== null && sale.comision !== undefined && Number(sale.quantity) > 0) {
+          comision = Math.round((Number(sale.comision) / Number(sale.quantity)) * newQuantity * 100) / 100;
+        } else {
+          comision = null;
+        }
+      }
     }
 
     // Pago mixto: esta edición solo permite marcar/desmarcar "transferencia verificada"
@@ -885,6 +920,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
            payment_breakdown = COALESCE($18, payment_breakdown),
            motivo_estado = CASE WHEN $19::boolean THEN $20 ELSE motivo_estado END,
            product_id = CASE WHEN $21::boolean THEN $22 ELSE product_id END,
+           costo_total = $23,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $15
        RETURNING *`,
@@ -895,7 +931,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
         deliveredAt, transferencia_verificada !== undefined ? !!transferencia_verificada : null, id,
         clearDeliveredAt, comision, breakdownJson,
         statusChanging, motivoValue,
-        cambiaProducto, nuevoProductId,
+        cambiaProducto, nuevoProductId, costoTotal,
       ]
     );
 

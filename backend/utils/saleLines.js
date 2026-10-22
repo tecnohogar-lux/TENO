@@ -58,6 +58,23 @@ async function adjuntarProductIds(dbClient, lines) {
   return resultado;
 }
 
+// Costo de compra de las líneas (costo unitario x cantidad, sumado), con el costo VIGENTE de cada producto.
+// Se guarda en la venta cuando se crea para que un cambio posterior del costo no altere ventas ya hechas.
+// costo_tienda en las líneas SOL, costo en el resto. null si alguna línea es un producto libre o no tiene costo.
+async function costoDeLineas(dbClient, lines) {
+  let total = 0;
+  for (const l of lines) {
+    if (!l.product_id) return null;
+    const r = await dbClient.query('SELECT costo, costo_tienda FROM products WHERE id = $1', [l.product_id]);
+    const p = r.rows[0];
+    if (!p) return null;
+    const unitario = l.price_type === 'sol' && p.costo_tienda !== null ? p.costo_tienda : p.costo;
+    if (unitario === null || unitario === undefined) return null;
+    total += parseFloat(unitario) * Number(l.quantity);
+  }
+  return Math.round(total * 100) / 100;
+}
+
 // Devuelve un mensaje de error si alguna línea es inválida, o null si todas lo son.
 function validateLines(lines) {
   if (lines.some((l) => !l.product_name || !(l.quantity >= 1) || !(l.price > 0))) {
@@ -85,7 +102,8 @@ async function summarizeLines(dbClient, rawLines) {
     // Venta de un solo producto: su id va en sales.product_id (las de varios lo llevan en cada línea de items).
     productId: lines.length === 1 ? lines[0].product_id : null,
     comision: await comisionDeLineas(dbClient, lines),
+    costoTotal: await costoDeLineas(dbClient, lines),
   };
 }
 
-module.exports = { MIN_MAYOR, MIN_MAYOR_MESSAGE, lookupComisionUnitaria, comisionDeLineas, validateLines, summarizeLines, buscarProductoId, adjuntarProductIds };
+module.exports = { MIN_MAYOR, MIN_MAYOR_MESSAGE, lookupComisionUnitaria, comisionDeLineas, validateLines, summarizeLines, buscarProductoId, adjuntarProductIds, costoDeLineas };

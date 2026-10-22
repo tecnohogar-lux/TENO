@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS sales (
   motivo_estado VARCHAR(500),
   en_camino_at TIMESTAMP,
   product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+  costo_total DECIMAL(12, 2),
   cobro_original JSONB,
   registered_by INTEGER REFERENCES users(id),
   delivery_type VARCHAR(30) NOT NULL DEFAULT 'delivery' CHECK (delivery_type IN (

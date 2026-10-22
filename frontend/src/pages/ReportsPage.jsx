@@ -62,6 +62,8 @@ export default function ReportsPage() {
   const [exporting, setExporting] = useState(false);
   const [rango, setRango] = useState({ desde: '', hasta: '' }); // rango que se está armando antes de agregarlo
   const [diaNuevo, setDiaNuevo] = useState('');
+  // Orden de la vista previa y del Excel por fecha de ingreso: 'nuevo' = del más nuevo al más viejo.
+  const [orden, setOrden] = useState('nuevo');
 
   const { get: getComisiones, loading: loadingComisiones, error: comisionesError } = useApi();
   const today = new Date().toISOString().slice(0, 10);
@@ -157,7 +159,7 @@ export default function ReportsPage() {
   // pago, mostrando solo el monto de esa línea — así una venta con pago mixto
   // (ej. parte efectivo + parte transferencia) aparece en ambos reportes, cada
   // uno con su monto correspondiente, sin inventar un tipo de venta nuevo.
-  const displayRows = useMemo(() => {
+  const filasSinOrden = useMemo(() => {
     if (filters.formaPago.length === 0) {
       return filteredSales.map((s) => ({
         ...s,
@@ -182,6 +184,16 @@ export default function ReportsPage() {
     }
     return rows;
   }, [filteredSales, filters.formaPago]);
+
+  // Ordena por la fecha de ingreso (la primera columna). A igual fecha, por número de venta, para que el orden
+  // sea estable y el Excel salga exactamente como la vista previa.
+  const displayRows = useMemo(() => {
+    const factor = orden === 'nuevo' ? -1 : 1;
+    return [...filasSinOrden].sort((a, b) => {
+      const diff = new Date(fechaRegistro(a)) - new Date(fechaRegistro(b));
+      return (diff || Number(a.id) - Number(b.id)) * factor;
+    });
+  }, [filasSinOrden, orden]);
 
   function agregarFecha(f) {
     if (!f.desde && !f.hasta) return;
@@ -292,7 +304,9 @@ export default function ReportsPage() {
       // Segunda hoja con los filtros usados, para saber de qué está hecho el reporte.
       const filasFiltros = [['Filtro', 'Selección'], ...(resumenFiltros.length > 0
         ? resumenFiltros.map((f) => [f.nombre, f.valores.join(', ')])
-        : [['Sin filtros', 'Todas las ventas']]), [], ['Ventas incluidas', displayRows.length]];
+        : [['Sin filtros', 'Todas las ventas']]), [],
+      ['Orden', orden === 'nuevo' ? 'De más nuevo a más viejo (fecha de ingreso)' : 'De más viejo a más nuevo (fecha de ingreso)'],
+      ['Ventas incluidas', displayRows.length]];
       const hojaFiltros = XLSX.utils.aoa_to_sheet(filasFiltros);
       hojaFiltros['!cols'] = [{ wch: 22 }, { wch: 80 }];
       XLSX.utils.book_append_sheet(workbook, hojaFiltros, 'Filtros');
@@ -559,9 +573,19 @@ export default function ReportsPage() {
         <div className="card" style={{ padding: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, flexWrap: 'wrap', gap: 12 }}>
             <h3 style={{ margin: 0, fontSize: 15 }}>Vista previa · {displayRows.length} venta(s)</h3>
-            <button className="btn btn-primary" onClick={handleExport} disabled={exporting || displayRows.length === 0}>
-              {exporting ? 'Generando...' : 'Exportar a Excel'}
-            </button>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setOrden(orden === 'nuevo' ? 'viejo' : 'nuevo')}
+                title="Cambia el orden de la vista previa y del Excel según la fecha de ingreso"
+              >
+                {orden === 'nuevo' ? '↓ Más nuevo primero' : '↑ Más viejo primero'}
+              </button>
+              <button className="btn btn-primary" onClick={handleExport} disabled={exporting || displayRows.length === 0}>
+                {exporting ? 'Generando...' : 'Exportar a Excel'}
+              </button>
+            </div>
           </div>
           <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 6 }}>
             <strong style={{ color: 'var(--color-text)' }}>Filtros aplicados:</strong>{' '}

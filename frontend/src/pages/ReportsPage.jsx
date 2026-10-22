@@ -10,10 +10,32 @@ import { formatCurrency, formatDate } from '../utils/format';
 import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, TIPO_VENTA_LABELS, saleStatusLabel, deliveryStatusLabel, tipoVentaLabel, paymentMethodLabel, paymentBreakdownLines, PAYMENT_METHODS, isSinCobro } from '../utils/labels';
 import { PRICE_TYPE_LABELS, priceTypeLabel } from '../utils/priceType';
 import { cuentaParaComision, comisionContada } from '../utils/comisiones';
-import { fechaRegistro, fechaSalida } from '../utils/fechas';
+import { fechaRegistro, fechaSalida, formatDia } from '../utils/fechas';
+import MultiSelectFiltro from '../components/MultiSelectFiltro';
 import { normalizarTexto } from '../utils/texto';
 
-const emptyFilters = { dateFrom: '', dateTo: '', nombre: '', producto: '', vendedor: '', cliente: '', canal: '', tipoPrecio: '', formaPago: '', courier: '' };
+// Cada filtro admite varias opciones a la vez (dentro de un filtro basta con cumplir una; entre filtros
+// distintos se deben cumplir todos). `fechas` son rangos { desde, hasta } y días sueltos (desde = hasta).
+const emptyFilters = { fechas: [], nombre: '', producto: [], vendedor: [], cliente: [], canal: [], tipoPrecio: [], formaPago: [], courier: [] };
+
+const CANAL_OPTIONS = [
+  { value: 'TIENDA', label: 'Tienda' },
+  { value: 'ENVIO', label: 'Envío' },
+  { value: 'ENVIO_PREPAGADO', label: 'Envío prepagado' },
+  { value: 'ENVIO_REGION', label: 'Envío a región' },
+];
+const TIPO_PRECIO_OPTIONS = [
+  { value: 'sol', label: 'SOL' },
+  { value: 'marketplace', label: 'MARKETPLACE' },
+  { value: 'mayor', label: 'MAYOR' },
+  { value: 'mixto', label: 'MIXTO' },
+];
+
+function etiquetaFecha(f) {
+  if (f.desde && f.hasta) return f.desde === f.hasta ? `Día ${formatDia(f.desde)}` : `${formatDia(f.desde)} al ${formatDia(f.hasta)}`;
+  if (f.desde) return `Desde ${formatDia(f.desde)}`;
+  return `Hasta ${formatDia(f.hasta)}`;
+}
 
 // Tipos de venta que se despachan con courier (los de tienda no tienen).
 const TIPOS_ENVIO = ['ENVIO', 'ENVIO_PREPAGADO', 'ENVIO_REGION'];
@@ -38,6 +60,8 @@ export default function ReportsPage() {
   const { data, loading, error } = useFetch('/api/sales?costos=1');
   const [filters, setFilters] = useState(emptyFilters);
   const [exporting, setExporting] = useState(false);
+  const [rango, setRango] = useState({ desde: '', hasta: '' }); // rango que se está armando antes de agregarlo
+  const [diaNuevo, setDiaNuevo] = useState('');
 
   const { get: getComisiones, loading: loadingComisiones, error: comisionesError } = useApi();
   const today = new Date().toISOString().slice(0, 10);
@@ -92,13 +116,16 @@ export default function ReportsPage() {
     // Los envíos sin cobro (solo envío, solo entrega, cambio de producto) no entran a los reportes.
     let rows = (data?.sales || []).filter((s) => !isSinCobro(s));
 
-    if (filters.dateFrom) {
-      const from = parseLocalDayBoundary(filters.dateFrom);
-      rows = rows.filter((s) => new Date(s.created_at) >= from);
-    }
-    if (filters.dateTo) {
-      const to = parseLocalDayBoundary(filters.dateTo, true);
-      rows = rows.filter((s) => new Date(s.created_at) <= to);
+    // Fechas: la venta entra si cae en cualquiera de los rangos / días elegidos.
+    if (filters.fechas.length > 0) {
+      const tramos = filters.fechas.map((f) => ({
+        desde: f.desde ? parseLocalDayBoundary(f.desde) : null,
+        hasta: f.hasta ? parseLocalDayBoundary(f.hasta, true) : null,
+      }));
+      rows = rows.filter((s) => {
+        const d = new Date(s.created_at);
+        return tramos.some((t) => (!t.desde || d >= t.desde) && (!t.hasta || d <= t.hasta));
+      });
     }
 
     const term = normalizarTexto(filters.nombre.trim());
@@ -110,13 +137,17 @@ export default function ReportsPage() {
       );
     }
 
-    if (filters.producto) rows = rows.filter((s) => s.product_name === filters.producto);
-    if (filters.vendedor) rows = rows.filter((s) => s.vendor_name === filters.vendedor);
-    if (filters.cliente) rows = rows.filter((s) => s.client_name === filters.cliente);
-    if (filters.canal) rows = rows.filter((s) => s.tipo_venta === filters.canal);
-    if (filters.tipoPrecio) rows = rows.filter((s) => s.price_type === filters.tipoPrecio);
-    if (filters.courier === SIN_COURIER) rows = rows.filter((s) => TIPOS_ENVIO.includes(s.tipo_venta) && !s.courier_id);
-    else if (filters.courier) rows = rows.filter((s) => String(s.courier_id) === filters.courier);
+    const entre = (lista, valor) => lista.length === 0 || lista.includes(valor);
+    rows = rows.filter((s) => entre(filters.producto, s.product_name)
+      && entre(filters.vendedor, s.vendor_name)
+      && entre(filters.cliente, s.client_name)
+      && entre(filters.canal, s.tipo_venta)
+      && entre(filters.tipoPrecio, s.price_type));
+    if (filters.courier.length > 0) {
+      const sinCourier = filters.courier.includes(SIN_COURIER);
+      rows = rows.filter((s) => (sinCourier && TIPOS_ENVIO.includes(s.tipo_venta) && !s.courier_id)
+        || (s.courier_id && filters.courier.includes(String(s.courier_id))));
+    }
 
     return rows;
   }, [data, filters]);
@@ -127,7 +158,7 @@ export default function ReportsPage() {
   // (ej. parte efectivo + parte transferencia) aparece en ambos reportes, cada
   // uno con su monto correspondiente, sin inventar un tipo de venta nuevo.
   const displayRows = useMemo(() => {
-    if (!filters.formaPago) {
+    if (filters.formaPago.length === 0) {
       return filteredSales.map((s) => ({
         ...s,
         _displayTotal: Number(s.total),
@@ -136,24 +167,66 @@ export default function ReportsPage() {
           : paymentMethodLabel(s.payment_method),
       }));
     }
+    // Con formas de pago elegidas: la venta entra si usó alguna de ellas y se muestra solo lo cobrado con esas
+    // formas (una venta con pago mixto suma las partes que coinciden).
     const rows = [];
     for (const s of filteredSales) {
-      const leg = paymentBreakdownLines(s).find((l) => l.method === filters.formaPago);
-      if (leg) rows.push({ ...s, _displayTotal: Number(leg.amount), _pagoLabel: paymentMethodLabel(leg.method) });
+      const partes = paymentBreakdownLines(s).filter((l) => filters.formaPago.includes(l.method));
+      if (partes.length > 0) {
+        rows.push({
+          ...s,
+          _displayTotal: partes.reduce((acc, l) => acc + Number(l.amount), 0),
+          _pagoLabel: partes.map((l) => `${paymentMethodLabel(l.method)} ${formatCurrency(l.amount)}`).join(' + '),
+        });
+      }
     }
     return rows;
   }, [filteredSales, filters.formaPago]);
 
-  function setDia(value) {
-    setFilters({ ...filters, dateFrom: value, dateTo: value });
+  function agregarFecha(f) {
+    if (!f.desde && !f.hasta) return;
+    if (f.desde && f.hasta && f.desde > f.hasta) return;
+    if (filters.fechas.some((x) => x.desde === f.desde && x.hasta === f.hasta)) return;
+    setFilters({ ...filters, fechas: [...filters.fechas, f] });
   }
+
+  function agregarRango() {
+    agregarFecha({ desde: rango.desde, hasta: rango.hasta });
+    setRango({ desde: '', hasta: '' });
+  }
+
+  function agregarDia(valor) {
+    if (valor) agregarFecha({ desde: valor, hasta: valor });
+    setDiaNuevo('');
+  }
+
+  function quitarFecha(i) {
+    setFilters({ ...filters, fechas: filters.fechas.filter((_, j) => j !== i) });
+  }
+
+  // Resumen legible de lo filtrado: se muestra en la vista previa y va en la hoja "Filtros" del Excel.
+  const resumenFiltros = useMemo(() => {
+    const nombresCourier = filters.courier.map((id) => (id === SIN_COURIER ? 'Envíos sin courier asignado' : (couriers.find((c) => c.id === id)?.name || id)));
+    const lista = [
+      ['Fechas', filters.fechas.map(etiquetaFecha)],
+      ['Canal', filters.canal.map((v) => CANAL_OPTIONS.find((o) => o.value === v)?.label || v)],
+      ['Forma de pago', filters.formaPago.map(paymentMethodLabel)],
+      ['Tipo de precio', filters.tipoPrecio.map((v) => TIPO_PRECIO_OPTIONS.find((o) => o.value === v)?.label || v)],
+      ['Producto', filters.producto],
+      ['Vendedor', filters.vendedor],
+      ['Cliente', filters.cliente],
+      ['Courier', nombresCourier],
+      ['Búsqueda por nombre', filters.nombre.trim() ? [filters.nombre.trim()] : []],
+    ];
+    return lista.filter(([, valores]) => valores.length > 0).map(([nombre, valores]) => ({ nombre, valores }));
+  }, [filters, couriers]);
 
   const totalComisionPreview = useMemo(
     () => filteredSales.reduce((acc, s) => acc + comisionContada(s), 0),
     [filteredSales]
   );
 
-  const hasActiveFilters = Object.values(filters).some((v) => v !== '');
+  const hasActiveFilters = resumenFiltros.length > 0;
 
   function clearFilters() {
     setFilters(emptyFilters);
@@ -164,7 +237,7 @@ export default function ReportsPage() {
     try {
       // La librería de Excel es pesada: se descarga recién al exportar, no al abrir Reportes.
       const XLSX = await import('xlsx');
-      const formaPagoActiva = !!filters.formaPago;
+      const formaPagoActiva = filters.formaPago.length > 0;
       // Ventas viejas (previas al desglose precio_producto/precio_envio) solo
       // tienen "total" sin separar; ante la falta de desglose se asume que todo
       // el monto es de producto (no hubo envío), para que las sumas nunca pierdan
@@ -216,6 +289,13 @@ export default function ReportsPage() {
 
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, sheet, 'Ventas');
+      // Segunda hoja con los filtros usados, para saber de qué está hecho el reporte.
+      const filasFiltros = [['Filtro', 'Selección'], ...(resumenFiltros.length > 0
+        ? resumenFiltros.map((f) => [f.nombre, f.valores.join(', ')])
+        : [['Sin filtros', 'Todas las ventas']]), [], ['Ventas incluidas', displayRows.length]];
+      const hojaFiltros = XLSX.utils.aoa_to_sheet(filasFiltros);
+      hojaFiltros['!cols'] = [{ wch: 22 }, { wch: 80 }];
+      XLSX.utils.book_append_sheet(workbook, hojaFiltros, 'Filtros');
       const today = new Date().toISOString().slice(0, 10);
       XLSX.writeFile(workbook, `ventas_${today}.xlsx`);
     } finally {
@@ -395,46 +475,47 @@ export default function ReportsPage() {
           )}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-          <div className="form-field">
-            <label>Desde</label>
-            <input type="date" value={filters.dateFrom} onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })} />
-          </div>
-          <div className="form-field">
-            <label>Hasta</label>
-            <input type="date" value={filters.dateTo} onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })} />
-          </div>
-          <div className="form-field">
-            <label>Día específico</label>
-            <input type="date" value={filters.dateFrom === filters.dateTo ? filters.dateFrom : ''} onChange={(e) => setDia(e.target.value)} />
+          <div className="form-field" style={{ gridColumn: '1 / -1' }}>
+            <label>Fechas (puedes agregar varios rangos y días)</label>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 2 }}>Desde</div>
+                <input type="date" value={rango.desde} onChange={(e) => setRango({ ...rango, desde: e.target.value })} />
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 2 }}>Hasta</div>
+                <input type="date" value={rango.hasta} onChange={(e) => setRango({ ...rango, hasta: e.target.value })} />
+              </div>
+              <button type="button" className="btn btn-secondary" onClick={agregarRango} disabled={(!rango.desde && !rango.hasta) || (rango.desde && rango.hasta && rango.desde > rango.hasta)}>
+                Agregar rango
+              </button>
+              <div style={{ marginLeft: 12 }}>
+                <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 2 }}>Día específico (se agrega al elegirlo)</div>
+                <input type="date" value={diaNuevo} onChange={(e) => agregarDia(e.target.value)} />
+              </div>
+            </div>
+            {filters.fechas.length > 0 && (
+              <div className="fecha-chips">
+                {filters.fechas.map((f, i) => (
+                  <span key={`${f.desde}-${f.hasta}`} className="fecha-chip">
+                    {etiquetaFecha(f)}
+                    <button type="button" onClick={() => quitarFecha(i)} aria-label={`Quitar ${etiquetaFecha(f)}`}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           <div className="form-field">
             <label>Canal</label>
-            <select value={filters.canal} onChange={(e) => setFilters({ ...filters, canal: e.target.value })}>
-              <option value="">Todos</option>
-              <option value="TIENDA">Tienda</option>
-              <option value="ENVIO">Envío</option>
-              <option value="ENVIO_PREPAGADO">Envío prepagado</option>
-              <option value="ENVIO_REGION">Envío a región</option>
-            </select>
+            <MultiSelectFiltro value={filters.canal} onChange={(v) => setFilters({ ...filters, canal: v })} options={CANAL_OPTIONS} />
           </div>
           <div className="form-field">
             <label>Forma de pago</label>
-            <select value={filters.formaPago} onChange={(e) => setFilters({ ...filters, formaPago: e.target.value })}>
-              <option value="">Todas</option>
-              {PAYMENT_METHODS.map((m) => (
-                <option key={m} value={m}>{paymentMethodLabel(m)}</option>
-              ))}
-            </select>
+            <MultiSelectFiltro value={filters.formaPago} onChange={(v) => setFilters({ ...filters, formaPago: v })} options={PAYMENT_METHODS.map((m) => ({ value: m, label: paymentMethodLabel(m) }))} todosLabel="Todas" />
           </div>
           <div className="form-field">
             <label>Tipo de precio</label>
-            <select value={filters.tipoPrecio} onChange={(e) => setFilters({ ...filters, tipoPrecio: e.target.value })}>
-              <option value="">Todos</option>
-              <option value="sol">SOL</option>
-              <option value="marketplace">MARKETPLACE</option>
-              <option value="mayor">MAYOR</option>
-              <option value="mixto">MIXTO</option>
-            </select>
+            <MultiSelectFiltro value={filters.tipoPrecio} onChange={(v) => setFilters({ ...filters, tipoPrecio: v })} options={TIPO_PRECIO_OPTIONS} />
           </div>
           <div className="form-field">
             <label>Buscar por nombre</label>
@@ -446,32 +527,23 @@ export default function ReportsPage() {
           </div>
           <div className="form-field">
             <label>Producto</label>
-            <select value={filters.producto} onChange={(e) => setFilters({ ...filters, producto: e.target.value })}>
-              <option value="">Todos</option>
-              {productos.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
+            <MultiSelectFiltro value={filters.producto} onChange={(v) => setFilters({ ...filters, producto: v })} options={productos.map((p) => ({ value: p, label: p }))} />
           </div>
           <div className="form-field">
             <label>Vendedor</label>
-            <select value={filters.vendedor} onChange={(e) => setFilters({ ...filters, vendedor: e.target.value })}>
-              <option value="">Todos</option>
-              {vendedores.map((v) => <option key={v} value={v}>{v}</option>)}
-            </select>
+            <MultiSelectFiltro value={filters.vendedor} onChange={(v) => setFilters({ ...filters, vendedor: v })} options={vendedores.map((v) => ({ value: v, label: v }))} />
           </div>
           <div className="form-field">
             <label>Cliente</label>
-            <select value={filters.cliente} onChange={(e) => setFilters({ ...filters, cliente: e.target.value })}>
-              <option value="">Todos</option>
-              {clientes.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <MultiSelectFiltro value={filters.cliente} onChange={(v) => setFilters({ ...filters, cliente: v })} options={clientes.map((c) => ({ value: c, label: c }))} />
           </div>
           <div className="form-field">
             <label>Courier</label>
-            <select value={filters.courier} onChange={(e) => setFilters({ ...filters, courier: e.target.value })}>
-              <option value="">Todos</option>
-              {couriers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              <option value={SIN_COURIER}>Envíos sin courier asignado</option>
-            </select>
+            <MultiSelectFiltro
+              value={filters.courier}
+              onChange={(v) => setFilters({ ...filters, courier: v })}
+              options={[...couriers.map((c) => ({ value: c.id, label: c.name })), { value: SIN_COURIER, label: 'Envíos sin courier asignado' }]}
+            />
           </div>
         </div>
       </div>
@@ -490,6 +562,12 @@ export default function ReportsPage() {
             <button className="btn btn-primary" onClick={handleExport} disabled={exporting || displayRows.length === 0}>
               {exporting ? 'Generando...' : 'Exportar a Excel'}
             </button>
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 6 }}>
+            <strong style={{ color: 'var(--color-text)' }}>Filtros aplicados:</strong>{' '}
+            {resumenFiltros.length === 0
+              ? 'ninguno (todas las ventas)'
+              : resumenFiltros.map((f) => `${f.nombre}: ${f.valores.join(', ')}`).join(' · ')}
           </div>
           <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 16 }}>
             Comisión total del filtro actual (solo ventas completadas y deliveries entregados): <strong style={{ color: 'var(--color-text)' }}>{formatCurrency(totalComisionPreview)}</strong>
@@ -533,8 +611,8 @@ export default function ReportsPage() {
                       </td>
                       <td data-label="Precios"><Badge label={priceTypeLabel(s.price_type)} color={PRICE_TYPE_LABELS[s.price_type]?.color} /></td>
                       <td data-label="Cantidad">{s.quantity}</td>
-                      <td data-label="Precio producto">{!filters.formaPago && s.precio_producto !== null && s.precio_producto !== undefined ? formatCurrency(s.precio_producto) : '-'}</td>
-                      <td data-label="Precio envío">{!filters.formaPago && s.precio_envio !== null && s.precio_envio !== undefined ? formatCurrency(s.precio_envio) : '-'}</td>
+                      <td data-label="Precio producto">{filters.formaPago.length === 0 && s.precio_producto !== null && s.precio_producto !== undefined ? formatCurrency(s.precio_producto) : '-'}</td>
+                      <td data-label="Precio envío">{filters.formaPago.length === 0 && s.precio_envio !== null && s.precio_envio !== undefined ? formatCurrency(s.precio_envio) : '-'}</td>
                       <td data-label="Total">{formatCurrency(s._displayTotal)}</td>
                       <td data-label="Comisión">{cuentaParaComision(s) && s.comision !== null && s.comision !== undefined ? formatCurrency(s.comision) : '-'}</td>
                       <td data-label="Forma de pago">{s._pagoLabel}</td>

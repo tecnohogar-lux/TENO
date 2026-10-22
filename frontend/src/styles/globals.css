@@ -1376,3 +1376,37 @@ tr.fila-reprogramada:hover { background: var(--color-reprogramado-fondo); }
     max-height: calc(100vh - 60px);
   }
 }
+
+/* ---------- Filtros de selección múltiple (Reportes) ---------- */
+.multiselect-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.multiselect-resumen { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.multiselect-contador {
+  flex: none;
+  min-width: 20px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+.multiselect-dropdown { max-height: 340px; overflow-y: auto; }
+.multiselect-acciones { display: flex; justify-content: space-between; gap: 8px; padding: 2px 4px 6px; }
+.multiselect-link { background: none; border: 0; padding: 2px 0; font-size: 12px; color: var(--color-primary); cursor: pointer; }
+.multiselect-link:disabled { color: var(--color-text-muted); cursor: default; }
+.multiselect-opcion { display: flex; align-items: flex-start; gap: 8px; }
+.multiselect-opcion input { margin-top: 3px; flex: none; }
+.multiselect-opcion span { min-width: 0; overflow-wrap: anywhere; }
+
+/* Fechas elegidas (rangos y días sueltos) como etiquetas que se pueden quitar. */
+.fecha-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.fecha-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 4px 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--color-primary);
+  background: var(--color-accent-light);
+  font-size: 12px;
+}
+.fecha-chip button { border: 0; background: transparent; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 6px; color: var(--color-text-muted); }

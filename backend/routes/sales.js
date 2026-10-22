@@ -21,6 +21,19 @@ const DELIVERY_STATUSES = ['listo_para_imprimir', 'impreso', 'en_camino', 'entre
 const MOTIVO_STATUSES = ['cancelado', 'reprogramado'];
 const MOTIVO_MAX = 500;
 
+// Estado de la VENTA (pendiente / completado / cancelado) según el estado del PAQUETE al que pasa un envío,
+// para que los dos no se contradigan (antes un paquete entregado y luego cancelado seguía como "completado" y
+// su monto seguía contando como venta cerrada en el dashboard):
+//  - entregado: la venta queda completada.
+//  - cancelado: si la venta estaba completada (ya entregada), pasa a cancelada.
+//  - cualquier otro estado: una venta completada (entrega revertida) o cancelada por el propio paquete vuelve
+//    a pendiente. Una venta cancelada por otro motivo no se revive.
+// Expresión SQL: $1 es el nuevo estado del paquete y $2 un estado de venta ya decidido (o NULL).
+const NUEVO_ESTADO_VENTA_SQL = `COALESCE($2::text, CASE
+  WHEN $1::text = 'cancelado' AND status = 'completado' THEN 'cancelado'
+  WHEN $1::text NOT IN ('entregado', 'cancelado') AND (status = 'completado' OR (status = 'cancelado' AND delivery_status = 'cancelado')) THEN 'pendiente'
+  ELSE status END)`;
+
 // Devuelve { motivo } (string|null) o { error } si falta o excede el largo.
 function resolveMotivo(status, rawMotivo, exigir) {
   if (!MOTIVO_STATUSES.includes(status)) return { motivo: null };
@@ -693,7 +706,7 @@ router.put('/batch-status', authenticateToken, async (req, res) => {
       `UPDATE sales
        SET en_camino_at = CASE WHEN $1::text = 'en_camino' AND delivery_status IS DISTINCT FROM 'en_camino' THEN CURRENT_TIMESTAMP ELSE en_camino_at END,
            delivery_status = $1,
-           status = COALESCE($2, status),
+           status = ${NUEVO_ESTADO_VENTA_SQL},
            delivered_at = COALESCE($3, delivered_at),
            motivo_estado = $5,
            reprogramado_para = CASE WHEN $1::text = 'reprogramado' THEN $6::date ELSE reprogramado_para END,
@@ -911,7 +924,16 @@ router.put('/:id', authenticateToken, async (req, res) => {
 
     const deliveringNow = delivery_status === 'entregado' && sale.delivery_status !== 'entregado';
     const undeliveringNow = delivery_status !== undefined && delivery_status !== 'entregado' && sale.delivery_status === 'entregado';
-    const newStatus = status || (deliveringNow ? 'completado' : (undeliveringNow ? 'pendiente' : null));
+    const cancelandoAhora = delivery_status === 'cancelado' && sale.delivery_status !== 'cancelado';
+    const reviviendoAhora = delivery_status !== undefined && !['entregado', 'cancelado'].includes(delivery_status)
+      && sale.status === 'cancelado' && sale.delivery_status === 'cancelado';
+    let newStatus = status || null;
+    if (!newStatus) {
+      if (deliveringNow) newStatus = 'completado';
+      else if (cancelandoAhora && sale.status === 'completado') newStatus = 'cancelado';
+      else if (undeliveringNow && !cancelandoAhora) newStatus = 'pendiente';
+      else if (reviviendoAhora) newStatus = 'pendiente';
+    }
     const deliveredAt = deliveringNow ? new Date() : null;
     const clearDeliveredAt = undeliveringNow && !deliveringNow;
 
@@ -1013,14 +1035,14 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
     }
 
     // Al entregar el paquete, la venta queda completada (se refleja en el dashboard)
-    const newSaleStatus = status === 'entregado' ? 'completado' : sale.status;
+    const newSaleStatus = status === 'entregado' ? 'completado' : null;
     const deliveredAt = status === 'entregado' ? new Date() : sale.delivered_at;
 
     const result = await pool.query(
       `UPDATE sales
        SET en_camino_at = CASE WHEN $1::text = 'en_camino' AND delivery_status IS DISTINCT FROM 'en_camino' THEN CURRENT_TIMESTAMP ELSE en_camino_at END,
            delivery_status = $1,
-           status = $2,
+           status = ${NUEVO_ESTADO_VENTA_SQL},
            delivered_at = $3,
            motivo_estado = $5,
            reprogramado_para = CASE WHEN $1::text = 'reprogramado' THEN $6::date ELSE reprogramado_para END,

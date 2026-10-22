@@ -302,8 +302,8 @@ export default function CashRegisterPage() {
               )}
 
               <div className="card" style={{ padding: 20 }}>
-                <div style={{ overflowX: 'auto' }}>
-                  <table className="responsive-stack">
+                <div className="tabla-scroll" style={{ overflowX: 'auto' }}>
+                  <table className="responsive-stack tabla-fija">
                     <thead>
                       <tr>
                         <th>N°</th>

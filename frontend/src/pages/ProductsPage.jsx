@@ -364,7 +364,7 @@ export default function ProductsPage() {
               </button>
             </div>
           )}
-          <table className="responsive-stack">
+          <table className="responsive-stack tabla-fija">
             <thead>
               <tr>
                 {canManage && (

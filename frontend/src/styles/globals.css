@@ -1354,3 +1354,25 @@ tr.fila-reprogramada:hover { background: var(--color-reprogramado-fondo); }
     margin: 4px 0;
   }
 }
+
+
+/* ---------- Computador: los títulos de las columnas te siguen al hacer scroll ----------
+   Solo en pantallas anchas (en teléfono las filas se apilan como tarjetas y no hay encabezado).
+   - Tablas sin contenedor con scroll: el encabezado se pega arriba de la ventana.
+   - Tablas con scroll horizontal (.tabla-scroll): la tabla se desplaza dentro de su caja y el encabezado
+     queda fijo arriba de esa caja (un contenedor con scroll no deja pegarlo a la ventana). */
+@media (min-width: 769px) {
+  table.tabla-fija thead th {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--color-surface);
+    border-bottom: 0;
+    box-shadow: inset 0 -2px 0 var(--color-border);
+  }
+
+  .tabla-scroll {
+    overflow: auto;
+    max-height: calc(100vh - 60px);
+  }
+}

@@ -45,7 +45,7 @@ export default function TrashPage() {
 
       {data && (
         <div className="card" style={{ padding: 20 }}>
-          <table className="responsive-stack">
+          <table className="responsive-stack tabla-fija">
             <thead>
               <tr>
                 <th>Producto</th>

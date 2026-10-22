@@ -495,8 +495,8 @@ export default function ReportsPage() {
             Comisión total del filtro actual (solo ventas completadas y deliveries entregados): <strong style={{ color: 'var(--color-text)' }}>{formatCurrency(totalComisionPreview)}</strong>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
-            <table className="responsive-stack">
+          <div className="tabla-scroll" style={{ overflowX: 'auto' }}>
+            <table className="responsive-stack tabla-fija">
               <thead>
                 <tr>
                   <th>Producto</th>

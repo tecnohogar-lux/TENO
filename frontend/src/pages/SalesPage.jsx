@@ -136,8 +136,8 @@ export default function SalesPage() {
 
       {data && (
         <div className={`card${loading ? ' cargando' : ''}`} style={{ padding: 20 }}>
-          <div style={{ overflowX: 'auto' }}>
-          <table className="responsive-stack">
+          <div className="tabla-scroll" style={{ overflowX: 'auto' }}>
+          <table className="responsive-stack tabla-fija">
             <thead>
               <tr>
                 <th>Producto</th>

@@ -271,8 +271,8 @@ export default function CierreDetalle({ cajaId, onClose, onChanged }) {
             )}
 
             <h4 style={sectionTitle}>Ventas del día ({data.ventas.length})</h4>
-            <div className="card" style={{ padding: 16, overflowX: 'auto' }}>
-              <table className="responsive-stack">
+            <div className="card tabla-scroll" style={{ padding: 16, overflowX: 'auto' }}>
+              <table className="responsive-stack tabla-fija">
                 <thead>
                   <tr>
                     <th>N°</th><th>Producto</th><th>Cliente</th><th>Vendedor</th><th>Registró</th><th>Tipo</th><th>Total</th><th>Estado</th><th>Pago</th><th>Hora</th><th>Acciones</th>

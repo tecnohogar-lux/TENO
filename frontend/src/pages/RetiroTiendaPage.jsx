@@ -308,7 +308,7 @@ export default function RetiroTiendaPage() {
 
       {data && !compacta && (
         <div className={`card${loading ? ' cargando' : ''}`} style={{ padding: 20 }}>
-          <table className="responsive-stack">
+          <table className="responsive-stack tabla-fija">
             <thead>
               <tr>
                 <th>Cliente</th>

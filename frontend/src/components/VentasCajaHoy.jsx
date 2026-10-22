@@ -77,8 +77,8 @@ export default function VentasCajaHoy({ refreshKey = 0 }) {
 
       {data && !compacta && (
         <div className="card" style={{ padding: 20 }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="responsive-stack">
+          <div className="tabla-scroll" style={{ overflowX: 'auto' }}>
+            <table className="responsive-stack tabla-fija">
               <thead>
                 <tr>
                   <th>N°</th><th>Hora</th><th>Cliente</th><th>Vendedor</th><th>Productos</th><th>Tipo</th><th>Total</th><th>Pago</th><th>Registró</th>

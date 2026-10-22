@@ -11,6 +11,7 @@ const { PAYMENT_METHODS, validatePaymentBreakdown, normalizePaymentBreakdown, fo
 const { recalcularCierresQueContienen } = require('../utils/cierreCaja');
 const { condicionBusqueda } = require('../utils/busqueda');
 const { agregarCostos } = require('../utils/costosVenta');
+const { resolveFecha, activarReprogramados } = require('../utils/reprogramacion');
 
 const DELIVERY_STATUSES = ['listo_para_imprimir', 'impreso', 'en_camino', 'entregado', 'cancelado', 'reprogramado'];
 
@@ -36,6 +37,13 @@ const MANAGE_ROLES = ['admin', 'operador', 'caja'];
 
 // El costo de compra (sales.costo_total) es un dato interno: ninguna respuesta de este módulo se lo entrega
 // a quien no sea admin/operador/caja (vendedor, escaneo), sea una lista, un detalle o lo que devuelve una edición.
+router.use(async (req, res, next) => {
+  if (req.method === 'GET') {
+    try { await activarReprogramados(); } catch (err) { console.error('Error al activar envíos reprogramados:', err.message); }
+  }
+  next();
+});
+
 router.use((req, res, next) => {
   const enviar = res.json.bind(res);
   res.json = (body) => {
@@ -391,7 +399,8 @@ router.get('/', authenticateToken, async (req, res) => {
 
     let query = `
       SELECT s.*, u.name as vendor_name, c.name as client_name, c.email as client_email, co.name as courier_name,
-             rt.created_at as retiro_registrado_at, rt.delivered_at as retiro_retirado_at
+             rt.created_at as retiro_registrado_at, rt.delivered_at as retiro_retirado_at,
+             to_char(s.reprogramado_para, 'YYYY-MM-DD') as reprogramado_para
       FROM sales s
       JOIN users u ON s.vendor_id = u.id
       JOIN clients c ON s.client_id = c.id
@@ -448,7 +457,8 @@ router.get('/:id', authenticateToken, async (req, res) => {
 
     const result = await pool.query(
       `SELECT s.*, u.name as vendor_name, c.name as client_name, c.email as client_email, co.name as courier_name,
-              rt.created_at as retiro_registrado_at, rt.delivered_at as retiro_retirado_at
+              rt.created_at as retiro_registrado_at, rt.delivered_at as retiro_retirado_at,
+              to_char(s.reprogramado_para, 'YYYY-MM-DD') as reprogramado_para
        FROM sales s
        JOIN users u ON s.vendor_id = u.id
        JOIN clients c ON s.client_id = c.id
@@ -641,7 +651,7 @@ router.post('/', authenticateToken, async (req, res) => {
 // ============================================
 router.put('/batch-status', authenticateToken, async (req, res) => {
   const user = req.user;
-  const { ids, status, motivo: rawMotivo } = req.body;
+  const { ids, status, motivo: rawMotivo, fecha_reprogramada: rawFecha } = req.body;
 
   if (!Array.isArray(ids) || ids.length === 0) {
     return res.status(400).json({ error: 'Debes enviar al menos un id de venta' });
@@ -672,6 +682,8 @@ router.put('/batch-status', authenticateToken, async (req, res) => {
     const exigirMotivo = existing.rows.some((s) => s.tipo_venta !== 'ENVIO_REGION');
     const { motivo, error: motivoError } = resolveMotivo(status, rawMotivo, exigirMotivo);
     if (motivoError) throw { status: 400, message: motivoError };
+    const { fecha, error: fechaError } = resolveFecha(status, rawFecha, exigirMotivo);
+    if (fechaError) throw { status: 400, message: fechaError };
 
     // Al entregar el paquete, la venta queda completada (se refleja en el dashboard)
     const newSaleStatus = status === 'entregado' ? 'completado' : null;
@@ -684,13 +696,15 @@ router.put('/batch-status', authenticateToken, async (req, res) => {
            status = COALESCE($2, status),
            delivered_at = COALESCE($3, delivered_at),
            motivo_estado = $5,
+           reprogramado_para = CASE WHEN $1::text = 'reprogramado' THEN $6::date ELSE reprogramado_para END,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = ANY($4::int[])
        RETURNING *`,
-      [status, newSaleStatus, deliveredAt, ids, motivo]
+      [status, newSaleStatus, deliveredAt, ids, motivo, fecha]
     );
 
     await dbClient.query('COMMIT');
+    if (fecha) await activarReprogramados({ forzar: true });
 
     for (const before of existing.rows) {
       await logAudit({
@@ -779,7 +793,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const {
       status, delivery_status, notes,
       client_id, address, comuna, phone,
-      transferencia_verificada, payment_breakdown, motivo: rawMotivo,
+      transferencia_verificada, payment_breakdown, motivo: rawMotivo, fecha_reprogramada: rawFecha,
     } = req.body;
     let { product_name, quantity, price } = req.body;
     let { vendor_id } = req.body;
@@ -892,6 +906,8 @@ router.put('/:id', authenticateToken, async (req, res) => {
       if (resolved.error) return res.status(400).json({ error: resolved.error });
       motivoValue = resolved.motivo;
     }
+    const fechaResuelta = delivery_status === 'reprogramado' ? resolveFecha(delivery_status, rawFecha, sale.tipo_venta !== 'ENVIO_REGION') : { fecha: null };
+    if (fechaResuelta.error) return res.status(400).json({ error: fechaResuelta.error });
 
     const deliveringNow = delivery_status === 'entregado' && sale.delivery_status !== 'entregado';
     const undeliveringNow = delivery_status !== undefined && delivery_status !== 'entregado' && sale.delivery_status === 'entregado';
@@ -921,6 +937,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
            motivo_estado = CASE WHEN $19::boolean THEN $20 ELSE motivo_estado END,
            product_id = CASE WHEN $21::boolean THEN $22 ELSE product_id END,
            costo_total = $23,
+           reprogramado_para = CASE WHEN $2::text = 'reprogramado' THEN $24::date ELSE reprogramado_para END,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $15
        RETURNING *`,
@@ -931,9 +948,10 @@ router.put('/:id', authenticateToken, async (req, res) => {
         deliveredAt, transferencia_verificada !== undefined ? !!transferencia_verificada : null, id,
         clearDeliveredAt, comision, breakdownJson,
         statusChanging, motivoValue,
-        cambiaProducto, nuevoProductId, costoTotal,
+        cambiaProducto, nuevoProductId, costoTotal, fechaResuelta.fecha,
       ]
     );
+    if (fechaResuelta.fecha) await activarReprogramados({ forzar: true });
 
     await logAudit({
       userId: user.id,
@@ -963,7 +981,7 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const user = req.user;
-    const { status, motivo: rawMotivo } = req.body;
+    const { status, motivo: rawMotivo, fecha_reprogramada: rawFecha } = req.body;
 
     if (!DELIVERY_STATUSES.includes(status)) {
       return res.status(400).json({ error: `Estado inválido. Opciones: ${DELIVERY_STATUSES.join(', ')}` });
@@ -989,6 +1007,10 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
     if (motivoError) {
       return res.status(400).json({ error: motivoError });
     }
+    const { fecha, error: fechaError } = resolveFecha(status, rawFecha, sale.tipo_venta !== 'ENVIO_REGION');
+    if (fechaError) {
+      return res.status(400).json({ error: fechaError });
+    }
 
     // Al entregar el paquete, la venta queda completada (se refleja en el dashboard)
     const newSaleStatus = status === 'entregado' ? 'completado' : sale.status;
@@ -1001,11 +1023,14 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
            status = $2,
            delivered_at = $3,
            motivo_estado = $5,
+           reprogramado_para = CASE WHEN $1::text = 'reprogramado' THEN $6::date ELSE reprogramado_para END,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $4
        RETURNING *`,
-      [status, newSaleStatus, deliveredAt, id, motivo]
+      [status, newSaleStatus, deliveredAt, id, motivo, fecha]
     );
+    // Reprogramado para hoy: no hay nada que esperar, el envío queda listo (impreso) de inmediato.
+    if (fecha) await activarReprogramados({ forzar: true });
 
     await logAudit({
       userId: user.id,

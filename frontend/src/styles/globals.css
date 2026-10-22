@@ -1314,3 +1314,43 @@ tbody tr:hover {
 @media (max-width: 768px) {
   .pago-grid { grid-template-columns: 1fr; gap: 12px; }
 }
+
+
+/* ---------- Delivery reprogramado: marca morada para que no se lo salten ---------- */
+:root { --color-reprogramado: #7c3aed; --color-reprogramado-fondo: rgba(124, 58, 237, 0.09); }
+
+.tag-reprogramado-wrap { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.tag-reprogramado {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--color-reprogramado);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.tag-reprogramado-fecha { font-size: 11px; font-weight: 600; color: var(--color-reprogramado); }
+
+/* Fila de tabla (computador): recuadro morado y fondo suave. */
+tr.fila-reprogramada {
+  outline: 2px solid var(--color-reprogramado);
+  outline-offset: -2px;
+  background: var(--color-reprogramado-fondo);
+}
+tr.fila-reprogramada:hover { background: var(--color-reprogramado-fondo); }
+
+/* Teléfono: la tarjeta entera lleva el marco morado. */
+@media (max-width: 768px) {
+  table.responsive-stack tr.fila-reprogramada {
+    outline: none;
+    border: 3px solid var(--color-reprogramado);
+    box-shadow: 0 3px 12px rgba(124, 58, 237, 0.3);
+  }
+  .tabla-compacta tr.fila-reprogramada {
+    border: 2px solid var(--color-reprogramado);
+    border-radius: 8px;
+    padding: 10px 8px;
+    margin: 4px 0;
+  }
+}

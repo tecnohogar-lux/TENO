@@ -1,6 +1,8 @@
 import Badge from './Badge';
 import { DELIVERY_STATUS_LABELS, deliveryStatusLabel } from '../utils/labels';
 import { formatCurrency } from '../utils/format';
+import { esReprogramadoPendiente } from '../utils/fechas';
+import TagReprogramado from './TagReprogramado';
 
 // Vista compacta de una lista de órdenes: cliente, vendedor, producto y día/mes, nada más.
 // En computador el producto va cortado a 15 caracteres; en teléfono cada orden ocupa dos líneas y
@@ -55,7 +57,7 @@ export default function TablaCompacta({ rows, vacio = 'Sin registros', conEstado
               ? r.items.map((i) => `${i.product_name} x${i.quantity}`).join(', ')
               : r.product_name;
             return (
-              <tr key={r.id}>
+              <tr key={r.id} className={conEstado && esReprogramadoPendiente(r) ? 'fila-reprogramada' : undefined}>
                 <td data-label="Cliente">{r.client_name}</td>
                 <td data-label="Vendedor">{r.vendor_name}</td>
                 <td data-label="Producto" title={detalle}>
@@ -65,6 +67,7 @@ export default function TablaCompacta({ rows, vacio = 'Sin registros', conEstado
                 </td>
                 {conEstado && (
                   <td data-label="Estado">
+                    {esReprogramadoPendiente(r) && <TagReprogramado s={r} />}
                     <Badge label={deliveryStatusLabel(r.delivery_status)} color={DELIVERY_STATUS_LABELS[r.delivery_status]?.color} />
                   </td>
                 )}

@@ -10,7 +10,8 @@ import useAuth from '../hooks/useAuth';
 import useConfirm from '../hooks/useConfirm';
 import useDebouncedValue from '../hooks/useDebouncedValue';
 import { formatCurrency, formatDate } from '../utils/format';
-import { fechaRegistro, fechaSalida } from '../utils/fechas';
+import { fechaRegistro, fechaSalida, esReprogramadoPendiente } from '../utils/fechas';
+import TagReprogramado from '../components/TagReprogramado';
 import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, TIPO_VENTA_LABELS, saleStatusLabel, deliveryStatusLabel, tipoVentaLabel, paymentMethodLabel, paymentBreakdownLines, isSinCobro, deliveryTypeLabel } from '../utils/labels';
 import { PRICE_TYPE_LABELS, priceTypeLabel } from '../utils/priceType';
 import PriceTypeBadge from '../components/PriceTypeBadge';
@@ -161,7 +162,7 @@ export default function SalesPage() {
                 </tr>
               ) : (
                 data.sales.map((s) => (
-                  <tr key={s.id}>
+                  <tr key={s.id} className={esReprogramadoPendiente(s) ? 'fila-reprogramada' : undefined}>
                     <td data-label="Producto">{saleProductLabel(s)}</td>
                     <td data-label="Cliente">{s.client_name}</td>
                     <td data-label="Vendedor">{s.vendor_name}</td>
@@ -176,7 +177,10 @@ export default function SalesPage() {
                     </td>
                     <td data-label="Envío">
                       {['ENVIO', 'ENVIO_PREPAGADO', 'ENVIO_REGION'].includes(s.tipo_venta) ? (
-                        <Badge label={deliveryStatusLabel(s.delivery_status)} color={DELIVERY_STATUS_LABELS[s.delivery_status]?.color} />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+                          {esReprogramadoPendiente(s) && <TagReprogramado s={s} />}
+                          <Badge label={deliveryStatusLabel(s.delivery_status)} color={DELIVERY_STATUS_LABELS[s.delivery_status]?.color} />
+                        </div>
                       ) : (
                         <span style={{ color: 'var(--color-text-muted)' }}>-</span>
                       )}

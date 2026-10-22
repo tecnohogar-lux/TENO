@@ -16,3 +16,27 @@ export function fechaSalida(s) {
 
 // Rótulo de la columna según el tipo de registro (envío o retiro en tienda).
 export const ETIQUETA_FECHA_SALIDA = 'En camino / Retirado';
+
+// ---- Envíos reprogramados (Delivery Santiago) ----
+// Un envío reprogramado lleva la marca "Delivery Reprogramado" mientras siga pendiente.
+export function esReprogramadoPendiente(s) {
+  return !!s.reprogramado_para && !['entregado', 'cancelado'].includes(s.delivery_status);
+}
+
+// "YYYY-MM-DD" -> "DD-MM-YYYY" sin pasar por Date (no hay desfase de zona horaria).
+export function formatDia(ymd) {
+  if (!ymd) return '-';
+  const [y, m, d] = String(ymd).slice(0, 10).split('-');
+  return `${d}-${m}-${y}`;
+}
+
+// Hoy en Chile, "YYYY-MM-DD".
+export function hoyChileYmd() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}
+
+export function sumarDiasYmd(ymd, n) {
+  const d = new Date(`${ymd}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}

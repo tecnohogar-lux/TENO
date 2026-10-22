@@ -4,6 +4,8 @@ import Badge from '../components/Badge';
 import LabelPrint from '../components/LabelPrint';
 import LabelPrintBatch from '../components/LabelPrintBatch';
 import MotivoDialog from '../components/MotivoDialog';
+import TagReprogramado from '../components/TagReprogramado';
+import { esReprogramadoPendiente } from '../utils/fechas';
 import { showNewSale } from '../store/useNuevaVentaStore';
 import SearchableSelect from '../components/SearchableSelect';
 import TablaCompacta from '../components/TablaCompacta';
@@ -114,13 +116,13 @@ export default function ShippingPage() {
     setSelectedIds(allSelected ? [] : shipments.map((s) => s.id));
   }
 
-  async function handleStatusChange(sale, newStatus, motivo) {
+  async function handleStatusChange(sale, newStatus, motivo, fecha) {
     if (MOTIVO_STATUSES.includes(newStatus) && !motivo) {
       setMotivoPrompt({ sale, status: newStatus });
       return;
     }
     setActionError('');
-    const result = await put(`/api/sales/${sale.id}/status`, { status: newStatus, motivo });
+    const result = await put(`/api/sales/${sale.id}/status`, { status: newStatus, motivo, fecha_reprogramada: fecha });
     if (result.success) {
       setMotivoPrompt(null);
       refetch();
@@ -145,13 +147,13 @@ export default function ShippingPage() {
     else if (result.error) setActionError(result.error);
   }
 
-  async function applyBulkStatus(status, motivo) {
+  async function applyBulkStatus(status, motivo, fecha) {
     if (MOTIVO_STATUSES.includes(status) && !motivo) {
       setMotivoPrompt({ status });
       return;
     }
     setActionError('');
-    const result = await put('/api/sales/batch-status', { ids: selectedIds, status, motivo });
+    const result = await put('/api/sales/batch-status', { ids: selectedIds, status, motivo, fecha_reprogramada: fecha });
     if (result.success) {
       setSelectedIds([]);
       setBulkStatusPanel(false);
@@ -507,7 +509,7 @@ export default function ShippingPage() {
                 </tr>
               ) : (
                 shipments.map((s) => (
-                  <tr key={s.id}>
+                  <tr key={s.id} className={esReprogramadoPendiente(s) ? 'fila-reprogramada' : undefined}>
                     {canManage && (
                       <td data-label="Seleccionar">
                         <input type="checkbox" checked={selectedIds.includes(s.id)} onChange={() => toggleSelect(s.id)} />
@@ -538,6 +540,7 @@ export default function ShippingPage() {
                     </td>
                     <td data-label="Estado">
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+                        {esReprogramadoPendiente(s) && <TagReprogramado s={s} />}
                         <Badge label={deliveryStatusLabel(s.delivery_status)} color={DELIVERY_STATUS_LABELS[s.delivery_status]?.color} />
                         {MOTIVO_STATUSES.includes(s.delivery_status) && s.motivo_estado && (
                           <div style={{ fontSize: 12, color: 'var(--color-text-muted)', maxWidth: 220, textAlign: 'right', whiteSpace: 'normal' }}>
@@ -625,9 +628,9 @@ export default function ShippingPage() {
         saving={saving}
         error={motivoPrompt ? saveError : ''}
         onCancel={() => setMotivoPrompt(null)}
-        onConfirm={(motivo) => (motivoPrompt.sale
-          ? handleStatusChange(motivoPrompt.sale, motivoPrompt.status, motivo)
-          : applyBulkStatus(motivoPrompt.status, motivo))}
+        onConfirm={(motivo, fecha) => (motivoPrompt.sale
+          ? handleStatusChange(motivoPrompt.sale, motivoPrompt.status, motivo, fecha)
+          : applyBulkStatus(motivoPrompt.status, motivo, fecha))}
       />
 
       {printSale && <LabelPrint sale={printSale} onClose={() => setPrintSale(null)} onPrinted={refetch} />}

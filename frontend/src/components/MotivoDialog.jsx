@@ -1,25 +1,30 @@
 import { useEffect, useState } from 'react';
+import { hoyChileYmd, sumarDiasYmd } from '../utils/fechas';
 
 // Pide el motivo al cancelar o reprogramar un envío. El motivo es obligatorio y
-// luego lo ve el vendedor en su módulo Delivery Santiago.
+// luego lo ve el vendedor en su módulo Delivery Santiago. Al reprogramar también pide la fecha: ese día el
+// envío vuelve solo a "impreso" para ponerlo en camino de nuevo.
 export const MOTIVO_MAX = 500;
 
 export default function MotivoDialog({ open, status, count = 1, saving, error, onConfirm, onCancel }) {
   const [motivo, setMotivo] = useState('');
+  const [fecha, setFecha] = useState('');
+  const hoy = hoyChileYmd();
 
   useEffect(() => {
-    if (open) setMotivo('');
+    if (open) { setMotivo(''); setFecha(sumarDiasYmd(hoyChileYmd(), 1)); }
   }, [open, status]);
 
   if (!open) return null;
 
   const accion = status === 'cancelado' ? 'cancelación' : 'reprogramación';
   const verbo = status === 'cancelado' ? 'cancelar' : 'reprogramar';
-  const listo = motivo.trim().length > 0;
+  const reprograma = status === 'reprogramado';
+  const listo = motivo.trim().length > 0 && (!reprograma || (fecha && fecha >= hoy));
 
   function handleSubmit(e) {
     e.preventDefault();
-    if (listo) onConfirm(motivo.trim());
+    if (listo) onConfirm(motivo.trim(), reprograma ? fecha : undefined);
   }
 
   return (
@@ -32,6 +37,15 @@ export default function MotivoDialog({ open, status, count = 1, saving, error, o
           Vas a {verbo} {count === 1 ? 'este envío' : `${count} envíos`}. Explica el motivo: el vendedor lo verá en su módulo Delivery Santiago.
         </p>
         {error && <div className="alert alert-error">{error}</div>}
+        {reprograma && (
+          <div className="form-field">
+            <label>¿Para qué fecha se reprograma?</label>
+            <input type="date" required min={hoy} value={fecha} onChange={(e) => setFecha(e.target.value)} />
+            <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4 }}>
+              Ese día el envío vuelve solo a "Impreso" para poder ponerlo en camino otra vez, con la marca Delivery Reprogramado.
+            </div>
+          </div>
+        )}
         <div className="form-field">
           <label>Motivo</label>
           <textarea

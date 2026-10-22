@@ -8,6 +8,7 @@ const { conCobroSql } = require('../utils/sinCobro');
 
 // "Hoy" se mide en hora de Chile (ver utils/diaChile.js).
 const { HOY, diaChile } = require('../utils/diaChile');
+const { activarReprogramados } = require('../utils/reprogramacion');
 
 // Los envíos sin cobro (solo envío, solo entrega, cambio de producto) no cuentan en
 // ninguna métrica ni conteo de ventas.
@@ -75,6 +76,7 @@ router.get('/comparison', authenticateToken, async (req, res) => {
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const user = req.user;
+    await activarReprogramados().catch((err) => console.error('Error al activar envíos reprogramados:', err.message));
 
     if (user.role === 'vendedor') {
       return res.json(await getDashboardVendedor(user.id));

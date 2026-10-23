@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import NuevaVentaAnimacion from './components/NuevaVentaAnimacion';
+import AvisoActualizacion from './components/AvisoActualizacion';
 import LoginPage from './pages/LoginPage';
 import useAuth from './hooks/useAuth';
 import apiClient from './api/client';
@@ -16,6 +17,7 @@ const ShippingPage = lazy(() => import('./pages/ShippingPage'));
 const BlueExpressPage = lazy(() => import('./pages/BlueExpressPage'));
 const CouriersPage = lazy(() => import('./pages/CouriersPage'));
 const FotosEntregasPage = lazy(() => import('./pages/FotosEntregasPage'));
+const AvisosPage = lazy(() => import('./pages/AvisosPage'));
 const ScanPage = lazy(() => import('./pages/ScanPage'));
 const RecepcionPagosPage = lazy(() => import('./pages/RecepcionPagosPage'));
 const TrashPage = lazy(() => import('./pages/TrashPage'));
@@ -63,6 +65,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <NuevaVentaAnimacion />
+      <AvisoActualizacion />
       <Suspense fallback={<PageLoader />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
@@ -75,6 +78,7 @@ export default function App() {
         <Route path="/envios-regiones" element={<ProtectedRoute roles={STAFF_ROLES}><BlueExpressPage /></ProtectedRoute>} />
         <Route path="/couriers" element={<ProtectedRoute roles={ADMIN_OPERADOR}><CouriersPage /></ProtectedRoute>} />
         <Route path="/fotos-entregas" element={<ProtectedRoute roles={['admin']}><FotosEntregasPage /></ProtectedRoute>} />
+        <Route path="/avisos" element={<ProtectedRoute roles={['admin']}><AvisosPage /></ProtectedRoute>} />
         <Route path="/scan" element={<ProtectedRoute roles={['operador', 'admin', 'escaneo', 'caja']}><ScanPage /></ProtectedRoute>} />
         <Route path="/products" element={<ProtectedRoute roles={STAFF_ROLES}><ProductsPage /></ProtectedRoute>} />
         <Route path="/reports" element={<ProtectedRoute roles={STAFF_ROLES}><ReportsPage /></ProtectedRoute>} />

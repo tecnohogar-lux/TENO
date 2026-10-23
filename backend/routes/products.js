@@ -288,7 +288,9 @@ const MAX_ERRORS_SHOWN = 30;
 
 // ¿La fila editada deja el producto exactamente como está? (textos sin espacios sobrantes,
 // vacío = sin dato; montos con tolerancia de centavos por los decimales de Excel)
-const mismoTexto = (a, b) => String(a ?? '').trim() === String(b ?? '').trim();
+// Un salto de línea CRLF se lee del Excel como LF (la librería de Excel lo normaliza): se comparan iguales.
+const sinCRLF = (v) => String(v ?? '').replace(/\r\n/g, '\n').trim();
+const mismoTexto = (a, b) => sinCRLF(a) === sinCRLF(b);
 const mismoMonto = (a, b) => (a === null || a === undefined || b === null || b === undefined
   ? (a ?? null) === (b ?? null)
   : Math.abs(Number(a) - Number(b)) < 0.005);

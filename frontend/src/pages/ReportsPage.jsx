@@ -64,6 +64,8 @@ export default function ReportsPage() {
   const [diaNuevo, setDiaNuevo] = useState('');
   // Orden de la vista previa y del Excel por fecha de ingreso: 'nuevo' = del más nuevo al más viejo.
   const [orden, setOrden] = useState('nuevo');
+  // Qué fecha usan los filtros de fechas: la de creación de la venta o la de salida del paquete (en camino / retirado).
+  const [fechaPor, setFechaPor] = useState('creacion');
 
   const { get: getComisiones, loading: loadingComisiones, error: comisionesError } = useApi();
   const today = new Date().toISOString().slice(0, 10);
@@ -125,7 +127,10 @@ export default function ReportsPage() {
         hasta: f.hasta ? parseLocalDayBoundary(f.hasta, true) : null,
       }));
       rows = rows.filter((s) => {
-        const d = new Date(s.created_at);
+        // Por fecha de envío, lo que aún no salió (sin fecha) no entra.
+        const fecha = fechaPor === 'envio' ? fechaSalida(s) : s.created_at;
+        if (!fecha) return false;
+        const d = new Date(fecha);
         return tramos.some((t) => (!t.desde || d >= t.desde) && (!t.hasta || d <= t.hasta));
       });
     }
@@ -152,7 +157,7 @@ export default function ReportsPage() {
     }
 
     return rows;
-  }, [data, filters]);
+  }, [data, filters, fechaPor]);
 
   // Sin filtro de forma de pago: una fila por venta (con el resumen del pago,
   // mixto o no). Con filtro: una fila por venta que haya usado esa forma de
@@ -220,7 +225,7 @@ export default function ReportsPage() {
   const resumenFiltros = useMemo(() => {
     const nombresCourier = filters.courier.map((id) => (id === SIN_COURIER ? 'Envíos sin courier asignado' : (couriers.find((c) => c.id === id)?.name || id)));
     const lista = [
-      ['Fechas', filters.fechas.map(etiquetaFecha)],
+      [fechaPor === 'envio' ? 'Fechas (por fecha de envío)' : 'Fechas (por fecha de creación)', filters.fechas.map(etiquetaFecha)],
       ['Canal', filters.canal.map((v) => CANAL_OPTIONS.find((o) => o.value === v)?.label || v)],
       ['Forma de pago', filters.formaPago.map(paymentMethodLabel)],
       ['Tipo de precio', filters.tipoPrecio.map((v) => TIPO_PRECIO_OPTIONS.find((o) => o.value === v)?.label || v)],
@@ -231,7 +236,7 @@ export default function ReportsPage() {
       ['Búsqueda por nombre', filters.nombre.trim() ? [filters.nombre.trim()] : []],
     ];
     return lista.filter(([, valores]) => valores.length > 0).map(([nombre, valores]) => ({ nombre, valores }));
-  }, [filters, couriers]);
+  }, [filters, couriers, fechaPor]);
 
   const totalComisionPreview = useMemo(
     () => filteredSales.reduce((acc, s) => acc + comisionContada(s), 0),
@@ -491,6 +496,15 @@ export default function ReportsPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
           <div className="form-field" style={{ gridColumn: '1 / -1' }}>
             <label>Fechas (puedes agregar varios rangos y días)</label>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 2 }}>Filtrar por</div>
+                <select value={fechaPor} onChange={(e) => setFechaPor(e.target.value)}>
+                  <option value="creacion">Fecha de creación</option>
+                  <option value="envio">Fecha de envío (en camino / retirado)</option>
+                </select>
+              </div>
+            </div>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <div>
                 <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 2 }}>Desde</div>

@@ -21,6 +21,9 @@ const DELIVERY_STATUSES = ['listo_para_imprimir', 'impreso', 'en_camino', 'entre
 const MOTIVO_STATUSES = ['cancelado', 'reprogramado'];
 const MOTIVO_MAX = 500;
 
+// Al cancelar un envío de Santiago también se indica si el paquete salió o no a despacho.
+const DESPACHO_OPCIONES = ['salio', 'no_salio'];
+
 // Estado de la VENTA (pendiente / completado / cancelado) según el estado del PAQUETE al que pasa un envío,
 // para que los dos no se contradigan (antes un paquete entregado y luego cancelado seguía como "completado" y
 // su monto seguía contando como venta cerrada en el dashboard):
@@ -41,6 +44,14 @@ function resolveMotivo(status, rawMotivo, exigir) {
   if (!motivo && exigir) return { error: 'Indica el motivo de la cancelación o reprogramación' };
   if (motivo.length > MOTIVO_MAX) return { error: `El motivo no puede superar ${MOTIVO_MAX} caracteres` };
   return { motivo: motivo || null };
+}
+
+// Devuelve { despacho } ('salio' | 'no_salio' | null) o { error } si se exige y falta. Solo aplica al cancelar.
+function resolveDespacho(status, rawDespacho, exigir) {
+  if (status !== 'cancelado') return { despacho: null };
+  if (DESPACHO_OPCIONES.includes(rawDespacho)) return { despacho: rawDespacho };
+  if (exigir) return { error: 'Indica si el envío salió o no salió a despacho' };
+  return { despacho: null };
 }
 // Tipo de envío de Delivery Santiago: independiente del estado de entrega (no lo
 // pisa ni es pisado por él). Por defecto todo envío es 'delivery'; los otros 3
@@ -577,6 +588,15 @@ router.post('/', authenticateToken, async (req, res) => {
       }
     }
 
+    // Delivery Santiago: el vendedor no fija el precio del envío, lo define la tabla de costos por comuna.
+    if (user.role === 'vendedor' && tipo_venta === 'ENVIO') {
+      const tarifa = await dbClient.query('SELECT precio FROM costos_envio_comuna WHERE comuna = $1', [comuna || '']);
+      if (tarifa.rows.length === 0) {
+        throw { status: 400, message: 'Selecciona una comuna con costo de envío registrado' };
+      }
+      precio_envio = Number(tarifa.rows[0].precio);
+    }
+
     let finalClientId = client_id;
     if (!finalClientId) {
       const newClient = await dbClient.query(
@@ -664,7 +684,7 @@ router.post('/', authenticateToken, async (req, res) => {
 // ============================================
 router.put('/batch-status', authenticateToken, async (req, res) => {
   const user = req.user;
-  const { ids, status, motivo: rawMotivo, fecha_reprogramada: rawFecha } = req.body;
+  const { ids, status, motivo: rawMotivo, fecha_reprogramada: rawFecha, despacho: rawDespacho } = req.body;
 
   if (!Array.isArray(ids) || ids.length === 0) {
     return res.status(400).json({ error: 'Debes enviar al menos un id de venta' });
@@ -695,6 +715,8 @@ router.put('/batch-status', authenticateToken, async (req, res) => {
     const exigirMotivo = existing.rows.some((s) => s.tipo_venta !== 'ENVIO_REGION');
     const { motivo, error: motivoError } = resolveMotivo(status, rawMotivo, exigirMotivo);
     if (motivoError) throw { status: 400, message: motivoError };
+    const { despacho, error: despachoError } = resolveDespacho(status, rawDespacho, exigirMotivo);
+    if (despachoError) throw { status: 400, message: despachoError };
     const { fecha, error: fechaError } = resolveFecha(status, rawFecha, exigirMotivo);
     if (fechaError) throw { status: 400, message: fechaError };
 
@@ -709,11 +731,12 @@ router.put('/batch-status', authenticateToken, async (req, res) => {
            status = ${NUEVO_ESTADO_VENTA_SQL},
            delivered_at = COALESCE($3, delivered_at),
            motivo_estado = $5,
+           despacho_cancelacion = $7,
            reprogramado_para = CASE WHEN $1::text = 'reprogramado' THEN $6::date ELSE reprogramado_para END,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = ANY($4::int[])
        RETURNING *`,
-      [status, newSaleStatus, deliveredAt, ids, motivo, fecha]
+      [status, newSaleStatus, deliveredAt, ids, motivo, fecha, despacho]
     );
 
     await dbClient.query('COMMIT');
@@ -726,7 +749,7 @@ router.put('/batch-status', authenticateToken, async (req, res) => {
         tableName: 'sales',
         recordId: before.id,
         oldValues: { delivery_status: before.delivery_status },
-        newValues: { delivery_status: status, motivo_estado: motivo }
+        newValues: { delivery_status: status, motivo_estado: motivo, despacho_cancelacion: despacho }
       });
     }
 
@@ -806,7 +829,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const {
       status, delivery_status, notes,
       client_id, address, comuna, phone,
-      transferencia_verificada, payment_breakdown, motivo: rawMotivo, fecha_reprogramada: rawFecha,
+      transferencia_verificada, payment_breakdown, motivo: rawMotivo, fecha_reprogramada: rawFecha, despacho: rawDespacho,
     } = req.body;
     let { product_name, quantity, price } = req.body;
     let { vendor_id } = req.body;
@@ -914,10 +937,13 @@ router.put('/:id', authenticateToken, async (req, res) => {
     // Motivo de cancelación/reprogramación: solo se toca si esta edición cambia el estado de entrega.
     const statusChanging = delivery_status !== undefined && delivery_status !== sale.delivery_status;
     let motivoValue = null;
+    let despachoValue = null;
     if (statusChanging) {
       const resolved = resolveMotivo(delivery_status, rawMotivo, sale.tipo_venta !== 'ENVIO_REGION');
       if (resolved.error) return res.status(400).json({ error: resolved.error });
       motivoValue = resolved.motivo;
+      // Esta ruta es de edición general: la respuesta de despacho es opcional aquí (la pantalla de cancelar la pide).
+      despachoValue = resolveDespacho(delivery_status, rawDespacho, false).despacho;
     }
     const fechaResuelta = delivery_status === 'reprogramado' ? resolveFecha(delivery_status, rawFecha, sale.tipo_venta !== 'ENVIO_REGION') : { fecha: null };
     if (fechaResuelta.error) return res.status(400).json({ error: fechaResuelta.error });
@@ -960,6 +986,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
            product_id = CASE WHEN $21::boolean THEN $22 ELSE product_id END,
            costo_total = $23,
            reprogramado_para = CASE WHEN $2::text = 'reprogramado' THEN $24::date ELSE reprogramado_para END,
+           despacho_cancelacion = CASE WHEN $19::boolean THEN $25 ELSE despacho_cancelacion END,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $15
        RETURNING *`,
@@ -970,7 +997,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
         deliveredAt, transferencia_verificada !== undefined ? !!transferencia_verificada : null, id,
         clearDeliveredAt, comision, breakdownJson,
         statusChanging, motivoValue,
-        cambiaProducto, nuevoProductId, costoTotal, fechaResuelta.fecha,
+        cambiaProducto, nuevoProductId, costoTotal, fechaResuelta.fecha, despachoValue,
       ]
     );
     if (fechaResuelta.fecha) await activarReprogramados({ forzar: true });
@@ -1003,7 +1030,7 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const user = req.user;
-    const { status, motivo: rawMotivo, fecha_reprogramada: rawFecha } = req.body;
+    const { status, motivo: rawMotivo, fecha_reprogramada: rawFecha, despacho: rawDespacho } = req.body;
 
     if (!DELIVERY_STATUSES.includes(status)) {
       return res.status(400).json({ error: `Estado inválido. Opciones: ${DELIVERY_STATUSES.join(', ')}` });
@@ -1029,6 +1056,10 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
     if (motivoError) {
       return res.status(400).json({ error: motivoError });
     }
+    const { despacho, error: despachoError } = resolveDespacho(status, rawDespacho, sale.tipo_venta !== 'ENVIO_REGION');
+    if (despachoError) {
+      return res.status(400).json({ error: despachoError });
+    }
     const { fecha, error: fechaError } = resolveFecha(status, rawFecha, sale.tipo_venta !== 'ENVIO_REGION');
     if (fechaError) {
       return res.status(400).json({ error: fechaError });
@@ -1045,11 +1076,12 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
            status = ${NUEVO_ESTADO_VENTA_SQL},
            delivered_at = $3,
            motivo_estado = $5,
+           despacho_cancelacion = $7,
            reprogramado_para = CASE WHEN $1::text = 'reprogramado' THEN $6::date ELSE reprogramado_para END,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $4
        RETURNING *`,
-      [status, newSaleStatus, deliveredAt, id, motivo, fecha]
+      [status, newSaleStatus, deliveredAt, id, motivo, fecha, despacho]
     );
     // Reprogramado para hoy: no hay nada que esperar, el envío queda listo (impreso) de inmediato.
     if (fecha) await activarReprogramados({ forzar: true });
@@ -1059,8 +1091,8 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
       action: 'cambiar_estado_paquete',
       tableName: 'sales',
       recordId: Number(id),
-      oldValues: { delivery_status: sale.delivery_status, motivo_estado: sale.motivo_estado },
-      newValues: { delivery_status: status, motivo_estado: motivo }
+      oldValues: { delivery_status: sale.delivery_status, motivo_estado: sale.motivo_estado, despacho_cancelacion: sale.despacho_cancelacion },
+      newValues: { delivery_status: status, motivo_estado: motivo, despacho_cancelacion: despacho }
     });
 
     res.json({

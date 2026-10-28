@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS sales (
     'listo_para_imprimir', 'impreso', 'en_camino', 'entregado', 'cancelado', 'reprogramado'
   )),
   motivo_estado VARCHAR(500),
+  despacho_cancelacion VARCHAR(20),
   en_camino_at TIMESTAMP,
   product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
   costo_total DECIMAL(12, 2),

@@ -278,19 +278,19 @@ export default function ReportsPage() {
         // El costo de compra es un dato interno: solo lo reciben admin/operador/caja.
         ...(canManage ? [{ titulo: 'Costo', valor: (s) => num(s.costo_total) ?? '', total: (s) => num(s.costo_total) ?? 0 }] : []),
         { titulo: 'Precio del producto', valor: (s) => productoDe(s) ?? '', total: (s) => productoDe(s) ?? 0 },
-        { titulo: 'Vendedor', valor: (s) => s.vendor_name },
-        { titulo: 'Cliente', valor: (s) => s.client_name },
-        { titulo: 'Delivery', valor: (s) => (esEnvio(s) ? (s.courier_name || 'Sin asignar') : '-') },
-        { titulo: 'Fecha de envío', valor: (s) => (fechaSalida(s) ? formatDate(fechaSalida(s)) : '') },
-        // ---- resto de la información
-        { titulo: 'Tipo', valor: (s) => tipoVentaLabel(s.tipo_venta) },
-        { titulo: 'Precio envío', valor: (s) => envioDe(s) ?? '', total: (s) => envioDe(s) ?? 0 },
         { titulo: 'Total', valor: (s) => s._displayTotal, total: (s) => s._displayTotal },
         { titulo: 'Comisión', valor: (s) => (cuentaParaComision(s) && num(s.comision) !== null ? Number(s.comision) : ''), total: (s) => comisionContada(s) },
+        { titulo: 'Vendedor', valor: (s) => s.vendor_name },
+        { titulo: 'Cliente', valor: (s) => s.client_name },
         { titulo: 'Forma de pago', valor: (s) => s._pagoLabel },
         { titulo: 'Estado', valor: (s) => saleStatusLabel(s.status) },
-        { titulo: 'Estado del envío', valor: (s) => (esEnvio(s) ? deliveryStatusLabel(s.delivery_status) : '-') },
         { titulo: 'Tipo de precio', valor: (s) => priceTypeLabel(s.price_type) },
+        // ---- resto de la información
+        { titulo: 'Delivery', valor: (s) => (esEnvio(s) ? (s.courier_name || 'Sin asignar') : '-') },
+        { titulo: 'Fecha de envío', valor: (s) => (fechaSalida(s) ? formatDate(fechaSalida(s)) : '') },
+        { titulo: 'Tipo', valor: (s) => tipoVentaLabel(s.tipo_venta) },
+        { titulo: 'Precio envío', valor: (s) => envioDe(s) ?? '', total: (s) => envioDe(s) ?? 0 },
+        { titulo: 'Estado del envío', valor: (s) => (esEnvio(s) ? deliveryStatusLabel(s.delivery_status) : '-') },
       ];
 
       const rows = displayRows.map((s) => Object.fromEntries(columnas.map((c) => [c.titulo, c.valor(s)])));

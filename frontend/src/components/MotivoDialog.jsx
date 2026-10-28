@@ -6,13 +6,20 @@ import { hoyChileYmd, sumarDiasYmd } from '../utils/fechas';
 // envío vuelve solo a "impreso" para ponerlo en camino de nuevo.
 export const MOTIVO_MAX = 500;
 
+// Al cancelar también se pregunta si el paquete salió o no a despacho (va antes del motivo).
+export const DESPACHO_OPCIONES = [
+  { value: 'salio', label: 'Salió a despacho' },
+  { value: 'no_salio', label: 'No salió a despacho' },
+];
+
 export default function MotivoDialog({ open, status, count = 1, saving, error, onConfirm, onCancel }) {
   const [motivo, setMotivo] = useState('');
   const [fecha, setFecha] = useState('');
+  const [despacho, setDespacho] = useState('');
   const hoy = hoyChileYmd();
 
   useEffect(() => {
-    if (open) { setMotivo(''); setFecha(sumarDiasYmd(hoyChileYmd(), 1)); }
+    if (open) { setMotivo(''); setDespacho(''); setFecha(sumarDiasYmd(hoyChileYmd(), 1)); }
   }, [open, status]);
 
   if (!open) return null;
@@ -20,11 +27,12 @@ export default function MotivoDialog({ open, status, count = 1, saving, error, o
   const accion = status === 'cancelado' ? 'cancelación' : 'reprogramación';
   const verbo = status === 'cancelado' ? 'cancelar' : 'reprogramar';
   const reprograma = status === 'reprogramado';
-  const listo = motivo.trim().length > 0 && (!reprograma || (fecha && fecha >= hoy));
+  const cancela = status === 'cancelado';
+  const listo = motivo.trim().length > 0 && (!reprograma || (fecha && fecha >= hoy)) && (!cancela || despacho);
 
   function handleSubmit(e) {
     e.preventDefault();
-    if (listo) onConfirm(motivo.trim(), reprograma ? fecha : undefined);
+    if (listo) onConfirm(motivo.trim(), reprograma ? fecha : undefined, cancela ? despacho : undefined);
   }
 
   return (
@@ -46,11 +54,32 @@ export default function MotivoDialog({ open, status, count = 1, saving, error, o
             </div>
           </div>
         )}
+        {cancela && (
+          <div className="form-field">
+            <label>Motivo de cancelación</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {DESPACHO_OPCIONES.map((o) => (
+                <label key={o.value} style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500, cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="despacho"
+                    value={o.value}
+                    checked={despacho === o.value}
+                    onChange={() => setDespacho(o.value)}
+                    required
+                    style={{ width: 18, height: 18 }}
+                  />
+                  {o.label}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="form-field">
           <label>Motivo</label>
           <textarea
             rows={4}
-            autoFocus
+            autoFocus={!cancela}
             required
             maxLength={MOTIVO_MAX}
             value={motivo}

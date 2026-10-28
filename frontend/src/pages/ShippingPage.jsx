@@ -3,7 +3,7 @@ import Layout from '../components/Layout';
 import Badge from '../components/Badge';
 import LabelPrint from '../components/LabelPrint';
 import LabelPrintBatch from '../components/LabelPrintBatch';
-import MotivoDialog from '../components/MotivoDialog';
+import MotivoDialog, { DESPACHO_OPCIONES } from '../components/MotivoDialog';
 import TagReprogramado from '../components/TagReprogramado';
 import { esReprogramadoPendiente } from '../utils/fechas';
 import { showNewSale } from '../store/useNuevaVentaStore';
@@ -116,13 +116,13 @@ export default function ShippingPage() {
     setSelectedIds(allSelected ? [] : shipments.map((s) => s.id));
   }
 
-  async function handleStatusChange(sale, newStatus, motivo, fecha) {
+  async function handleStatusChange(sale, newStatus, motivo, fecha, despacho) {
     if (MOTIVO_STATUSES.includes(newStatus) && !motivo) {
       setMotivoPrompt({ sale, status: newStatus });
       return;
     }
     setActionError('');
-    const result = await put(`/api/sales/${sale.id}/status`, { status: newStatus, motivo, fecha_reprogramada: fecha });
+    const result = await put(`/api/sales/${sale.id}/status`, { status: newStatus, motivo, fecha_reprogramada: fecha, despacho });
     if (result.success) {
       setMotivoPrompt(null);
       refetch();
@@ -147,13 +147,13 @@ export default function ShippingPage() {
     else if (result.error) setActionError(result.error);
   }
 
-  async function applyBulkStatus(status, motivo, fecha) {
+  async function applyBulkStatus(status, motivo, fecha, despacho) {
     if (MOTIVO_STATUSES.includes(status) && !motivo) {
       setMotivoPrompt({ status });
       return;
     }
     setActionError('');
-    const result = await put('/api/sales/batch-status', { ids: selectedIds, status, motivo, fecha_reprogramada: fecha });
+    const result = await put('/api/sales/batch-status', { ids: selectedIds, status, motivo, fecha_reprogramada: fecha, despacho });
     if (result.success) {
       setSelectedIds([]);
       setBulkStatusPanel(false);
@@ -437,7 +437,11 @@ export default function ShippingPage() {
             </div>
             <div className="form-field">
               <label>Precio envío</label>
-              <input type="number" min="0" value={createForm.precio_envio} onChange={(e) => setCreateForm({ ...createForm, precio_envio: e.target.value })} required />
+              {user.role === 'vendedor' ? (
+                <input value={createForm.comuna ? formatCurrency(Number(createForm.precio_envio) || 0) : 'Según la comuna'} readOnly />
+              ) : (
+                <input type="number" min="0" value={createForm.precio_envio} onChange={(e) => setCreateForm({ ...createForm, precio_envio: e.target.value })} required />
+              )}
             </div>
 
             <div className="form-field">
@@ -542,6 +546,11 @@ export default function ShippingPage() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
                         {esReprogramadoPendiente(s) && <TagReprogramado s={s} />}
                         <Badge label={deliveryStatusLabel(s.delivery_status)} color={DELIVERY_STATUS_LABELS[s.delivery_status]?.color} />
+                        {s.delivery_status === 'cancelado' && s.despacho_cancelacion && (
+                          <div style={{ fontSize: 12, color: 'var(--color-text-muted)', maxWidth: 220, textAlign: 'right', whiteSpace: 'normal' }}>
+                            <strong>{DESPACHO_OPCIONES.find((o) => o.value === s.despacho_cancelacion)?.label}</strong>
+                          </div>
+                        )}
                         {MOTIVO_STATUSES.includes(s.delivery_status) && s.motivo_estado && (
                           <div style={{ fontSize: 12, color: 'var(--color-text-muted)', maxWidth: 220, textAlign: 'right', whiteSpace: 'normal' }}>
                             <strong>Motivo:</strong> {s.motivo_estado}
@@ -628,9 +637,9 @@ export default function ShippingPage() {
         saving={saving}
         error={motivoPrompt ? saveError : ''}
         onCancel={() => setMotivoPrompt(null)}
-        onConfirm={(motivo, fecha) => (motivoPrompt.sale
-          ? handleStatusChange(motivoPrompt.sale, motivoPrompt.status, motivo, fecha)
-          : applyBulkStatus(motivoPrompt.status, motivo, fecha))}
+        onConfirm={(motivo, fecha, despacho) => (motivoPrompt.sale
+          ? handleStatusChange(motivoPrompt.sale, motivoPrompt.status, motivo, fecha, despacho)
+          : applyBulkStatus(motivoPrompt.status, motivo, fecha, despacho))}
       />
 
       {printSale && <LabelPrint sale={printSale} onClose={() => setPrintSale(null)} onPrinted={refetch} />}

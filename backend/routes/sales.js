@@ -4,7 +4,7 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
-const { MIN_MAYOR, MIN_MAYOR_MESSAGE, lookupComisionUnitaria, validateLines, summarizeLines, buscarProductoId, costoDeLineas } = require('../utils/saleLines');
+const { MIN_MAYOR, MIN_MAYOR_MESSAGE, lookupComisionUnitaria, precioDeCatalogo, validateLines, summarizeLines, buscarProductoId, costoDeLineas } = require('../utils/saleLines');
 const { buildQrValue } = require('../utils/qrCode');
 const { esSinCobro, conCobroSql, aplicarTipoEnvio } = require('../utils/sinCobro');
 const { PAYMENT_METHODS, validatePaymentBreakdown, normalizePaymentBreakdown, formaPagoCondition } = require('../utils/paymentBreakdown');
@@ -36,6 +36,12 @@ const NUEVO_ESTADO_VENTA_SQL = `COALESCE($2::text, CASE
   WHEN $1::text = 'cancelado' AND status = 'completado' THEN 'cancelado'
   WHEN $1::text NOT IN ('entregado', 'cancelado') AND (status = 'completado' OR (status = 'cancelado' AND delivery_status = 'cancelado')) THEN 'pendiente'
   ELSE status END)`;
+
+// Comisión con el precio del catálogo (la que tiene un producto vendido sin cambiar su precio) para `cantidad` unidades.
+async function comisionCatalogo(db, nombre, priceType, productId, cantidad) {
+  const unitaria = await lookupComisionUnitaria(db, nombre, priceType, null, productId);
+  return unitaria !== null ? unitaria * cantidad : null;
+}
 
 // Devuelve { motivo } (string|null) o { error } si falta o excede el largo.
 function resolveMotivo(status, rawMotivo, exigir) {
@@ -530,6 +536,8 @@ router.post('/', authenticateToken, async (req, res) => {
         quantity: Number(i.quantity),
         price: Number(i.price),
         price_type: ['sol', 'mayor'].includes(i.price_type) ? i.price_type : 'marketplace',
+        precio_modificado: i.precio_modificado === true,
+        precio_original: i.precio_original,
       }))
     : null;
   const lineasInvalidas = lines && validateLines(lines);
@@ -538,6 +546,10 @@ router.post('/', authenticateToken, async (req, res) => {
   }
   if (lines && user.role === 'vendedor' && lines.some((l) => l.price_type === 'sol')) {
     return res.status(400).json({ error: 'Los vendedores no pueden usar precios SOL' });
+  }
+  // La forma antigua (un solo producto con precio libre) no pasa por la validación de precios del catálogo.
+  if (!lines && user.role === 'vendedor') {
+    return res.status(400).json({ error: 'Agrega los productos de la venta para registrarla' });
   }
 
   if (user.role === 'escaneo') {
@@ -612,9 +624,12 @@ router.post('/', authenticateToken, async (req, res) => {
     let comision = null;
     let productId = null;
     let costoTotal = null;
+    let precioModificado = false;
+    let precioOriginal = null;
     let total;
     if (lines) {
-      const resumen = await summarizeLines(dbClient, lines);
+      // Solo admin/operador/caja pueden vender un producto a un precio distinto del catálogo.
+      const resumen = await summarizeLines(dbClient, lines, { puedeEditarPrecio: user.role !== 'vendedor' });
       const envio = Number(precio_envio) || 0;
       total = resumen.productosTotal + envio;
       precio_producto = resumen.productosTotal;
@@ -628,6 +643,8 @@ router.post('/', authenticateToken, async (req, res) => {
       comision = resumen.comision;
       productId = resumen.productId;
       costoTotal = resumen.costoTotal;
+      precioModificado = resumen.precioModificado;
+      precioOriginal = resumen.precioOriginal;
     } else {
       total = quantity * price;
       productId = await buscarProductoId(dbClient, product_name);
@@ -645,10 +662,10 @@ router.post('/', authenticateToken, async (req, res) => {
     const courierId = defaultCourier.rows[0]?.id || null;
 
     const inserted = await dbClient.query(
-      `INSERT INTO sales (vendor_id, client_id, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region, precio_producto, precio_envio, comision, courier_id, price_type, items, registered_by, product_id, costo_total)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+      `INSERT INTO sales (vendor_id, client_id, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region, precio_producto, precio_envio, comision, courier_id, price_type, items, registered_by, product_id, costo_total, precio_modificado, precio_original)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
        RETURNING *`,
-      [vendor_id, finalClientId, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region || null, precio_producto || null, precio_envio || null, comision, courierId, price_type, itemsJson, user.id, productId, costoTotal]
+      [vendor_id, finalClientId, product_name, quantity, price, total, address, comuna, phone, notes, tipo_venta, region || null, precio_producto || null, precio_envio || null, comision, courierId, price_type, itemsJson, user.id, productId, costoTotal, precioModificado, precioOriginal]
     );
 
     const sale = inserted.rows[0];
@@ -882,6 +899,18 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const recalcTotal = quantity !== undefined || price !== undefined;
     const total = recalcTotal ? newQuantity * newPrice : null;
 
+    // El formulario de edición manda el monto total como cantidad x precio, así que un cambio del precio se ve
+    // como un cambio del total. Un vendedor no puede cambiarlo (salvo en ventas al mayor, de precio libre).
+    const totalCambia = total !== null && Math.abs(total - Number(sale.total)) > 0.5;
+    if (user.role === 'vendedor' && totalCambia && sale.price_type !== 'mayor') {
+      return res.status(400).json({ error: 'Solo admin, operador o caja pueden cambiar el precio de una venta' });
+    }
+    // Parte de productos del nuevo total (sin el envío), para mantener precio_producto al día.
+    const productoNuevoTotal = total !== null && sale.precio_producto !== null && sale.precio_producto !== undefined
+      ? Math.round((total - (Number(sale.precio_envio) || 0)) * 100) / 100
+      : null;
+    const precioCambia = productoNuevoTotal !== null && Math.abs(productoNuevoTotal - Number(sale.precio_producto)) > 0.5;
+
     // Una venta ya hecha conserva la comisión y el costo con que se cerró: editar un dato cualquiera
     // (dirección, notas...) no los toca, y un cambio posterior del costo del producto tampoco.
     //  - Cambia el producto: pasa a valer el producto nuevo, con su comisión y costo vigentes.
@@ -900,7 +929,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
       if (sale.price_type === 'mayor' && newQuantity < MIN_MAYOR) {
         return res.status(400).json({ error: MIN_MAYOR_MESSAGE });
       }
-      const unitProducto = sale.precio_producto !== null && sale.precio_producto !== undefined ? Number(sale.precio_producto) / newQuantity : newPrice;
+      const unitProducto = productoNuevoTotal !== null ? productoNuevoTotal / newQuantity : (sale.precio_producto !== null && sale.precio_producto !== undefined ? Number(sale.precio_producto) / newQuantity : newPrice);
       if (cambiaProducto) {
         const comisionUnitaria = await lookupComisionUnitaria(pool, product_name, sale.price_type, unitProducto, nuevoProductId);
         comision = comisionUnitaria !== null ? comisionUnitaria * newQuantity : null;
@@ -915,6 +944,40 @@ router.put('/:id', authenticateToken, async (req, res) => {
         } else {
           comision = null;
         }
+      }
+    }
+
+    // Precio de un producto cambiado a mano (admin/operador/caja) en una venta de un solo producto SOL/MARKETPLACE:
+    // la venta queda marcada "precio modificado" y su comisión pasa a ser 25% de (precio de venta - costo).
+    // Si el precio vuelve al original, se restaura la comisión del catálogo.
+    let evaluaPrecio = false;
+    let precioModificado = !!sale.precio_modificado;
+    let precioOriginal = sale.precio_original;
+    if (precioCambia && !sale.items && !esSinCobro(sale.delivery_type) && sale.price_type !== 'mayor') {
+      evaluaPrecio = true;
+      const unidades = newQuantity > 0 ? newQuantity : 1;
+      const unitNuevo = productoNuevoTotal / unidades;
+      const original = sale.precio_original !== null && sale.precio_original !== undefined
+        ? Number(sale.precio_original)
+        : Number(sale.precio_producto) / Number(sale.quantity);
+      precioModificado = Math.abs(unitNuevo - original) > 0.01;
+      precioOriginal = precioModificado ? Math.round(original * 100) / 100 : null;
+      if (cambiaProducto) {
+        // Otro producto: se compara con el catálogo del producto nuevo.
+        const lookup = await lookupComisionUnitaria(pool, product_name, sale.price_type, unitNuevo, nuevoProductId, true);
+        const catalogo = nuevoProductId ? (await pool.query('SELECT price, precio_tienda FROM products WHERE id = $1', [nuevoProductId])).rows[0] : null;
+        precioModificado = !!catalogo && Math.abs(unitNuevo - precioDeCatalogo(catalogo, sale.price_type)) > 0.01;
+        precioOriginal = precioModificado ? precioDeCatalogo(catalogo, sale.price_type) : null;
+        comision = precioModificado
+          ? (lookup !== null ? lookup * newQuantity : null)
+          : await comisionCatalogo(pool, product_name, sale.price_type, nuevoProductId, newQuantity);
+      } else if (precioModificado) {
+        const costoUnidad = sale.costo_total !== null && sale.costo_total !== undefined && Number(sale.quantity) > 0 ? Number(sale.costo_total) / Number(sale.quantity) : null;
+        comision = costoUnidad !== null
+          ? Math.max(0, Math.round((unitNuevo - costoUnidad) * 0.25 * 100) / 100) * newQuantity
+          : null;
+      } else {
+        comision = await comisionCatalogo(pool, sale.product_name, sale.price_type, sale.product_id || null, newQuantity);
       }
     }
 
@@ -985,6 +1048,9 @@ router.put('/:id', authenticateToken, async (req, res) => {
            motivo_estado = CASE WHEN $19::boolean THEN $20 ELSE motivo_estado END,
            product_id = CASE WHEN $21::boolean THEN $22 ELSE product_id END,
            costo_total = $23,
+           precio_producto = COALESCE($26, precio_producto),
+           precio_modificado = CASE WHEN $27::boolean THEN $28::boolean ELSE precio_modificado END,
+           precio_original = CASE WHEN $27::boolean THEN $29::numeric ELSE precio_original END,
            reprogramado_para = CASE WHEN $2::text = 'reprogramado' THEN $24::date ELSE reprogramado_para END,
            despacho_cancelacion = CASE WHEN $19::boolean THEN $25 ELSE despacho_cancelacion END,
            updated_at = CURRENT_TIMESTAMP
@@ -998,6 +1064,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
         clearDeliveredAt, comision, breakdownJson,
         statusChanging, motivoValue,
         cambiaProducto, nuevoProductId, costoTotal, fechaResuelta.fecha, despachoValue,
+        productoNuevoTotal, evaluaPrecio, precioModificado, precioOriginal,
       ]
     );
     if (fechaResuelta.fecha) await activarReprogramados({ forzar: true });

@@ -1,3 +1,4 @@
+import { lineaParaEnviar } from '../utils/precioLinea';
 import { useMemo, useState } from 'react';
 import Layout from '../components/Layout';
 import Badge from '../components/Badge';
@@ -23,6 +24,7 @@ import { productPrice } from '../utils/priceType';
 import { DELIVERY_STATUS_LABELS, DELIVERY_STATUS_OPTIONS, DELIVERY_TYPE_LABELS, DELIVERY_TYPE_OPTIONS, deliveryStatusLabel, deliveryTypeLabel, isSinCobro } from '../utils/labels';
 import BuscadorConBoton from '../components/BuscadorConBoton';
 import BarraCarga from '../components/BarraCarga';
+import TagPrecioModificado from '../components/TagPrecioModificado';
 
 // Cancelar o reprogramar un envío exige dejar el motivo (lo ve el vendedor).
 const MOTIVO_STATUSES = ['cancelado', 'reprogramado'];
@@ -261,7 +263,7 @@ export default function ShippingPage() {
     if (!createForm.nombre.trim() || !createForm.apellido.trim()) return;
     const payload = {
       tipo_venta: 'ENVIO',
-      items: createForm.items.map(({ product_name, quantity, price, price_type }) => ({ product_name, quantity, price, price_type })),
+      items: createForm.items.map(lineaParaEnviar).map(({ product_name, quantity, price, price_type, precio_modificado, precio_original }) => ({ product_name, quantity, price, price_type, precio_modificado, precio_original })),
       precio_envio: Number(createForm.precio_envio) || 0,
       address: createForm.address,
       comuna: createForm.comuna,
@@ -411,6 +413,7 @@ export default function ShippingPage() {
             </div>
 
             <ShipmentItemsInput
+              canEditPrice={canManage}
               addButtonGreen
               allowMayor
               hideSol={user.role === 'vendedor'}
@@ -519,7 +522,7 @@ export default function ShippingPage() {
                         <input type="checkbox" checked={selectedIds.includes(s.id)} onChange={() => toggleSelect(s.id)} />
                       </td>
                     )}
-                    <td data-label="Producto">{s.product_name}</td>
+                    <td data-label="Producto">{s.product_name}{s.precio_modificado && <> <TagPrecioModificado original={s.precio_original} /></>}</td>
                     <td data-label="Cliente">{s.client_name}</td>
                     <td data-label="Vendedor">{s.vendor_name}</td>
                     <td data-label="Dirección">{s.address || '-'}</td>

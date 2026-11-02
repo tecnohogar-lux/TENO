@@ -14,6 +14,8 @@ import useAuth from '../hooks/useAuth';
 import useConfirm from '../hooks/useConfirm';
 import { formatCurrency, formatDate } from '../utils/format';
 import PriceTypeBadge from '../components/PriceTypeBadge';
+import PrecioUnitarioEditable from '../components/PrecioUnitarioEditable';
+import { lineaParaEnviar, precioCatalogoDeGuardada } from '../utils/precioLinea';
 import { showNewSale } from '../store/useNuevaVentaStore';
 import { MIN_MAYOR, productPrice } from '../utils/priceType';
 import BuscadorConBoton from '../components/BuscadorConBoton';
@@ -76,7 +78,10 @@ export default function RetiroTiendaPage() {
     if (priceType === 'mayor' && (Number(selectedQty) < MIN_MAYOR || !(Number(mayorPrice) > 0))) return;
     setCart((prev) => [
       ...prev,
-      { key: Date.now(), product_id: product.id, product_name: product.title, price: priceType === 'mayor' ? Number(mayorPrice) : productPrice(product, priceType), quantity: Number(selectedQty), price_type: priceType },
+      {
+        key: Date.now(), product_id: product.id, product_name: product.title, price: priceType === 'mayor' ? Number(mayorPrice) : productPrice(product, priceType), quantity: Number(selectedQty), price_type: priceType,
+        ...(priceType === 'mayor' ? {} : { precio_catalogo: productPrice(product, priceType) }),
+      },
     ]);
     setSelectedProductId('');
     setSelectedQty(priceType === 'mayor' ? MIN_MAYOR : 1);
@@ -86,6 +91,10 @@ export default function RetiroTiendaPage() {
   function handlePriceTypeChange(next) {
     setPriceType(next);
     if (next === 'mayor') setSelectedQty((q) => Math.max(Number(q) || 0, MIN_MAYOR));
+  }
+
+  function cambiarLinea(nueva) {
+    setCart((prev) => prev.map((item) => (item.key === nueva.key ? nueva : item)));
   }
 
   function removeFromCart(key) {
@@ -99,7 +108,7 @@ export default function RetiroTiendaPage() {
 
     const payload = {
       client_name: `${form.nombre.trim()} ${form.apellido.trim()}`,
-      items: cart.map(({ product_id, quantity, price_type, price }) => ({ product_id, quantity, price_type, price })),
+      items: cart.map(lineaParaEnviar).map(({ product_id, quantity, price_type, price, precio_modificado, precio_original }) => ({ product_id, quantity, price_type, price, precio_modificado, precio_original })),
       notes: form.notes,
     };
 
@@ -134,7 +143,15 @@ export default function RetiroTiendaPage() {
     setEditingRetiro(retiro);
     const [nombre, ...resto] = (retiro.client_name || '').split(' ');
     setForm({ nombre: nombre || '', apellido: resto.join(' '), notes: retiro.notes || '' });
-    setCart(retiro.items.map((i, idx) => ({ key: `${retiro.id}-${idx}`, product_id: i.product_id, product_name: i.product_name, price: Number(i.price), quantity: Number(i.quantity), price_type: i.price_type || retiro.price_type || 'marketplace' })));
+    setCart(retiro.items.map((i, idx) => {
+      const price_type = i.price_type || retiro.price_type || 'marketplace';
+      const precio_catalogo = precioCatalogoDeGuardada({ ...i, price_type });
+      return {
+        key: `${retiro.id}-${idx}`, product_id: i.product_id, product_name: i.product_name, price: Number(i.price), quantity: Number(i.quantity), price_type,
+        ...(precio_catalogo !== null ? { precio_catalogo } : {}),
+        ...(i.precio_modificado ? { precio_modificado: true } : {}),
+      };
+    }));
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -255,6 +272,7 @@ export default function RetiroTiendaPage() {
                 <thead>
                   <tr>
                     <th>Producto</th>
+                    <th>Precio unit.</th>
                     <th>Cant.</th>
                     <th>Subtotal</th>
                     <th></th>
@@ -263,12 +281,13 @@ export default function RetiroTiendaPage() {
                 <tbody>
                   {cart.length === 0 ? (
                     <tr>
-                      <td colSpan={4} style={{ color: 'var(--color-text-muted)' }}>Carrito vacío</td>
+                      <td colSpan={5} style={{ color: 'var(--color-text-muted)' }}>Carrito vacío</td>
                     </tr>
                   ) : (
                     cart.map((item) => (
                       <tr key={item.key}>
                         <td data-label="Producto">{item.product_name} <PriceTypeBadge type={item.price_type} /></td>
+                        <td data-label="Precio unit."><PrecioUnitarioEditable item={item} editable={canManage} onChange={cambiarLinea} /></td>
                         <td data-label="Cant.">{item.quantity}</td>
                         <td data-label="Subtotal">{formatCurrency(item.quantity * item.price)}</td>
                         <td data-label="Quitar">

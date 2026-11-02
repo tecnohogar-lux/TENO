@@ -29,7 +29,9 @@ async function resolverCliente(dbClient, client_name, userId) {
 
 // El precio se toma siempre del catálogo (no se confía en un precio enviado por el cliente).
 // Un vendedor no puede registrar productos agotados (el personal sí, p. ej. al editar un retiro).
-async function resolverItems(dbClient, items, defaultPriceType, bloquearAgotados = false) {
+// Admin/operador/caja (`puedeEditarPrecio`) pueden fijar a mano el precio de un producto del catálogo (línea marcada
+// `precio_modificado`): se guarda con su precio original y esa venta calcula la comisión con el precio de venta.
+async function resolverItems(dbClient, items, defaultPriceType, bloquearAgotados = false, puedeEditarPrecio = false) {
   const resolvedItems = [];
   let total = 0;
   for (const item of items) {
@@ -46,6 +48,8 @@ async function resolverItems(dbClient, items, defaultPriceType, bloquearAgotados
     // MARKETPLACE el precio normal del producto.
     const priceType = ['sol', 'marketplace', 'mayor'].includes(item.price_type) ? item.price_type : defaultPriceType;
     let price;
+    let precioModificado = false;
+    let precioOriginal = null;
     if (priceType === 'mayor') {
       // Venta al mayor: mínimo 6 unidades y precio libre (lo define quien registra el retiro).
       price = Number(item.price);
@@ -53,10 +57,19 @@ async function resolverItems(dbClient, items, defaultPriceType, bloquearAgotados
       if (!(price > 0)) throw { status: 400, message: 'Venta al mayor: indica el precio de cada producto' };
     } else {
       price = parseFloat(priceType === 'sol' && product.precio_tienda !== null ? product.precio_tienda : product.price);
+      const manual = Number(item.price);
+      if (puedeEditarPrecio && item.precio_modificado === true && manual > 0 && Math.abs(manual - price) > 0.005) {
+        precioOriginal = price;
+        price = manual;
+        precioModificado = true;
+      }
     }
     const subtotal = price * quantity;
     total += subtotal;
-    resolvedItems.push({ product_id: product.id, product_name: product.title, quantity, price, subtotal, price_type: priceType });
+    resolvedItems.push({
+      product_id: product.id, product_name: product.title, quantity, price, subtotal, price_type: priceType,
+      ...(precioModificado ? { precio_modificado: true, precio_original: precioOriginal } : {}),
+    });
   }
   const tipos = new Set(resolvedItems.map((i) => i.price_type));
   const priceType = tipos.size > 1 ? 'mixto' : resolvedItems[0].price_type;
@@ -165,7 +178,7 @@ router.post('/', authenticateToken, async (req, res) => {
     await dbClient.query('BEGIN');
 
     const clientId = await resolverCliente(dbClient, client_name, user.id);
-    const { resolvedItems, total, priceType } = await resolverItems(dbClient, items, price_type, user.role === 'vendedor');
+    const { resolvedItems, total, priceType } = await resolverItems(dbClient, items, price_type, user.role === 'vendedor', user.role !== 'vendedor');
 
     const inserted = await dbClient.query(
       `INSERT INTO retiros_tienda (vendor_id, client_id, items, total, notes, price_type)
@@ -217,7 +230,7 @@ router.put('/:id', authenticateToken, requireRole(['admin', 'operador', 'caja'],
 
     const clientId = await resolverCliente(dbClient, client_name, user.id);
     const price_type = req.body.price_type === 'sol' ? 'sol' : 'marketplace';
-    const { resolvedItems, total, priceType } = await resolverItems(dbClient, items, price_type);
+    const { resolvedItems, total, priceType } = await resolverItems(dbClient, items, price_type, false, true);
 
     const updated = await dbClient.query(
       `UPDATE retiros_tienda

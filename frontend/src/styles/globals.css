@@ -1459,3 +1459,19 @@ tr.fila-reprogramada:hover { background: var(--color-reprogramado-fondo); }
   .aviso-panel { padding: 24px 18px; }
   .aviso-titulo { font-size: 23px; }
 }
+
+/* ---------- Precio modificado: venta con un precio distinto del catálogo ---------- */
+.tag-precio-modificado {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #d97706;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.precio-editable { display: flex; flex-direction: column; gap: 4px; min-width: 110px; }
+.precio-editable input { width: 110px; padding: 4px 8px; }
+.precio-editable-aviso { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: 11px; color: var(--color-text-muted); }

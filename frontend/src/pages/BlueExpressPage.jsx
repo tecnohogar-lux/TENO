@@ -1,3 +1,4 @@
+import { lineaParaEnviar } from '../utils/precioLinea';
 import { useMemo, useState } from 'react';
 import Layout from '../components/Layout';
 import Badge from '../components/Badge';
@@ -15,6 +16,7 @@ import { productPrice } from '../utils/priceType';
 import { DELIVERY_STATUS_LABELS, DELIVERY_STATUS_OPTIONS, deliveryStatusLabel } from '../utils/labels';
 import BuscadorConBoton from '../components/BuscadorConBoton';
 import BarraCarga from '../components/BarraCarga';
+import TagPrecioModificado from '../components/TagPrecioModificado';
 
 const FREE_PRODUCT_OPTION = [{ value: '__free__', label: 'Producto libre (no registrado)' }];
 
@@ -185,7 +187,7 @@ export default function BlueExpressPage() {
     if (!createForm.nombre.trim() || !createForm.apellido.trim()) return;
     const payload = {
       tipo_venta: 'ENVIO_REGION',
-      items: createForm.items.map(({ product_name, quantity, price, price_type }) => ({ product_name, quantity, price, price_type })),
+      items: createForm.items.map(lineaParaEnviar).map(({ product_name, quantity, price, price_type, precio_modificado, precio_original }) => ({ product_name, quantity, price, price_type, precio_modificado, precio_original })),
       precio_envio: Number(createForm.precio_envio) || 0,
       address: createForm.address,
       comuna: createForm.comuna,
@@ -341,6 +343,7 @@ export default function BlueExpressPage() {
             </div>
 
             <ShipmentItemsInput
+              canEditPrice={canManage}
               hideSol={user.role === 'vendedor'}
               blockAgotado={user.role === 'vendedor'}
               products={productsData?.products || []}
@@ -433,7 +436,7 @@ export default function BlueExpressPage() {
                         <input type="checkbox" checked={selectedIds.includes(s.id)} onChange={() => toggleSelect(s.id)} />
                       </td>
                     )}
-                    <td data-label="Producto">{s.product_name}</td>
+                    <td data-label="Producto">{s.product_name}{s.precio_modificado && <> <TagPrecioModificado original={s.precio_original} /></>}</td>
                     <td data-label="Cliente">{s.client_name}{s.client_email && <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{s.client_email}</div>}</td>
                     <td data-label="Vendedor">{s.vendor_name}</td>
                     <td data-label="Región">{s.region || '-'}</td>

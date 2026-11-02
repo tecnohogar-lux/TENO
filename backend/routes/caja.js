@@ -4,7 +4,7 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
-const { MIN_MAYOR, MIN_MAYOR_MESSAGE, comisionDeLineas, summarizeLines, adjuntarProductIds, costoDeLineas } = require('../utils/saleLines');
+const { MIN_MAYOR, MIN_MAYOR_MESSAGE, comisionDeLineas, summarizeLines, adjuntarProductIds, aplicarPrecios, costoDeLineas } = require('../utils/saleLines');
 const { PAYMENT_METHODS, validatePaymentBreakdown, normalizePaymentBreakdown } = require('../utils/paymentBreakdown');
 const { buildQrValue } = require('../utils/qrCode');
 const { conCobroSql } = require('../utils/sinCobro');
@@ -140,7 +140,11 @@ router.post('/sale', authenticateToken, requireRole(['operador', 'admin', 'caja'
       const item = items[0];
       const precioProducto = item.quantity * item.price;
       const total = precioProducto + precioEnvio;
-      const [linea] = await adjuntarProductIds(dbClient, [{ product_name: item.product_name, quantity: Number(item.quantity), price: Number(item.price), price_type: itemPriceType(item) }]);
+      // Caja (admin/operador/caja) puede vender un producto a un precio distinto del catálogo; queda marcado.
+      const [linea] = await adjuntarProductIds(dbClient, await aplicarPrecios(dbClient, [{
+        product_name: item.product_name, quantity: Number(item.quantity), price: Number(item.price), price_type: itemPriceType(item),
+        precio_modificado: item.precio_modificado === true, precio_original: item.precio_original,
+      }], { puedeEditarPrecio: true }));
       const comision = await comisionDeLineas(dbClient, [linea]);
       const costoTotal = await costoDeLineas(dbClient, [linea]);
 
@@ -154,14 +158,15 @@ router.post('/sale', authenticateToken, requireRole(['operador', 'admin', 'caja'
       const inserted = await dbClient.query(
         `INSERT INTO sales
            (vendor_id, client_id, product_name, quantity, price, total, address, comuna, phone, notes,
-            status, delivery_status, tipo_venta, payment_method, transferencia_verificada, precio_producto, precio_envio, comision, price_type, payment_breakdown, registered_by, product_id, costo_total)
+            status, delivery_status, tipo_venta, payment_method, transferencia_verificada, precio_producto, precio_envio, comision, price_type, payment_breakdown, registered_by, product_id, costo_total, precio_modificado, precio_original)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                 'pendiente', 'listo_para_imprimir', 'ENVIO_PREPAGADO', $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+                 'pendiente', 'listo_para_imprimir', 'ENVIO_PREPAGADO', $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
          RETURNING *`,
         [
           vendor_id, finalClientId, item.product_name, item.quantity, item.price, total,
           address, comuna, phone || null, notes || null,
           payment_method, !!transferencia_verificada, precioProducto, precioEnvio, comision, itemPriceType(item), breakdownJson, user.id, linea.product_id, costoTotal,
+          !!linea.precio_modificado, linea.precio_modificado ? linea.precio_original : null,
         ]
       );
 
@@ -178,8 +183,10 @@ router.post('/sale', authenticateToken, requireRole(['operador', 'admin', 'caja'
         quantity: Number(item.quantity),
         price: Number(item.price),
         price_type: itemPriceType(item),
+        precio_modificado: item.precio_modificado === true,
+        precio_original: item.precio_original,
       }));
-      const resumen = await summarizeLines(dbClient, lines);
+      const resumen = await summarizeLines(dbClient, lines, { puedeEditarPrecio: true });
       const total = resumen.productosTotal;
 
       let breakdownJson = null;
@@ -192,11 +199,11 @@ router.post('/sale', authenticateToken, requireRole(['operador', 'admin', 'caja'
       const inserted = await dbClient.query(
         `INSERT INTO sales
            (vendor_id, client_id, product_name, quantity, price, total, status, delivery_status, tipo_venta,
-            payment_method, transferencia_verificada, notes, precio_producto, comision, price_type, items, payment_breakdown, registered_by, retiro_id, product_id, costo_total)
+            payment_method, transferencia_verificada, notes, precio_producto, comision, price_type, items, payment_breakdown, registered_by, retiro_id, product_id, costo_total, precio_modificado, precio_original)
          VALUES ($1, $2, $3, $4, $5, $6, 'completado', NULL, 'TIENDA', $7, $8, $9, $6, $10, $11, $12, $13, $14,
-                 (SELECT id FROM retiros_tienda WHERE id = $15), $16, $17)
+                 (SELECT id FROM retiros_tienda WHERE id = $15), $16, $17, $18, $19)
          RETURNING *`,
-        [vendor_id, finalClientId, resumen.productName, resumen.totalQty, total / resumen.totalQty, total, payment_method, !!transferencia_verificada, notes || null, resumen.comision, resumen.priceType, resumen.itemsJson, breakdownJson, user.id, retiro_id ? Number(retiro_id) : null, resumen.productId, resumen.costoTotal]
+        [vendor_id, finalClientId, resumen.productName, resumen.totalQty, total / resumen.totalQty, total, payment_method, !!transferencia_verificada, notes || null, resumen.comision, resumen.priceType, resumen.itemsJson, breakdownJson, user.id, retiro_id ? Number(retiro_id) : null, resumen.productId, resumen.costoTotal, resumen.precioModificado, resumen.precioOriginal]
       );
       createdSales.push(inserted.rows[0]);
     }

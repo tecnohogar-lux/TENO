@@ -19,6 +19,7 @@ import { shareSaleViaWhatsApp } from '../utils/whatsapp';
 import { saleLines } from '../utils/saleLines';
 import BuscadorConBoton from '../components/BuscadorConBoton';
 import BarraCarga from '../components/BarraCarga';
+import TagPrecioModificado from '../components/TagPrecioModificado';
 
 const PAGE_SIZE = 25;
 
@@ -163,7 +164,7 @@ export default function SalesPage() {
               ) : (
                 data.sales.map((s) => (
                   <tr key={s.id} className={esReprogramadoPendiente(s) ? 'fila-reprogramada' : undefined}>
-                    <td data-label="Producto">{saleProductLabel(s)}</td>
+                    <td data-label="Producto">{saleProductLabel(s)}{s.precio_modificado && <> <TagPrecioModificado original={s.precio_original} /></>}</td>
                     <td data-label="Cliente">{s.client_name}</td>
                     <td data-label="Vendedor">{s.vendor_name}</td>
                     <td data-label="Tipo">
@@ -292,7 +293,7 @@ export default function SalesPage() {
                       <td data-label="Producto">{l.product_name}</td>
                       <td data-label="Precios"><PriceTypeBadge type={l.price_type} /></td>
                       <td data-label="Cant.">{l.quantity}</td>
-                      <td data-label="Precio">{isSinCobro(detailSale) ? '—' : formatCurrency(l.price)}</td>
+                      <td data-label="Precio">{isSinCobro(detailSale) ? '—' : formatCurrency(l.price)}{l.precio_modificado && <> <TagPrecioModificado original={l.precio_original} /></>}</td>
                       <td data-label="Subtotal">{isSinCobro(detailSale) ? '—' : formatCurrency(Number(l.quantity) * Number(l.price))}</td>
                     </tr>
                   ))}

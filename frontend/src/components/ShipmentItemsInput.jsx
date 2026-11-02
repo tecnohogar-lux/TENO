@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import SearchableSelect from './SearchableSelect';
 import PriceTypeToggle from './PriceTypeToggle';
 import PriceTypeBadge from './PriceTypeBadge';
+import PrecioUnitarioEditable from './PrecioUnitarioEditable';
 import { formatCurrency } from '../utils/format';
 import { MIN_MAYOR, productPrice } from '../utils/priceType';
 
@@ -9,7 +10,7 @@ const FREE_PRODUCT_OPTION = [{ value: '__free__', label: 'Producto libre (no reg
 
 // Lista de productos de un envío. El botón SOL / MARKETPLACE define el precio de la
 // línea que se agrega, así que el mismo producto puede repetirse con precios distintos.
-export default function ShipmentItemsInput({ products, items, onChange, defaultPriceType = 'marketplace', allowMayor = false, hideSol = false, blockAgotado = false, addButtonGreen = false }) {
+export default function ShipmentItemsInput({ products, items, onChange, defaultPriceType = 'marketplace', allowMayor = false, hideSol = false, blockAgotado = false, addButtonGreen = false, canEditPrice = false }) {
   const [priceType, setPriceType] = useState(defaultPriceType);
   const [selectedProductId, setSelectedProductId] = useState('');
   const [qty, setQty] = useState(1);
@@ -43,7 +44,8 @@ export default function ShipmentItemsInput({ products, items, onChange, defaultP
         setAgotadoError(`Producto agotado: "${product.title}". No se puede agregar al envío.`);
         return;
       }
-      onChange([...items, { key: Date.now(), product_name: product.title, quantity: Number(qty), price: mayor ? Number(mayorPrice) : productPrice(product, priceType), price_type: priceType }]);
+      const catalogo = productPrice(product, priceType);
+      onChange([...items, { key: Date.now(), product_name: product.title, quantity: Number(qty), price: mayor ? Number(mayorPrice) : catalogo, price_type: priceType, ...(mayor ? {} : { precio_catalogo: catalogo }) }]);
       setMayorPrice('');
     }
     setAgotadoError('');
@@ -54,6 +56,10 @@ export default function ShipmentItemsInput({ products, items, onChange, defaultP
   function handlePriceTypeChange(next) {
     setPriceType(next);
     if (next === 'mayor') setQty((q) => Math.max(Number(q) || 0, MIN_MAYOR));
+  }
+
+  function cambiarLinea(nueva) {
+    onChange(items.map((i) => (i.key === nueva.key ? nueva : i)));
   }
 
   function removeItem(key) {
@@ -110,6 +116,7 @@ export default function ShipmentItemsInput({ products, items, onChange, defaultP
           <tr>
             <th>Producto</th>
             <th>Precios</th>
+            <th>Precio unit.</th>
             <th>Cant.</th>
             <th>Subtotal</th>
             <th></th>
@@ -118,13 +125,14 @@ export default function ShipmentItemsInput({ products, items, onChange, defaultP
         <tbody>
           {items.length === 0 ? (
             <tr>
-              <td colSpan={5} style={{ color: 'var(--color-text-muted)' }}>Agrega al menos un producto</td>
+              <td colSpan={6} style={{ color: 'var(--color-text-muted)' }}>Agrega al menos un producto</td>
             </tr>
           ) : (
             items.map((item) => (
               <tr key={item.key}>
                 <td data-label="Producto">{item.product_name}</td>
                 <td data-label="Precios"><PriceTypeBadge type={item.price_type} /></td>
+                <td data-label="Precio unit."><PrecioUnitarioEditable item={item} editable={canEditPrice} onChange={cambiarLinea} /></td>
                 <td data-label="Cant.">{item.quantity}</td>
                 <td data-label="Subtotal">{formatCurrency(item.quantity * item.price)}</td>
                 <td data-label="Quitar">

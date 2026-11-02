@@ -3,20 +3,30 @@
 const MIN_MAYOR = 6;
 const MIN_MAYOR_MESSAGE = `Venta al mayor: el mínimo es ${MIN_MAYOR} unidades por producto`;
 
+// Diferencia mínima para considerar que un precio cambió (evita falsos cambios por decimales).
+const TOLERANCIA_PRECIO = 0.005;
+
+// Precio unitario de un producto del catálogo según el tipo de precio (SOL usa el precio tienda).
+function precioDeCatalogo(producto, priceType) {
+  return parseFloat(priceType === 'sol' && producto.precio_tienda !== null && producto.precio_tienda !== undefined ? producto.precio_tienda : producto.price);
+}
+
 // Comisión unitaria de un producto según el tipo de precio de la línea.
 //  - sol / marketplace: comisión guardada en el producto.
-//  - mayor (precio libre): 25% de (precio - costo), sin negativos.
+//  - mayor (precio libre) o precio modificado en esa venta: 25% de (precio de venta - costo), sin negativos.
 // Sin coincidencia en el catálogo (producto libre) o sin costo cargado => null.
 // Si se conoce el id del producto se busca por id (sigue funcionando aunque el producto se haya renombrado);
 // si no, por nombre.
-async function lookupComisionUnitaria(dbClient, productName, priceType = 'marketplace', unitPrice = null, productId = null) {
+async function lookupComisionUnitaria(dbClient, productName, priceType = 'marketplace', unitPrice = null, productId = null, precioModificado = false) {
   if (!productName && !productId) return null;
   const donde = productId ? 'id = $1' : 'LOWER(title) = LOWER($1)';
   const clave = productId || productName;
 
-  if (priceType === 'mayor') {
-    const r = await dbClient.query(`SELECT costo FROM products WHERE ${donde} LIMIT 1`, [clave]);
-    const costo = r.rows[0]?.costo;
+  if (priceType === 'mayor' || precioModificado) {
+    const r = await dbClient.query(`SELECT costo, costo_tienda FROM products WHERE ${donde} LIMIT 1`, [clave]);
+    // Mismo costo que se guarda en la venta (costoDeLineas): costo tienda en SOL, costo en el resto.
+    const p = r.rows[0];
+    const costo = priceType === 'sol' && p?.costo_tienda !== null && p?.costo_tienda !== undefined ? p.costo_tienda : p?.costo;
     if (costo === undefined || costo === null || unitPrice === null) return null;
     return Math.max(0, Math.round((Number(unitPrice) - parseFloat(costo)) * 0.25 * 100) / 100);
   }
@@ -34,7 +44,7 @@ async function lookupComisionUnitaria(dbClient, productName, priceType = 'market
 async function comisionDeLineas(dbClient, lines) {
   let comision = null;
   for (const l of lines) {
-    const unit = await lookupComisionUnitaria(dbClient, l.product_name, l.price_type, l.price, l.product_id || null);
+    const unit = await lookupComisionUnitaria(dbClient, l.product_name, l.price_type, l.price, l.product_id || null, !!l.precio_modificado);
     if (unit !== null) comision = (comision || 0) + unit * l.quantity;
   }
   return comision;
@@ -49,6 +59,36 @@ async function buscarProductoId(dbClient, nombre) {
     [nombre]
   );
   return r.rows[0]?.id ?? null;
+}
+
+// Precio de cada línea frente al catálogo. Solo admin/operador/caja (`puedeEditarPrecio`) pueden vender un producto
+// a un precio distinto del catálogo; esa línea debe venir marcada `precio_modificado` y queda con su
+// `precio_original` (el del catálogo). Un vendedor que mande un precio distinto recibe un error: el precio de
+// sus productos es siempre el del catálogo. No aplica a venta al mayor ni a productos libres (precio libre).
+async function aplicarPrecios(dbClient, rawLines, { puedeEditarPrecio = false } = {}) {
+  const resultado = [];
+  for (const l of rawLines) {
+    const { precio_modificado: _marca, precio_original: _original, ...linea } = l;
+    if (linea.price_type !== 'mayor') {
+      const id = await buscarProductoId(dbClient, linea.product_name);
+      const r = id ? await dbClient.query('SELECT price, precio_tienda FROM products WHERE id = $1', [id]) : { rows: [] };
+      if (r.rows.length > 0) {
+        const catalogo = precioDeCatalogo(r.rows[0], linea.price_type);
+        if (Math.abs(Number(linea.price) - catalogo) > TOLERANCIA_PRECIO) {
+          if (!puedeEditarPrecio) {
+            throw { status: 400, message: `No puedes cambiar el precio de "${linea.product_name}". Recarga la página: el precio vigente es el del catálogo.` };
+          }
+          if (_marca === true) {
+            const original = Number(_original);
+            resultado.push({ ...linea, precio_modificado: true, precio_original: Number.isFinite(original) && original > 0 ? original : catalogo });
+            continue;
+          }
+        }
+      }
+    }
+    resultado.push(linea);
+  }
+  return resultado;
 }
 
 // Agrega product_id a cada línea (por su nombre actual en el catálogo; null si es un producto libre).
@@ -86,8 +126,8 @@ function validateLines(lines) {
 
 // Resume una transacción: totales, nombre a mostrar, tipo de precio (o 'mixto') y comisión.
 // Con más de una línea, las líneas se guardan en `itemsJson`; con una sola, queda como venta simple.
-async function summarizeLines(dbClient, rawLines) {
-  const lines = await adjuntarProductIds(dbClient, rawLines);
+async function summarizeLines(dbClient, rawLines, opciones = {}) {
+  const lines = await adjuntarProductIds(dbClient, await aplicarPrecios(dbClient, rawLines, opciones));
   const productosTotal = lines.reduce((sum, l) => sum + l.quantity * l.price, 0);
   const totalQty = lines.reduce((sum, l) => sum + l.quantity, 0);
   const nombre = lines.length === 1 ? lines[0].product_name : lines.map((l) => `${l.product_name} x${l.quantity}`).join(' + ');
@@ -103,7 +143,10 @@ async function summarizeLines(dbClient, rawLines) {
     productId: lines.length === 1 ? lines[0].product_id : null,
     comision: await comisionDeLineas(dbClient, lines),
     costoTotal: await costoDeLineas(dbClient, lines),
+    // Alguna línea se vendió a un precio distinto del catálogo. precioOriginal (precio unitario) solo en ventas de un producto.
+    precioModificado: lines.some((l) => l.precio_modificado),
+    precioOriginal: lines.length === 1 && lines[0].precio_modificado ? lines[0].precio_original : null,
   };
 }
 
-module.exports = { MIN_MAYOR, MIN_MAYOR_MESSAGE, lookupComisionUnitaria, comisionDeLineas, validateLines, summarizeLines, buscarProductoId, adjuntarProductIds, costoDeLineas };
+module.exports = { MIN_MAYOR, MIN_MAYOR_MESSAGE, TOLERANCIA_PRECIO, precioDeCatalogo, lookupComisionUnitaria, comisionDeLineas, validateLines, summarizeLines, buscarProductoId, adjuntarProductIds, aplicarPrecios, costoDeLineas };

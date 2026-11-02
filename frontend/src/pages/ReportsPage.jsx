@@ -13,6 +13,7 @@ import { cuentaParaComision, comisionContada } from '../utils/comisiones';
 import { fechaRegistro, fechaSalida, formatDia } from '../utils/fechas';
 import MultiSelectFiltro from '../components/MultiSelectFiltro';
 import { normalizarTexto } from '../utils/texto';
+import TagPrecioModificado from '../components/TagPrecioModificado';
 
 // Cada filtro admite varias opciones a la vez (dentro de un filtro basta con cumplir una; entre filtros
 // distintos se deben cumplir todos). `fechas` son rangos { desde, hasta } y días sueltos (desde = hasta).
@@ -641,7 +642,7 @@ export default function ReportsPage() {
                 ) : (
                   displayRows.map((s, i) => (
                     <tr key={`${s.id}-${s._pagoLabel}-${i}`}>
-                      <td data-label="Producto">{s.product_name}</td>
+                      <td data-label="Producto">{s.product_name}{s.precio_modificado && <> <TagPrecioModificado original={s.precio_original} /></>}</td>
                       <td data-label="Cliente">{s.client_name}</td>
                       <td data-label="Vendedor">{s.vendor_name}</td>
                       <td data-label="Tipo">

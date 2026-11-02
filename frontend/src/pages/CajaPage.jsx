@@ -5,6 +5,8 @@ import VentasCajaHoy from '../components/VentasCajaHoy';
 import SearchableSelect from '../components/SearchableSelect';
 import PriceTypeToggle from '../components/PriceTypeToggle';
 import PriceTypeBadge from '../components/PriceTypeBadge';
+import PrecioUnitarioEditable from '../components/PrecioUnitarioEditable';
+import { lineaParaEnviar, precioCatalogoDeGuardada } from '../utils/precioLinea';
 import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
 import { formatCurrency } from '../utils/format';
@@ -47,7 +49,15 @@ export default function CajaPage() {
   const [freeProduct, setFreeProduct] = useState({ name: '', price: '', quantity: 1 });
   const [cart, setCart] = useState(
     retiro?.items
-      ? retiro.items.map((item, idx) => ({ key: `retiro-${idx}`, product_id: item.product_id, product_name: item.product_name, price: Number(item.price), quantity: Number(item.quantity), price_type: item.price_type || retiro.priceType || 'marketplace' }))
+      ? retiro.items.map((item, idx) => {
+        const price_type = item.price_type || retiro.priceType || 'marketplace';
+        const precio_catalogo = precioCatalogoDeGuardada({ ...item, price_type });
+        return {
+          key: `retiro-${idx}`, product_id: item.product_id, product_name: item.product_name, price: Number(item.price), quantity: Number(item.quantity), price_type,
+          ...(precio_catalogo !== null ? { precio_catalogo } : {}),
+          ...(item.precio_modificado ? { precio_modificado: true } : {}),
+        };
+      })
       : []
   );
   // Cambia cada vez que se registra una venta, para refrescar la lista de ventas de hoy.
@@ -103,7 +113,10 @@ export default function CajaPage() {
     if (priceType === 'mayor' && (Number(selectedQty) < MIN_MAYOR || !(Number(mayorPrice) > 0))) return;
     setCart((prev) => [
       ...prev,
-      { key: Date.now(), product_id: product.id, product_name: product.title, price: priceType === 'mayor' ? Number(mayorPrice) : productPrice(product, priceType), quantity: Number(selectedQty), price_type: priceType },
+      {
+        key: Date.now(), product_id: product.id, product_name: product.title, price: priceType === 'mayor' ? Number(mayorPrice) : productPrice(product, priceType), quantity: Number(selectedQty), price_type: priceType,
+        ...(priceType === 'mayor' ? {} : { precio_catalogo: productPrice(product, priceType) }),
+      },
     ]);
     setSelectedProductId('');
     setSelectedQty(priceType === 'mayor' ? MIN_MAYOR : 1);
@@ -116,6 +129,10 @@ export default function CajaPage() {
   const canAddToCart = (isEnvioPrepagado ? cart.length < 1 : true) && mayorOk && (
     selectedProductId === '__free__' ? freeProduct.name && freeProduct.price : !!selectedProductId
   );
+
+  function cambiarLinea(nueva) {
+    setCart((prev) => prev.map((item) => (item.key === nueva.key ? nueva : item)));
+  }
 
   function removeFromCart(key) {
     setCart((prev) => prev.filter((item) => item.key !== key));
@@ -140,7 +157,7 @@ export default function CajaPage() {
     const payload = {
       tipo,
       vendor_id: Number(vendorId),
-      items: cart.map(({ product_name, price, quantity, price_type }) => ({ product_name, price, quantity, price_type })),
+      items: cart.map(lineaParaEnviar).map(({ product_name, price, quantity, price_type, precio_modificado, precio_original }) => ({ product_name, price, quantity, price_type, precio_modificado, precio_original })),
       payment_method: paymentMethod,
       transferencia_verificada: paymentMethod === 'transferencia' ? transferenciaVerificada : false,
       notes,
@@ -415,6 +432,7 @@ export default function CajaPage() {
             <thead>
               <tr>
                 <th>Producto</th>
+                <th>Precio unit.</th>
                 <th>Cant.</th>
                 <th>Subtotal</th>
                 <th></th>
@@ -423,12 +441,13 @@ export default function CajaPage() {
             <tbody>
               {cart.length === 0 ? (
                 <tr>
-                  <td colSpan={4} style={{ color: 'var(--color-text-muted)' }}>Carrito vacío</td>
+                  <td colSpan={5} style={{ color: 'var(--color-text-muted)' }}>Carrito vacío</td>
                 </tr>
               ) : (
                 cart.map((item) => (
                   <tr key={item.key}>
                     <td data-label="Producto">{item.product_name} <PriceTypeBadge type={item.price_type} /></td>
+                    <td data-label="Precio unit."><PrecioUnitarioEditable item={item} editable onChange={cambiarLinea} /></td>
                     <td data-label="Cant.">{item.quantity}</td>
                     <td data-label="Subtotal">{formatCurrency(item.quantity * item.price)}</td>
                     <td data-label="Quitar">

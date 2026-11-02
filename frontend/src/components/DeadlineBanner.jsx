@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import useFetch from '../hooks/useFetch';
+import useIsMobile from '../hooks/useIsMobile';
 
 const DIA_LABEL = { 0: 'domingo', 6: 'sábado' };
 
@@ -29,6 +30,7 @@ function getRemaining(horaLimite) {
 
 export default function DeadlineBanner() {
   const { data } = useFetch('/api/settings');
+  const movil = useIsMobile();
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -46,10 +48,8 @@ export default function DeadlineBanner() {
 
   return (
     <div
-      className="card"
+      className="card deadline-banner"
       style={{
-        padding: '14px 20px',
-        marginBottom: 24,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -59,12 +59,14 @@ export default function DeadlineBanner() {
       }}
     >
       <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-        Hora límite de envíos{diaLabel ? ` (${diaLabel})` : ''}: {horaLimite}
+        {movil ? `Hora límite ${horaLimite}` : `Hora límite de envíos${diaLabel ? ` (${diaLabel})` : ''}: ${horaLimite}`}
       </span>
       <span style={{ fontSize: 14, fontWeight: 700, color: remaining.closed ? 'var(--color-danger)' : 'var(--color-text)' }}>
         {remaining.closed
           ? 'Envíos cerrados por hoy'
-          : `Quedan ${remaining.hours}h ${remaining.minutes}m para el último envío del día`}
+          : movil
+            ? `quedan ${remaining.hours}h ${remaining.minutes}m`
+            : `Quedan ${remaining.hours}h ${remaining.minutes}m para el último envío del día`}
       </span>
     </div>
   );

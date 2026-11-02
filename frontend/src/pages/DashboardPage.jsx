@@ -14,8 +14,8 @@ export default function DashboardPage() {
 
   return (
     <Layout>
-      <h1 style={{ fontSize: 22, marginBottom: 4 }}>Hola, {user?.name}</h1>
-      <p style={{ color: 'var(--color-text-muted)', marginTop: 0, marginBottom: 28 }}>
+      <h1 className="dash-titulo">Hola, {user?.name}</h1>
+      <p className="dash-subtitulo">
         Resumen de tu actividad
       </p>
 

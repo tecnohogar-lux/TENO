@@ -1,23 +1,12 @@
-export default function MetricsCard({ label, value, subtext }) {
+// Tarjeta de métrica del Dashboard. Los estilos están en globals.css (.metric-card) para compactarla en teléfono.
+// `ancho`: en teléfono ocupa las dos columnas y va primero (para métricas con texto largo).
+// `fila`: en teléfono ocupa las dos columnas en su lugar (para no dejar un hueco cuando queda una tarjeta sola).
+export default function MetricsCard({ label, value, subtext, ancho = false, fila = false }) {
   return (
-    <div
-      className="card"
-      style={{
-        padding: '18px 20px',
-        flex: '1 1 200px',
-        minWidth: 180,
-        position: 'relative',
-        overflow: 'hidden',
-        borderLeft: '4px solid var(--color-accent)',
-      }}
-    >
-      <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-text-muted)', marginBottom: 10 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--color-text)', letterSpacing: '-0.01em' }}>{value}</div>
-      {subtext && (
-        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 6 }}>{subtext}</div>
-      )}
+    <div className={`card metric-card${ancho ? ' metric-card--ancho' : ''}${fila ? ' metric-card--fila' : ''}`}>
+      <div className="metric-card__label">{label}</div>
+      <div className="metric-card__value">{value}</div>
+      {subtext && <div className="metric-card__sub">{subtext}</div>}
     </div>
   );
 }

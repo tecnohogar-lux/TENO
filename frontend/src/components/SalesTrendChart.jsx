@@ -10,8 +10,8 @@ export default function SalesTrendChart({ data }) {
   const barWidth = width / data.length - barGap;
 
   return (
-    <div className="card" style={{ padding: 20, marginBottom: 32 }}>
-      <h3 style={{ margin: '0 0 16px', fontSize: 15 }}>Ventas de los últimos 14 días</h3>
+    <div className="card trend-card">
+      <h3 className="dash-seccion__titulo">Ventas de los últimos 14 días</h3>
       <svg viewBox={`0 0 ${width} ${height + 24}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
         {data.map((d, i) => {
           const barHeight = (d.total / max) * height;

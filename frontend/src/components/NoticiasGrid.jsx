@@ -99,7 +99,7 @@ function NoticiaCard({ n, open, onToggle, canManage, onEdit, onDelete }) {
 
 // Tarjetas de noticias. En computador se abren al pasar el mouse; en teléfono (y con
 // clic/Enter en cualquier pantalla) al tocarlas. Solo una abierta a la vez; tocar fuera la cierra.
-export default function NoticiasGrid({ noticias, canManage = false, onEdit, onDelete }) {
+export default function NoticiasGrid({ noticias, canManage = false, onEdit, onDelete, compacto = false }) {
   const [openId, setOpenId] = useState(null);
 
   useEffect(() => {
@@ -112,7 +112,7 @@ export default function NoticiasGrid({ noticias, canManage = false, onEdit, onDe
   }, [openId]);
 
   return (
-    <div className="noticias-grid">
+    <div className={`noticias-grid${compacto ? ' noticias-grid--compacto' : ''}`}>
       {noticias.map((n) => (
         <NoticiaCard
           key={n.id}

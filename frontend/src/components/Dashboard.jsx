@@ -1,8 +1,10 @@
+import { Link } from 'react-router-dom';
 import MetricsCard from './MetricsCard';
+import useIsMobile from '../hooks/useIsMobile';
 import Badge from './Badge';
 import SalesTrendChart from './SalesTrendChart';
 import { formatCurrency, formatDate } from '../utils/format';
-import { SALE_STATUS_LABELS, saleStatusLabel, deliveryStatusLabel, isSinCobro } from '../utils/labels';
+import { SALE_STATUS_LABELS, DELIVERY_STATUS_LABELS, saleStatusLabel, deliveryStatusLabel, isSinCobro } from '../utils/labels';
 
 // Desglose del "Monto generado hoy": de dónde salió el dinero del día.
 function montoHoySubtext(ventasHoy) {
@@ -16,9 +18,9 @@ function ComparisonCard({ comparison, period, onPeriodChange }) {
   const up = comparison.variacion_pct >= 0;
   const label = period === 'month' ? 'mes anterior' : 'semana anterior';
   return (
-    <div className="card" style={{ padding: 20, flex: '1 1 220px', minWidth: 200 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <div style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Ventas vs. {label}</div>
+    <div className="card comparison-card">
+      <div className="comparison-card__head">
+        <div className="comparison-card__label">Ventas vs. {label}</div>
         {onPeriodChange && (
           <div style={{ display: 'flex', gap: 4 }}>
             <button
@@ -38,26 +40,31 @@ function ComparisonCard({ comparison, period, onPeriodChange }) {
           </div>
         )}
       </div>
-      <div style={{ fontSize: 28, fontWeight: 600, color: 'var(--color-text)' }}>{formatCurrency(comparison.semana_actual.total)}</div>
-      <div style={{ fontSize: 12, marginTop: 6, color: up ? 'var(--color-success)' : 'var(--color-danger)' }}>
+      <div className="comparison-card__value">{formatCurrency(comparison.semana_actual.total)}</div>
+      <div className="comparison-card__delta" style={{ color: up ? 'var(--color-success)' : 'var(--color-danger)' }}>
         {up ? '+' : ''}{comparison.variacion_pct}% vs {formatCurrency(comparison.semana_anterior.total)}
       </div>
     </div>
   );
 }
 
+// En teléfono se muestran las 5 últimas ventas (cada una ocupa un bloque compacto) y un enlace al resto.
+const ULTIMAS_VENTAS_MOVIL = 5;
+
 function VendedorDashboard({ data, comparison, period, onPeriodChange }) {
+  const movil = useIsMobile();
+  const ventas = movil ? data.ultimas_ventas.slice(0, ULTIMAS_VENTAS_MOVIL) : data.ultimas_ventas;
   return (
     <>
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 32 }}>
-        <MetricsCard label="Ventas hoy" value={data.ventas_hoy.cantidad} />
+      <div className="dash-metricas">
+        <MetricsCard fila label="Ventas hoy" value={data.ventas_hoy.cantidad} />
         <ComparisonCard comparison={comparison} period={period} onPeriodChange={onPeriodChange} />
       </div>
 
       <SalesTrendChart data={data.tendencia_14_dias} />
 
-      <div className="card" style={{ padding: 20 }}>
-        <h3 style={{ margin: '0 0 16px', fontSize: 15 }}>Últimas ventas</h3>
+      <div className="card dash-tabla">
+        <h3 className="dash-seccion__titulo">Últimas ventas</h3>
         <table className="responsive-stack">
           <thead>
             <tr>
@@ -69,12 +76,12 @@ function VendedorDashboard({ data, comparison, period, onPeriodChange }) {
             </tr>
           </thead>
           <tbody>
-            {data.ultimas_ventas.length === 0 ? (
+            {ventas.length === 0 ? (
               <tr>
                 <td colSpan={5} style={{ color: 'var(--color-text-muted)' }}>Sin ventas registradas</td>
               </tr>
             ) : (
-              data.ultimas_ventas.map((s) => (
+              ventas.map((s) => (
                 <tr key={s.id}>
                   <td data-label="Producto">{s.product_name}</td>
                   <td data-label="Cliente">{s.client_name}</td>
@@ -86,6 +93,11 @@ function VendedorDashboard({ data, comparison, period, onPeriodChange }) {
             )}
           </tbody>
         </table>
+        {movil && data.ultimas_ventas.length > ULTIMAS_VENTAS_MOVIL && (
+          <div style={{ textAlign: 'center', marginTop: 8 }}>
+            <Link to="/sales" className="btn btn-secondary">Ver todas</Link>
+          </div>
+        )}
       </div>
     </>
   );
@@ -93,9 +105,9 @@ function VendedorDashboard({ data, comparison, period, onPeriodChange }) {
 
 function VentasPosSection({ ventasPos }) {
   return (
-    <div style={{ marginBottom: 32 }}>
-      <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>Ventas POS (tienda)</h3>
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+    <div className="dash-seccion">
+      <h3 className="dash-seccion__titulo">Ventas POS (tienda)</h3>
+      <div className="dash-metricas dash-metricas--seccion">
         <MetricsCard label="Ventas hoy" value={ventasPos.cantidad} />
         <MetricsCard label="Monto generado hoy" value={formatCurrency(ventasPos.total)} />
       </div>
@@ -103,12 +115,15 @@ function VentasPosSection({ ventasPos }) {
   );
 }
 
+// Solo estados reales del paquete: "solo envío", "solo entrega" y "cambio de producto" son tipos de envío y
+// nunca son un estado (aparecían siempre en cero y sin nombre).
 function EnviosPorEstadoSection({ rows }) {
+  const estados = rows.filter((e) => DELIVERY_STATUS_LABELS[e.estado]);
   return (
-    <div style={{ marginBottom: 32 }}>
-      <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>Envíos por estado</h3>
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        {rows.map((e) => (
+    <div className="dash-seccion">
+      <h3 className="dash-seccion__titulo">Envíos por estado</h3>
+      <div className="dash-metricas dash-metricas--estados dash-metricas--seccion">
+        {estados.map((e) => (
           <MetricsCard key={e.estado} label={deliveryStatusLabel(e.estado)} value={e.cantidad} />
         ))}
       </div>
@@ -117,23 +132,22 @@ function EnviosPorEstadoSection({ rows }) {
 }
 
 function OperadorDashboard({ data, comparison, period, onPeriodChange }) {
+  const hayEfectivo = data.efectivo_caja !== null && data.efectivo_caja !== undefined;
   return (
     <>
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 32 }}>
+      <div className="dash-metricas">
         <MetricsCard label="Ventas hoy" value={data.ventas_hoy.cantidad} />
-        <MetricsCard label="Monto generado hoy" value={formatCurrency(data.ventas_hoy.total)} subtext={montoHoySubtext(data.ventas_hoy)} />
+        <MetricsCard ancho label="Monto generado hoy" value={formatCurrency(data.ventas_hoy.total)} subtext={montoHoySubtext(data.ventas_hoy)} />
         <MetricsCard label="Entregas pendientes" value={data.entregas_pendientes} />
-        <MetricsCard label="Ventas entregadas (ayer)" value={data.ventas_entregadas_ayer} />
-        {data.efectivo_caja !== null && data.efectivo_caja !== undefined && (
-          <MetricsCard label="Efectivo en caja" value={formatCurrency(data.efectivo_caja)} />
-        )}
+        <MetricsCard fila={!hayEfectivo} label="Ventas entregadas (ayer)" value={data.ventas_entregadas_ayer} />
+        {hayEfectivo && <MetricsCard label="Efectivo en caja" value={formatCurrency(data.efectivo_caja)} />}
         <ComparisonCard comparison={comparison} period={period} onPeriodChange={onPeriodChange} />
       </div>
 
       <SalesTrendChart data={data.tendencia_14_dias} />
 
-      <div className="card" style={{ padding: 20, marginBottom: 20 }}>
-        <h3 style={{ margin: '0 0 16px', fontSize: 15 }}>Top productos del mes</h3>
+      <div className="card dash-tabla">
+        <h3 className="dash-seccion__titulo">Top productos del mes</h3>
         <table className="responsive-stack">
           <thead>
             <tr>
@@ -163,14 +177,14 @@ function OperadorDashboard({ data, comparison, period, onPeriodChange }) {
 function AdminDashboard({ data, comparison, period, onPeriodChange }) {
   return (
     <>
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 32 }}>
+      <div className="dash-metricas">
         <MetricsCard label="Ventas hoy" value={data.ventas_hoy.cantidad} />
-        <MetricsCard label="Monto generado hoy" value={formatCurrency(data.ventas_hoy.total)} subtext={montoHoySubtext(data.ventas_hoy)} />
+        <MetricsCard ancho label="Monto generado hoy" value={formatCurrency(data.ventas_hoy.total)} subtext={montoHoySubtext(data.ventas_hoy)} />
         <MetricsCard label="Ventas del mes" value={formatCurrency(data.ventas_mes.total)} />
         <MetricsCard label="Entregas pendientes" value={data.entregas_pendientes} />
         <MetricsCard label="Ventas entregadas (ayer)" value={data.ventas_entregadas_ayer} />
         {data.efectivo_caja !== null && data.efectivo_caja !== undefined && (
-          <MetricsCard label="Efectivo en caja" value={formatCurrency(data.efectivo_caja)} />
+          <MetricsCard fila label="Efectivo en caja" value={formatCurrency(data.efectivo_caja)} />
         )}
         <ComparisonCard comparison={comparison} period={period} onPeriodChange={onPeriodChange} />
       </div>

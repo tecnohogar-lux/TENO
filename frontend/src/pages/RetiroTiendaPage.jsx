@@ -1,3 +1,5 @@
+import BotonCopiarEtiqueta from '../components/BotonCopiarEtiqueta';
+import { textoEtiquetaRetiro } from '../utils/etiquetaTexto';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
@@ -338,13 +340,13 @@ export default function RetiroTiendaPage() {
                 <th>Estado</th>
                 <th>Fecha registro</th>
                 <th>Fecha retiro</th>
-                {canManage && <th>Acciones</th>}
+                <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {data.retiros.length === 0 ? (
                 <tr>
-                  <td colSpan={canManage ? 9 : 8} style={{ color: 'var(--color-text-muted)' }}>Sin retiros en tienda registrados</td>
+                  <td colSpan={canManage ? 9 : 9} style={{ color: 'var(--color-text-muted)' }}>Sin retiros en tienda registrados</td>
                 </tr>
               ) : (
                 data.retiros.map((r) => (
@@ -371,9 +373,11 @@ export default function RetiroTiendaPage() {
                     </td>
                     <td data-label="Fecha registro">{formatDate(r.created_at)}</td>
                     <td data-label="Fecha retiro">{formatDate(r.delivered_at)}</td>
-                    {canManage && (
-                      <td data-label="Acciones">
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <td data-label="Acciones">
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        <BotonCopiarEtiqueta obtenerTexto={() => textoEtiquetaRetiro(r)} />
+                        {canManage && (
+                          <>
                           {r.status === 'pendiente' && (
                             <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => procesarEnCaja(r)}>
                               Entregado
@@ -389,9 +393,10 @@ export default function RetiroTiendaPage() {
                           >
                             Eliminar
                           </button>
-                        </div>
-                      </td>
-                    )}
+                          </>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}

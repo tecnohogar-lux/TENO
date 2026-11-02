@@ -1,3 +1,5 @@
+import BotonCopiarEtiqueta from '../components/BotonCopiarEtiqueta';
+import { textoEtiquetaVenta } from '../utils/etiquetaTexto';
 import { useState } from 'react';
 import Layout from '../components/Layout';
 import Badge from '../components/Badge';
@@ -273,7 +275,10 @@ export default function SalesPage() {
                   {detailSale.client_name} · {detailSale.vendor_name} · Creada: {formatDate(fechaRegistro(detailSale))} · {['ENVIO', 'ENVIO_PREPAGADO', 'ENVIO_REGION'].includes(detailSale.tipo_venta) ? 'En camino' : 'Retirada'}: {formatDate(fechaSalida(detailSale))}
                 </div>
               </div>
-              <Badge label={tipoVentaLabel(detailSale.tipo_venta)} color={TIPO_VENTA_LABELS[detailSale.tipo_venta]?.color} />
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+                <Badge label={tipoVentaLabel(detailSale.tipo_venta)} color={TIPO_VENTA_LABELS[detailSale.tipo_venta]?.color} />
+                <BotonCopiarEtiqueta obtenerTexto={() => textoEtiquetaVenta(detailSale)} />
+              </div>
             </div>
 
             <div style={{ overflowX: 'auto' }}>

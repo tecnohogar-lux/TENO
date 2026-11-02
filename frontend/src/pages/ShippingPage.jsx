@@ -1,3 +1,5 @@
+import BotonCopiarEtiqueta from '../components/BotonCopiarEtiqueta';
+import { textoEtiquetaVenta } from '../utils/etiquetaTexto';
 import { lineaParaEnviar } from '../utils/precioLinea';
 import { useMemo, useState } from 'react';
 import Layout from '../components/Layout';
@@ -506,13 +508,13 @@ export default function ShippingPage() {
                 <th>Estado</th>
                 <th>Fecha creación</th>
                 <th>Fecha en camino</th>
-                {canManage && <th>Acciones</th>}
+                <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {shipments.length === 0 ? (
                 <tr>
-                  <td colSpan={canManage ? 13 : 11} style={{ color: 'var(--color-text-muted)' }}>Sin envíos que coincidan con el filtro</td>
+                  <td colSpan={canManage ? 13 : 12} style={{ color: 'var(--color-text-muted)' }}>Sin envíos que coincidan con el filtro</td>
                 </tr>
               ) : (
                 shipments.map((s) => (
@@ -604,9 +606,11 @@ export default function ShippingPage() {
                     </td>
                     <td data-label="Fecha creación">{formatDate(s.created_at)}</td>
                     <td data-label="Fecha en camino">{formatDate(s.en_camino_at)}</td>
-                    {canManage && (
-                      <td data-label="Acciones">
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <td data-label="Acciones">
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        <BotonCopiarEtiqueta obtenerTexto={() => textoEtiquetaVenta(s)} />
+                        {canManage && (
+                          <>
                           <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => openEdit(s)}>
                             Editar
                           </button>
@@ -622,9 +626,10 @@ export default function ShippingPage() {
                               Eliminar
                             </button>
                           )}
-                        </div>
-                      </td>
-                    )}
+                          </>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}

@@ -58,6 +58,8 @@ export default function LabelCard({ sale }) {
           <div>Cliente: {sale.client_name}</div>
           <div>Tel: {sale.phone || '-'}</div>
           <div>Dir: {sale.address || '-'}</div>
+          {/* Los envíos a regiones (Blue Express) llevan el correo del cliente en la etiqueta. */}
+          {sale.tipo_venta === 'ENVIO_REGION' && <div>Email: {sale.client_email || '-'}</div>}
           {sale.notes && <div>Notas: {sale.notes}</div>}
         </div>
         <div style={{ textAlign: 'center', flexShrink: 0, width: 90 }}>

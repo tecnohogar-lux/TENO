@@ -4,7 +4,7 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
-const { MIN_MAYOR, MIN_MAYOR_MESSAGE, lookupComisionUnitaria, precioDeCatalogo, validateLines, summarizeLines, buscarProductoId, costoDeLineas } = require('../utils/saleLines');
+const { MIN_MAYOR, MIN_MAYOR_MESSAGE, lookupComisionUnitaria, porcentajeComisionVendedor, fraccionComision, precioDeCatalogo, validateLines, summarizeLines, buscarProductoId, costoDeLineas } = require('../utils/saleLines');
 const { buildQrValue } = require('../utils/qrCode');
 const { esSinCobro, conCobroSql, aplicarTipoEnvio } = require('../utils/sinCobro');
 const { PAYMENT_METHODS, validatePaymentBreakdown, normalizePaymentBreakdown, formaPagoCondition } = require('../utils/paymentBreakdown');
@@ -37,9 +37,10 @@ const NUEVO_ESTADO_VENTA_SQL = `COALESCE($2::text, CASE
   WHEN $1::text NOT IN ('entregado', 'cancelado') AND (status = 'completado' OR (status = 'cancelado' AND delivery_status = 'cancelado')) THEN 'pendiente'
   ELSE status END)`;
 
-// Comisión con el precio del catálogo (la que tiene un producto vendido sin cambiar su precio) para `cantidad` unidades.
-async function comisionCatalogo(db, nombre, priceType, productId, cantidad) {
-  const unitaria = await lookupComisionUnitaria(db, nombre, priceType, null, productId);
+// Comisión con el precio del catálogo (la que tiene un producto vendido sin cambiar su precio) para `cantidad` unidades,
+// con el porcentaje del vendedor (null = estándar).
+async function comisionCatalogo(db, nombre, priceType, productId, cantidad, porcentaje = null) {
+  const unitaria = await lookupComisionUnitaria(db, nombre, priceType, null, productId, false, porcentaje);
   return unitaria !== null ? unitaria * cantidad : null;
 }
 
@@ -627,9 +628,11 @@ router.post('/', authenticateToken, async (req, res) => {
     let precioModificado = false;
     let precioOriginal = null;
     let total;
+    // Porcentaje de comisión del vendedor (null = estándar, 25%).
+    const porcentajeComision = await porcentajeComisionVendedor(dbClient, vendor_id);
     if (lines) {
       // Solo admin/operador/caja pueden vender un producto a un precio distinto del catálogo.
-      const resumen = await summarizeLines(dbClient, lines, { puedeEditarPrecio: user.role !== 'vendedor' });
+      const resumen = await summarizeLines(dbClient, lines, { puedeEditarPrecio: user.role !== 'vendedor', porcentajeComision });
       const envio = Number(precio_envio) || 0;
       total = resumen.productosTotal + envio;
       precio_producto = resumen.productosTotal;
@@ -648,7 +651,7 @@ router.post('/', authenticateToken, async (req, res) => {
     } else {
       total = quantity * price;
       productId = await buscarProductoId(dbClient, product_name);
-      const comisionUnitaria = await lookupComisionUnitaria(dbClient, product_name, price_type, null, productId);
+      const comisionUnitaria = await lookupComisionUnitaria(dbClient, product_name, price_type, null, productId, false, porcentajeComision);
       comision = comisionUnitaria !== null ? comisionUnitaria * quantity : null;
       costoTotal = await costoDeLineas(dbClient, [{ product_id: productId, quantity, price_type }]);
     }
@@ -921,6 +924,8 @@ router.put('/:id', authenticateToken, async (req, res) => {
     // guardado y solo se actúa si de verdad cambió.
     let comision = sale.comision;
     let costoTotal = sale.costo_total;
+    // Porcentaje de comisión del vendedor de la venta (el nuevo si se reasigna); null = estándar, 25%.
+    const porcentajeComision = await porcentajeComisionVendedor(pool, vendor_id || sale.vendor_id);
     const cambiaProducto = product_name !== undefined && product_name !== sale.product_name;
     const nuevoProductId = cambiaProducto ? await buscarProductoId(pool, product_name) : (sale.product_id || null);
     const cambiaCantidad = newQuantity !== Number(sale.quantity);
@@ -931,14 +936,14 @@ router.put('/:id', authenticateToken, async (req, res) => {
       }
       const unitProducto = productoNuevoTotal !== null ? productoNuevoTotal / newQuantity : (sale.precio_producto !== null && sale.precio_producto !== undefined ? Number(sale.precio_producto) / newQuantity : newPrice);
       if (cambiaProducto) {
-        const comisionUnitaria = await lookupComisionUnitaria(pool, product_name, sale.price_type, unitProducto, nuevoProductId);
+        const comisionUnitaria = await lookupComisionUnitaria(pool, product_name, sale.price_type, unitProducto, nuevoProductId, false, porcentajeComision);
         comision = comisionUnitaria !== null ? comisionUnitaria * newQuantity : null;
         costoTotal = await costoDeLineas(pool, [{ product_id: nuevoProductId, quantity: newQuantity, price_type: sale.price_type }]);
       } else {
         const porUnidadCosto = sale.costo_total !== null && sale.costo_total !== undefined && Number(sale.quantity) > 0 ? Number(sale.costo_total) / Number(sale.quantity) : null;
         costoTotal = porUnidadCosto !== null ? Math.round(porUnidadCosto * newQuantity * 100) / 100 : null;
         if (sale.price_type === 'mayor' && porUnidadCosto !== null) {
-          comision = Math.max(0, Math.round((unitProducto - porUnidadCosto) * 0.25 * 100) / 100) * newQuantity;
+          comision = Math.max(0, Math.round((unitProducto - porUnidadCosto) * fraccionComision(porcentajeComision) * 100) / 100) * newQuantity;
         } else if (sale.comision !== null && sale.comision !== undefined && Number(sale.quantity) > 0) {
           comision = Math.round((Number(sale.comision) / Number(sale.quantity)) * newQuantity * 100) / 100;
         } else {
@@ -964,20 +969,20 @@ router.put('/:id', authenticateToken, async (req, res) => {
       precioOriginal = precioModificado ? Math.round(original * 100) / 100 : null;
       if (cambiaProducto) {
         // Otro producto: se compara con el catálogo del producto nuevo.
-        const lookup = await lookupComisionUnitaria(pool, product_name, sale.price_type, unitNuevo, nuevoProductId, true);
+        const lookup = await lookupComisionUnitaria(pool, product_name, sale.price_type, unitNuevo, nuevoProductId, true, porcentajeComision);
         const catalogo = nuevoProductId ? (await pool.query('SELECT price, precio_tienda FROM products WHERE id = $1', [nuevoProductId])).rows[0] : null;
         precioModificado = !!catalogo && Math.abs(unitNuevo - precioDeCatalogo(catalogo, sale.price_type)) > 0.01;
         precioOriginal = precioModificado ? precioDeCatalogo(catalogo, sale.price_type) : null;
         comision = precioModificado
           ? (lookup !== null ? lookup * newQuantity : null)
-          : await comisionCatalogo(pool, product_name, sale.price_type, nuevoProductId, newQuantity);
+          : await comisionCatalogo(pool, product_name, sale.price_type, nuevoProductId, newQuantity, porcentajeComision);
       } else if (precioModificado) {
         const costoUnidad = sale.costo_total !== null && sale.costo_total !== undefined && Number(sale.quantity) > 0 ? Number(sale.costo_total) / Number(sale.quantity) : null;
         comision = costoUnidad !== null
-          ? Math.max(0, Math.round((unitNuevo - costoUnidad) * 0.25 * 100) / 100) * newQuantity
+          ? Math.max(0, Math.round((unitNuevo - costoUnidad) * fraccionComision(porcentajeComision) * 100) / 100) * newQuantity
           : null;
       } else {
-        comision = await comisionCatalogo(pool, sale.product_name, sale.price_type, sale.product_id || null, newQuantity);
+        comision = await comisionCatalogo(pool, sale.product_name, sale.price_type, sale.product_id || null, newQuantity, porcentajeComision);
       }
     }
 

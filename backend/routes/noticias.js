@@ -4,6 +4,7 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
+const { condicionBusqueda } = require('../utils/busqueda');
 
 const requireManage = (message) => requireRole(['admin', 'operador', 'caja'], message);
 
@@ -31,7 +32,8 @@ async function limpiarNoticiasViejas() {
 }
 
 // ============================================
-// GET - Listar noticias (todos los roles). Soporta ?limit= (por defecto 10)
+// GET - Listar noticias (todos los roles). Soporta ?limit= (por defecto 10) y ?search=
+// (sin distinguir mayúsculas ni tildes: texto, título del producto, cambios y autor).
 // ============================================
 router.get('/', authenticateToken, async (req, res) => {
   try {
@@ -39,16 +41,26 @@ router.get('/', authenticateToken, async (req, res) => {
 
     const limit = Math.min(parseInt(req.query.limit) || 10, 200);
 
-    const countResult = await pool.query('SELECT COUNT(*) as count FROM noticias');
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+    const params = [];
+    const where = search
+      ? `WHERE ${condicionBusqueda(['n.texto', `COALESCE(n.datos->>'titulo', '')`, `COALESCE((n.datos->'cambios')::text, '')`, `COALESCE(u.name, '')`], search, params)}`
+      : '';
+
+    const countResult = await pool.query(
+      `SELECT COUNT(*) as count FROM noticias n LEFT JOIN users u ON n.created_by = u.id ${where}`,
+      params
+    );
     const total = parseInt(countResult.rows[0].count);
 
     const result = await pool.query(
       `SELECT n.*, u.name as created_by_name
        FROM noticias n
        LEFT JOIN users u ON n.created_by = u.id
+       ${where}
        ORDER BY n.created_at DESC
-       LIMIT $1`,
-      [limit]
+       LIMIT $${params.length + 1}`,
+      [...params, limit]
     );
 
     res.json({ total, limit, noticias: result.rows });

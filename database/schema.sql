@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
   role VARCHAR(50) NOT NULL CHECK (role IN ('vendedor', 'operador', 'admin', 'escaneo', 'caja')),
   is_active BOOLEAN DEFAULT true,
   marketplace_accounts TEXT,
+  comision_porcentaje DECIMAL(5, 2) CONSTRAINT users_comision_porcentaje_rango CHECK (comision_porcentaje IS NULL OR (comision_porcentaje >= 0 AND comision_porcentaje <= 100)),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

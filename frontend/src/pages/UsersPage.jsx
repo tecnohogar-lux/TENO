@@ -4,8 +4,19 @@ import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
 import useAuth from '../hooks/useAuth';
 import useConfirm from '../hooks/useConfirm';
+import { formatCurrency } from '../utils/format';
 
 const emptyForm = { name: '', email: '', password: '', role: 'vendedor', marketplace_accounts: '' };
+
+// Porcentaje de comisión que tiene un vendedor mientras un admin no le fije otro.
+const COMISION_ESTANDAR = 25;
+// Producto de ejemplo para mostrar el cálculo en el diálogo de comisión.
+const EJEMPLO_PRECIO = 10000;
+const EJEMPLO_COSTO = 6000;
+
+function porcentajeDe(u) {
+  return u.comision_porcentaje !== null && u.comision_porcentaje !== undefined ? Number(u.comision_porcentaje) : COMISION_ESTANDAR;
+}
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
@@ -17,6 +28,32 @@ export default function UsersPage() {
   const [editingUser, setEditingUser] = useState(null);
   const [editForm, setEditForm] = useState(null);
   const [deleteError, setDeleteError] = useState('');
+  const [comisionUser, setComisionUser] = useState(null);
+  const [comisionValor, setComisionValor] = useState('');
+  const [comisionError, setComisionError] = useState('');
+  const esAdmin = currentUser.role === 'admin';
+
+  function openComision(u) {
+    setComisionUser(u);
+    setComisionValor(String(porcentajeDe(u)));
+    setComisionError('');
+  }
+
+  async function handleComisionSubmit(e) {
+    e.preventDefault();
+    const porcentaje = Number(comisionValor);
+    if (comisionValor.trim() === '' || !Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje > 100) {
+      setComisionError('Ingresa un porcentaje entre 0 y 100');
+      return;
+    }
+    const result = await put(`/api/users/${comisionUser.id}/comision`, { porcentaje });
+    if (result.success) {
+      setComisionUser(null);
+      refetch();
+    } else {
+      setComisionError(result.error || 'No se pudo guardar la comisión');
+    }
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -132,13 +169,14 @@ export default function UsersPage() {
                 <th>Rol</th>
                 <th>Estado</th>
                 <th>Cuentas de Marketplace</th>
+                {esAdmin && <th>Comisión</th>}
                 <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {data.users.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ color: 'var(--color-text-muted)' }}>Sin usuarios registrados</td>
+                  <td colSpan={esAdmin ? 7 : 6} style={{ color: 'var(--color-text-muted)' }}>Sin usuarios registrados</td>
                 </tr>
               ) : (
                 data.users.map((u) => (
@@ -148,8 +186,22 @@ export default function UsersPage() {
                     <td data-label="Rol">{u.role}</td>
                     <td data-label="Estado">{u.is_active ? 'Activo' : 'Inactivo'}</td>
                     <td data-label="Marketplace">{u.marketplace_accounts || '-'}</td>
+                    {esAdmin && (
+                      <td data-label="Comisión">
+                        {u.role === 'vendedor' ? (
+                          <span style={porcentajeDe(u) !== COMISION_ESTANDAR ? { fontWeight: 600, color: 'var(--color-primary)' } : undefined}>
+                            {porcentajeDe(u)}%
+                          </span>
+                        ) : '-'}
+                      </td>
+                    )}
                     <td data-label="Acciones">
-                      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                        {esAdmin && u.role === 'vendedor' && (
+                          <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => openComision(u)}>
+                            Editar comisión
+                          </button>
+                        )}
                         <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => openEdit(u)}>
                           Editar
                         </button>
@@ -222,6 +274,66 @@ export default function UsersPage() {
           </form>
         </div>
       )}
+
+      {comisionUser && (() => {
+        const pct = Number(comisionValor);
+        const valido = comisionValor.trim() !== '' && Number.isFinite(pct) && pct >= 0 && pct <= 100;
+        const utilidad = EJEMPLO_PRECIO - EJEMPLO_COSTO;
+        return (
+          <div className="modal-overlay">
+            <form className="modal-panel" onSubmit={handleComisionSubmit}>
+              <h3 style={{ margin: '0 0 4px', fontSize: 16 }}>Editar comisión</h3>
+              <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--color-text-muted)' }}>Vendedor: <strong style={{ color: 'var(--color-text)' }}>{comisionUser.name}</strong></p>
+              {comisionError && <div className="alert alert-error">{comisionError}</div>}
+
+              <div className="form-field">
+                <label>Cálculo de la comisión</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 14 }}>Comisión =</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    style={{ width: 90 }}
+                    value={comisionValor}
+                    onChange={(e) => { setComisionValor(e.target.value); setComisionError(''); }}
+                    autoFocus
+                    required
+                  />
+                  <span style={{ fontSize: 14 }}>%</span>
+                </div>
+                <div style={{ fontSize: 14, marginTop: 6 }}>× (precio de venta − costo)</div>
+              </div>
+
+              <div style={{ fontSize: 13, color: 'var(--color-text-muted)', background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '10px 12px', marginBottom: 16 }}>
+                <div style={{ marginBottom: 4 }}>Ejemplo: producto de {formatCurrency(EJEMPLO_PRECIO)} con costo {formatCurrency(EJEMPLO_COSTO)}</div>
+                <div>
+                  {valido ? `${pct}% × ${formatCurrency(utilidad)} = ` : ''}
+                  <strong style={{ color: 'var(--color-text)' }}>{valido ? formatCurrency(Math.round(utilidad * pct) / 100) : 'Ingresa un porcentaje válido'}</strong> por unidad
+                </div>
+              </div>
+
+              <p style={{ margin: '0 0 16px', fontSize: 12, color: 'var(--color-text-muted)' }}>
+                Solo cambia la comisión de este vendedor. El porcentaje estándar es {COMISION_ESTANDAR}%. Se aplica a las ventas que se registren o editen desde ahora; las ventas ya hechas conservan su comisión.
+              </p>
+
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={saving || !valido}>
+                  {saving ? 'Guardando...' : 'Guardar'}
+                </button>
+                <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setComisionUser(null)}>Cancelar</button>
+              </div>
+              {pct !== COMISION_ESTANDAR && (
+                <button type="button" className="btn btn-secondary" style={{ width: '100%', marginTop: 12, fontSize: 12 }} onClick={() => { setComisionValor(String(COMISION_ESTANDAR)); setComisionError(''); }}>
+                  Volver al estándar ({COMISION_ESTANDAR}%)
+                </button>
+              )}
+            </form>
+          </div>
+        );
+      })()}
 
       {confirmDialog}
     </Layout>

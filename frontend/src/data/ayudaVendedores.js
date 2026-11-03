@@ -202,6 +202,6 @@ export const TUTORIALES = [
       'Para llevarte los datos pulsa "Exportar a Excel".',
       'Para el desglose por producto, ve a Todas Las Etiquetas y pulsa "Detalles" en la venta.',
     ],
-    despues: 'Solo se pagan las ventas cerradas y con pago confirmado: tienda o retiro completados, o envíos entregados; las transferencias deben estar verificadas; las canceladas no cuentan. En una venta al mayor la comisión es el 25% de (tu precio − el costo). Los productos libres no tienen comisión.',
+    despues: 'Solo se pagan las ventas cerradas y con pago confirmado: tienda o retiro completados, o envíos entregados; las transferencias deben estar verificadas; las canceladas no cuentan. En una venta al mayor la comisión es tu porcentaje (25% salvo que el administrador te haya asignado otro) de (tu precio − el costo). Los productos libres no tienen comisión.',
   },
 ];

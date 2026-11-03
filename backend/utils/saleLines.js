@@ -11,16 +11,35 @@ function precioDeCatalogo(producto, priceType) {
   return parseFloat(priceType === 'sol' && producto.precio_tienda !== null && producto.precio_tienda !== undefined ? producto.precio_tienda : producto.price);
 }
 
-// Comisión unitaria de un producto según el tipo de precio de la línea.
-//  - sol / marketplace: comisión guardada en el producto.
-//  - mayor (precio libre) o precio modificado en esa venta: 25% de (precio de venta - costo), sin negativos.
+// Porcentaje de comisión estándar: el que tienen todos los vendedores salvo que un admin les fije otro.
+const COMISION_ESTANDAR = 25;
+
+// Porcentaje de comisión propio de un vendedor (users.comision_porcentaje), o null si usa el estándar.
+async function porcentajeComisionVendedor(dbClient, vendorId) {
+  if (!vendorId) return null;
+  const r = await dbClient.query('SELECT comision_porcentaje FROM users WHERE id = $1', [vendorId]);
+  const valor = r.rows[0]?.comision_porcentaje;
+  return valor !== undefined && valor !== null ? Number(valor) : null;
+}
+
+// Fracción de (precio - costo) que se paga de comisión, con el porcentaje del vendedor (null = estándar).
+function fraccionComision(porcentaje) {
+  return (porcentaje === null || porcentaje === undefined ? COMISION_ESTANDAR : Number(porcentaje)) / 100;
+}
+
+// Comisión unitaria de un producto según el tipo de precio de la línea y el porcentaje del vendedor
+// (`porcentaje`: null = estándar, 25%).
+//  - sol / marketplace: comisión guardada en el producto (25% de la rentabilidad). Con otro porcentaje se
+//    calcula como ese porcentaje de la rentabilidad del producto.
+//  - mayor (precio libre) o precio modificado en esa venta: porcentaje de (precio de venta - costo), sin negativos.
 // Sin coincidencia en el catálogo (producto libre) o sin costo cargado => null.
 // Si se conoce el id del producto se busca por id (sigue funcionando aunque el producto se haya renombrado);
 // si no, por nombre.
-async function lookupComisionUnitaria(dbClient, productName, priceType = 'marketplace', unitPrice = null, productId = null, precioModificado = false) {
+async function lookupComisionUnitaria(dbClient, productName, priceType = 'marketplace', unitPrice = null, productId = null, precioModificado = false, porcentaje = null) {
   if (!productName && !productId) return null;
   const donde = productId ? 'id = $1' : 'LOWER(title) = LOWER($1)';
   const clave = productId || productName;
+  const fraccion = fraccionComision(porcentaje);
 
   if (priceType === 'mayor' || precioModificado) {
     const r = await dbClient.query(`SELECT costo, costo_tienda FROM products WHERE ${donde} LIMIT 1`, [clave]);
@@ -28,23 +47,28 @@ async function lookupComisionUnitaria(dbClient, productName, priceType = 'market
     const p = r.rows[0];
     const costo = priceType === 'sol' && p?.costo_tienda !== null && p?.costo_tienda !== undefined ? p.costo_tienda : p?.costo;
     if (costo === undefined || costo === null || unitPrice === null) return null;
-    return Math.max(0, Math.round((Number(unitPrice) - parseFloat(costo)) * 0.25 * 100) / 100);
+    return Math.max(0, Math.round((Number(unitPrice) - parseFloat(costo)) * fraccion * 100) / 100);
   }
 
-  const columna = priceType === 'sol' ? 'comision_venta_tienda' : 'comision_venta';
+  const sol = priceType === 'sol';
+  const estandar = fraccion === COMISION_ESTANDAR / 100;
+  const columna = estandar
+    ? (sol ? 'comision_venta_tienda' : 'comision_venta')
+    : (sol ? 'rentabilidad_tienda' : 'rentabilidad');
   const result = await dbClient.query(
-    `SELECT ${columna} as comision FROM products WHERE ${donde} LIMIT 1`,
+    `SELECT ${columna} as valor FROM products WHERE ${donde} LIMIT 1`,
     [clave]
   );
-  const valor = result.rows[0]?.comision;
-  return valor !== undefined && valor !== null ? parseFloat(valor) : null;
+  const valor = result.rows[0]?.valor;
+  if (valor === undefined || valor === null) return null;
+  return estandar ? parseFloat(valor) : Math.round(parseFloat(valor) * fraccion * 100) / 100;
 }
 
 // Suma de las comisiones de todas las líneas (null si ninguna tiene comisión).
-async function comisionDeLineas(dbClient, lines) {
+async function comisionDeLineas(dbClient, lines, porcentaje = null) {
   let comision = null;
   for (const l of lines) {
-    const unit = await lookupComisionUnitaria(dbClient, l.product_name, l.price_type, l.price, l.product_id || null, !!l.precio_modificado);
+    const unit = await lookupComisionUnitaria(dbClient, l.product_name, l.price_type, l.price, l.product_id || null, !!l.precio_modificado, porcentaje);
     if (unit !== null) comision = (comision || 0) + unit * l.quantity;
   }
   return comision;
@@ -141,7 +165,7 @@ async function summarizeLines(dbClient, rawLines, opciones = {}) {
     itemsJson: lines.length > 1 ? JSON.stringify(lines) : null,
     // Venta de un solo producto: su id va en sales.product_id (las de varios lo llevan en cada línea de items).
     productId: lines.length === 1 ? lines[0].product_id : null,
-    comision: await comisionDeLineas(dbClient, lines),
+    comision: await comisionDeLineas(dbClient, lines, opciones.porcentajeComision ?? null),
     costoTotal: await costoDeLineas(dbClient, lines),
     // Alguna línea se vendió a un precio distinto del catálogo. precioOriginal (precio unitario) solo en ventas de un producto.
     precioModificado: lines.some((l) => l.precio_modificado),
@@ -149,4 +173,4 @@ async function summarizeLines(dbClient, rawLines, opciones = {}) {
   };
 }
 
-module.exports = { MIN_MAYOR, MIN_MAYOR_MESSAGE, TOLERANCIA_PRECIO, precioDeCatalogo, lookupComisionUnitaria, comisionDeLineas, validateLines, summarizeLines, buscarProductoId, adjuntarProductIds, aplicarPrecios, costoDeLineas };
+module.exports = { MIN_MAYOR, MIN_MAYOR_MESSAGE, TOLERANCIA_PRECIO, COMISION_ESTANDAR, porcentajeComisionVendedor, fraccionComision, precioDeCatalogo, lookupComisionUnitaria, comisionDeLineas, validateLines, summarizeLines, buscarProductoId, adjuntarProductIds, aplicarPrecios, costoDeLineas };

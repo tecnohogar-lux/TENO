@@ -6,13 +6,16 @@ import useApi from '../hooks/useApi';
 import useAuth from '../hooks/useAuth';
 import useConfirm from '../hooks/useConfirm';
 import { useNoticiasPageSize } from '../hooks/useIsMobile';
+import BuscadorConBoton from '../components/BuscadorConBoton';
+import BarraCarga from '../components/BarraCarga';
 
 export default function NoticiasPage() {
   const { user } = useAuth();
   const canManage = user.role === 'admin' || user.role === 'operador' || user.role === 'caja';
   const pageSize = useNoticiasPageSize();
   const [limit, setLimit] = useState(pageSize);
-  const { data, loading, error, refetch } = useFetch(`/api/noticias?limit=${limit}`, { deps: [limit] });
+  const [search, setSearch] = useState('');
+  const { data, loading, error, refetch } = useFetch(`/api/noticias?limit=${limit}&search=${encodeURIComponent(search)}`, { deps: [limit, search] });
   const { post, put, del, loading: saving, error: saveError } = useApi();
   const { confirm, dialog: confirmDialog } = useConfirm();
 
@@ -20,6 +23,11 @@ export default function NoticiasPage() {
   const [texto, setTexto] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editTexto, setEditTexto] = useState('');
+
+  function handleSearch(texto) {
+    setSearch(texto);
+    setLimit(pageSize);
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -87,17 +95,22 @@ export default function NoticiasPage() {
         </form>
       )}
 
-      {loading && (
+      <div style={{ marginBottom: 20 }}>
+        <BuscadorConBoton value={search} onSearch={handleSearch} placeholder="Buscar noticias por texto, producto o autor..." width={340} loading={loading} />
+      </div>
+
+      {loading && !data && (
         <div className="page-loading">
           <div className="spinner" />
         </div>
       )}
+      <BarraCarga activo={loading && !!data} />
       {error && <div className="alert alert-error">{error}</div>}
 
       {data && (
-        <div>
+        <div className={loading ? 'cargando' : undefined}>
           {data.noticias.length === 0 ? (
-            <div className="card" style={{ padding: 20, color: 'var(--color-text-muted)' }}>Sin noticias</div>
+            <div className="card" style={{ padding: 20, color: 'var(--color-text-muted)' }}>{search ? 'Sin noticias que coincidan con la búsqueda' : 'Sin noticias'}</div>
           ) : (
             <NoticiasGrid noticias={data.noticias} canManage={canManage} onEdit={openEdit} onDelete={handleDelete} />
           )}

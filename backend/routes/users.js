@@ -19,12 +19,17 @@ router.get('/', authenticateToken, async (req, res) => {
     }
 
     const result = await pool.query(
-      'SELECT id, name, email, role, is_active, marketplace_accounts, created_at FROM users ORDER BY created_at DESC'
+      'SELECT id, name, email, role, is_active, marketplace_accounts, comision_porcentaje, created_at FROM users ORDER BY created_at DESC'
     );
 
+    // El porcentaje de comisión de cada vendedor solo lo ve un admin.
+    const users = user.role === 'admin'
+      ? result.rows
+      : result.rows.map(({ comision_porcentaje: _omitido, ...resto }) => resto);
+
     res.json({
-      total: result.rows.length,
-      users: result.rows
+      total: users.length,
+      users
     });
 
   } catch (err) {
@@ -189,6 +194,58 @@ router.put('/:id', authenticateToken, requireRole(['admin'], 'Solo un admin pued
   } catch (err) {
     console.error('Error al actualizar usuario:', err);
     res.status(500).json({ error: 'Error al actualizar usuario' });
+  }
+});
+
+// ============================================
+// PUT - Porcentaje de comisión de un vendedor (solo admin)
+// La comisión de una venta es ese porcentaje de (precio de venta - costo). `porcentaje` null/vacío vuelve
+// al estándar (25%). Aplica a las ventas que se registren o editen desde ahora; las ya hechas no cambian.
+// ============================================
+router.put('/:id/comision', authenticateToken, requireRole(['admin'], 'Solo un admin puede editar la comisión de un vendedor'), async (req, res) => {
+  try {
+    const user = req.user;
+    const { id } = req.params;
+    const { porcentaje } = req.body;
+
+    let valor = null;
+    if (porcentaje !== null && porcentaje !== undefined && porcentaje !== '') {
+      valor = Number(porcentaje);
+      if (!Number.isFinite(valor) || valor < 0 || valor > 100) {
+        return res.status(400).json({ error: 'El porcentaje debe ser un número entre 0 y 100' });
+      }
+      valor = Math.round(valor * 100) / 100;
+    }
+
+    const before = await pool.query('SELECT role, comision_porcentaje FROM users WHERE id = $1', [id]);
+    if (before.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    if (before.rows[0].role !== 'vendedor') {
+      return res.status(400).json({ error: 'Solo los vendedores tienen comisión' });
+    }
+
+    const result = await pool.query(
+      `UPDATE users SET comision_porcentaje = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING id, name, email, role, is_active, marketplace_accounts, comision_porcentaje`,
+      [valor, id]
+    );
+
+    await logAudit({
+      userId: user.id,
+      action: 'editar_comision_vendedor',
+      tableName: 'users',
+      recordId: Number(id),
+      oldValues: { comision_porcentaje: before.rows[0].comision_porcentaje },
+      newValues: { comision_porcentaje: valor }
+    });
+
+    res.json({ message: 'Comisión actualizada', user: result.rows[0] });
+
+  } catch (err) {
+    console.error('Error al actualizar comisión:', err);
+    res.status(500).json({ error: 'Error al actualizar la comisión' });
   }
 });
 

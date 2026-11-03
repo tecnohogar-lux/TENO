@@ -4,7 +4,7 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
-const { MIN_MAYOR, MIN_MAYOR_MESSAGE, comisionDeLineas, summarizeLines, adjuntarProductIds, aplicarPrecios, costoDeLineas } = require('../utils/saleLines');
+const { MIN_MAYOR, MIN_MAYOR_MESSAGE, porcentajeComisionVendedor, comisionDeLineas, summarizeLines, adjuntarProductIds, aplicarPrecios, costoDeLineas } = require('../utils/saleLines');
 const { PAYMENT_METHODS, validatePaymentBreakdown, normalizePaymentBreakdown } = require('../utils/paymentBreakdown');
 const { buildQrValue } = require('../utils/qrCode');
 const { conCobroSql } = require('../utils/sinCobro');
@@ -135,6 +135,9 @@ router.post('/sale', authenticateToken, requireRole(['operador', 'admin', 'caja'
       finalClientId = newClient.rows[0].id;
     }
 
+    // Porcentaje de comisión del vendedor de la venta (null = estándar, 25%).
+    const porcentajeComision = await porcentajeComisionVendedor(dbClient, vendor_id);
+
     const createdSales = [];
     if (tipo === 'ENVIO_PREPAGADO') {
       const item = items[0];
@@ -145,7 +148,7 @@ router.post('/sale', authenticateToken, requireRole(['operador', 'admin', 'caja'
         product_name: item.product_name, quantity: Number(item.quantity), price: Number(item.price), price_type: itemPriceType(item),
         precio_modificado: item.precio_modificado === true, precio_original: item.precio_original,
       }], { puedeEditarPrecio: true }));
-      const comision = await comisionDeLineas(dbClient, [linea]);
+      const comision = await comisionDeLineas(dbClient, [linea], porcentajeComision);
       const costoTotal = await costoDeLineas(dbClient, [linea]);
 
       let breakdownJson = null;
@@ -186,7 +189,7 @@ router.post('/sale', authenticateToken, requireRole(['operador', 'admin', 'caja'
         precio_modificado: item.precio_modificado === true,
         precio_original: item.precio_original,
       }));
-      const resumen = await summarizeLines(dbClient, lines, { puedeEditarPrecio: true });
+      const resumen = await summarizeLines(dbClient, lines, { puedeEditarPrecio: true, porcentajeComision });
       const total = resumen.productosTotal;
 
       let breakdownJson = null;

@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import Badge from './Badge';
 import { DELIVERY_STATUS_LABELS, deliveryStatusLabel } from '../utils/labels';
 import { formatCurrency } from '../utils/format';
@@ -30,7 +31,8 @@ function diaMes(value) {
 // rows: cualquier lista con client_name, vendor_name, created_at y (items o product_name).
 // conEstado: agrega el estado del envío (Delivery Santiago) entre el producto y la fecha.
 // conTotal: agrega el total de la venta y muestra la hora en vez del día/mes (ventas de caja de hoy).
-export default function TablaCompacta({ rows, vacio = 'Sin registros', conEstado = false, conTotal = false }) {
+// Memorizada: no se vuelve a dibujar mientras `rows` no cambie (por ejemplo, al escribir en un formulario de la página).
+function TablaCompacta({ rows, vacio = 'Sin registros', conEstado = false, conTotal = false }) {
   const columnaExtra = conEstado || conTotal;
   const columnas = columnaExtra ? 5 : 4;
   return (
@@ -81,3 +83,5 @@ export default function TablaCompacta({ rows, vacio = 'Sin registros', conEstado
     </table>
   );
 }
+
+export default memo(TablaCompacta);

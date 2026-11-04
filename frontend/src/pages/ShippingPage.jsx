@@ -2,6 +2,8 @@ import BotonCopiarEtiqueta from '../components/BotonCopiarEtiqueta';
 import { textoEtiquetaVenta } from '../utils/etiquetaTexto';
 import { lineaParaEnviar } from '../utils/precioLinea';
 import { useMemo, useState } from 'react';
+import FilaEnvio from '../components/FilaEnvio';
+import useEventoEstable from '../hooks/useEventoEstable';
 import Layout from '../components/Layout';
 import Badge from '../components/Badge';
 import LabelPrint from '../components/LabelPrint';
@@ -111,16 +113,19 @@ export default function ShippingPage() {
   }, [data, statusFilter]);
 
   const allSelected = shipments.length > 0 && selectedIds.length === shipments.length;
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const couriers = useMemo(() => couriersData?.couriers || [], [couriersData]);
 
-  function toggleSelect(id) {
+  const toggleSelect = useEventoEstable((id) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  }
+  });
+  const toggleTypeMenu = useEventoEstable((id) => setTypeMenuId((actual) => (actual === id ? null : id)));
 
   function toggleSelectAll() {
     setSelectedIds(allSelected ? [] : shipments.map((s) => s.id));
   }
 
-  async function handleStatusChange(sale, newStatus, motivo, fecha, despacho) {
+  const handleStatusChange = useEventoEstable(async (sale, newStatus, motivo, fecha, despacho) => {
     if (MOTIVO_STATUSES.includes(newStatus) && !motivo) {
       setMotivoPrompt({ sale, status: newStatus });
       return;
@@ -133,7 +138,7 @@ export default function ShippingPage() {
     } else if (result.error && !motivo) {
       setActionError(result.error);
     }
-  }
+  });
 
   // Tipo de envío (delivery/solo envío pagado/etc.): independiente del estado de
   // entrega, no lo pisa ni es pisado por él.
@@ -144,12 +149,17 @@ export default function ShippingPage() {
     else if (result.error) setActionError(result.error);
   }
 
-  async function handleCourierChange(sale, courierId) {
+  const cambiarTipoDesdeMenu = useEventoEstable((sale, deliveryType) => {
+    handleDeliveryTypeChange(sale, deliveryType);
+    setTypeMenuId(null);
+  });
+
+  const handleCourierChange = useEventoEstable(async (sale, courierId) => {
     setActionError('');
     const result = await put(`/api/sales/${sale.id}/courier`, { courier_id: courierId || null });
     if (result.success) refetch();
     else if (result.error) setActionError(result.error);
-  }
+  });
 
   async function applyBulkStatus(status, motivo, fecha, despacho) {
     if (MOTIVO_STATUSES.includes(status) && !motivo) {
@@ -182,7 +192,7 @@ export default function ShippingPage() {
     }
   }
 
-  async function handleDelete(sale) {
+  const handleDelete = useEventoEstable(async (sale) => {
     setActionError('');
     const ok = await confirm(`¿Eliminar el envío "${sale.product_name}" de ${sale.client_name}? Podrás recuperarlo desde la Papelera.`, {
       title: 'Eliminar envío',
@@ -193,7 +203,7 @@ export default function ShippingPage() {
     const result = await del(`/api/sales/${sale.id}`);
     if (result.success) refetch();
     else if (result.error) setActionError(result.error);
-  }
+  });
 
   function openBulkPrint() {
     const selected = shipments.filter((s) => selectedIds.includes(s.id));
@@ -201,7 +211,7 @@ export default function ShippingPage() {
     setActionsOpen(false);
   }
 
-  function openEdit(sale) {
+  const openEdit = useEventoEstable((sale) => {
     setEditingSale(sale);
     // Si el nombre del producto coincide con uno del catálogo se preselecciona;
     // si no, se trata como producto libre (nombre escrito a mano).
@@ -218,7 +228,7 @@ export default function ShippingPage() {
       phone: sale.phone || '',
       notes: sale.notes || '',
     });
-  }
+  });
 
   async function handleEditSubmit(e) {
     e.preventDefault();
@@ -518,119 +528,23 @@ export default function ShippingPage() {
                 </tr>
               ) : (
                 shipments.map((s) => (
-                  <tr key={s.id} className={esReprogramadoPendiente(s) ? 'fila-reprogramada' : undefined}>
-                    {canManage && (
-                      <td data-label="Seleccionar">
-                        <input type="checkbox" checked={selectedIds.includes(s.id)} onChange={() => toggleSelect(s.id)} />
-                      </td>
-                    )}
-                    <td data-label="Producto">{s.product_name}{s.precio_modificado && <> <TagPrecioModificado original={s.precio_original} /></>}</td>
-                    <td data-label="Cliente">{s.client_name}</td>
-                    <td data-label="Vendedor">{s.vendor_name}</td>
-                    <td data-label="Dirección">{s.address || '-'}</td>
-                    <td data-label="Comuna">{s.comuna || '-'}</td>
-                    <td data-label="Total">{isSinCobro(s) ? '—' : formatCurrency(s.total)}</td>
-                    <td data-label="Comisión">{isSinCobro(s) ? '—' : (s.comision !== null && s.comision !== undefined ? formatCurrency(s.comision) : '-')}</td>
-                    <td data-label="Courier">
-                      {canManage ? (
-                        <select
-                          value={s.courier_id || ''}
-                          onChange={(e) => handleCourierChange(s, e.target.value)}
-                          style={{ fontSize: 12, padding: '4px 6px', borderRadius: 4, border: '1px solid var(--color-border)' }}
-                        >
-                          <option value="">Sin asignar</option>
-                          {(couriersData?.couriers || []).map((c) => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        s.courier_name || '-'
-                      )}
-                    </td>
-                    <td data-label="Estado">
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
-                        {esReprogramadoPendiente(s) && <TagReprogramado s={s} />}
-                        <Badge label={deliveryStatusLabel(s.delivery_status)} color={DELIVERY_STATUS_LABELS[s.delivery_status]?.color} />
-                        {s.delivery_status === 'cancelado' && s.despacho_cancelacion && (
-                          <div style={{ fontSize: 12, color: 'var(--color-text-muted)', maxWidth: 220, textAlign: 'right', whiteSpace: 'normal' }}>
-                            <strong>{DESPACHO_OPCIONES.find((o) => o.value === s.despacho_cancelacion)?.label}</strong>
-                          </div>
-                        )}
-                        {MOTIVO_STATUSES.includes(s.delivery_status) && s.motivo_estado && (
-                          <div style={{ fontSize: 12, color: 'var(--color-text-muted)', maxWidth: 220, textAlign: 'right', whiteSpace: 'normal' }}>
-                            <strong>Motivo:</strong> {s.motivo_estado}
-                          </div>
-                        )}
-                        {s.delivery_type !== 'delivery' && (
-                          <Badge label={deliveryTypeLabel(s.delivery_type)} color={DELIVERY_TYPE_LABELS[s.delivery_type]?.color} />
-                        )}
-                        {canManage && (
-                          <>
-                            <select
-                              value={s.delivery_status}
-                              onChange={(e) => handleStatusChange(s, e.target.value)}
-                              style={{ fontSize: 12, padding: '4px 6px', borderRadius: 4, border: '1px solid var(--color-border)' }}
-                            >
-                              {DELIVERY_STATUS_OPTIONS.map((opt) => (
-                                <option key={opt} value={opt}>{deliveryStatusLabel(opt)}</option>
-                              ))}
-                            </select>
-                            <div style={{ position: 'relative' }}>
-                              <button
-                                type="button"
-                                className="btn btn-secondary"
-                                style={{ fontSize: 11, padding: '3px 8px' }}
-                                onClick={() => setTypeMenuId((id) => (id === s.id ? null : s.id))}
-                              >
-                                Tipo de envío ▾
-                              </button>
-                              {typeMenuId === s.id && (
-                                <div className="card" style={{ position: 'absolute', top: '110%', right: 0, padding: 6, width: 190, zIndex: 20 }}>
-                                  {DELIVERY_TYPE_OPTIONS.map((opt) => (
-                                    <button
-                                      key={opt}
-                                      type="button"
-                                      className="btn btn-secondary"
-                                      style={{ width: '100%', justifyContent: 'flex-start', fontSize: 12, marginBottom: 4 }}
-                                      onClick={() => { handleDeliveryTypeChange(s, opt); setTypeMenuId(null); }}
-                                    >
-                                      {deliveryTypeLabel(opt)}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                    <td data-label="Fecha creación">{formatDate(s.created_at)}</td>
-                    <td data-label="Fecha en camino">{formatDate(s.en_camino_at)}</td>
-                    <td data-label="Acciones">
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                        <BotonCopiarEtiqueta obtenerTexto={() => textoEtiquetaVenta(s)} />
-                        {canManage && (
-                          <>
-                          <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => openEdit(s)}>
-                            Editar
-                          </button>
-                          <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => setPrintSale(s)}>
-                            Imprimir etiqueta
-                          </button>
-                          {isAdmin && (
-                            <button
-                              className="btn btn-secondary"
-                              style={{ padding: '6px 10px', fontSize: 12, color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
-                              onClick={() => handleDelete(s)}
-                            >
-                              Eliminar
-                            </button>
-                          )}
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                  <FilaEnvio
+                    key={s.id}
+                    s={s}
+                    canManage={canManage}
+                    isAdmin={isAdmin}
+                    seleccionado={selectedSet.has(s.id)}
+                    menuTipoAbierto={typeMenuId === s.id}
+                    couriers={couriers}
+                    onToggleSelect={toggleSelect}
+                    onCourierChange={handleCourierChange}
+                    onStatusChange={handleStatusChange}
+                    onToggleTypeMenu={toggleTypeMenu}
+                    onTypeChange={cambiarTipoDesdeMenu}
+                    onEdit={openEdit}
+                    onPrint={setPrintSale}
+                    onDelete={handleDelete}
+                  />
                 ))
               )}
             </tbody>

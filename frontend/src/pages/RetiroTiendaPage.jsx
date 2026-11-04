@@ -1,7 +1,7 @@
 import BotonCopiarEtiqueta from '../components/BotonCopiarEtiqueta';
 import { textoEtiquetaRetiro } from '../utils/etiquetaTexto';
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Badge from '../components/Badge';
 import Pagination from '../components/Pagination';
@@ -61,6 +61,15 @@ export default function RetiroTiendaPage() {
   const [selectedQty, setSelectedQty] = useState(1);
   const [cart, setCart, carritoRestaurado] = useBorrador('retiro.carrito', [], borrador);
   useRepreciarBorrador(carritoRestaurado, productsData?.products, (fn) => setCart(fn));
+
+  // Acceso directo "Registrar retiro en tienda" del dashboard: llega con state.abrirFormulario y despliega el formulario.
+  const location = useLocation();
+  useEffect(() => {
+    if (!location.state?.abrirFormulario) return;
+    setShowForm(true);
+    navigate(location.pathname, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
   const [successMsg, setSuccessMsg] = useState('');
   // Tipo de precio del próximo producto que se agregue (cada línea guarda el suyo).
   // En Retiro en Tienda el valor por defecto es MARKETPLACE.

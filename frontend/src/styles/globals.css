@@ -1490,6 +1490,8 @@ tr.fila-reprogramada:hover { background: var(--color-reprogramado-fondo); }
 .dash-noticias { padding: 20px; margin-bottom: 24px; }
 .trend-card { padding: 20px; margin-bottom: 32px; }
 .deadline-banner { padding: 14px 20px; margin-bottom: 24px; }
+.accesos-rapidos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
+.accesos-rapidos .btn { justify-content: center; text-align: center; padding: 12px 16px; font-weight: 700; }
 
 .metric-card { padding: 18px 20px; flex: 1 1 200px; min-width: 180px; position: relative; overflow: hidden; border-left: 4px solid var(--color-accent); }
 .metric-card__label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); margin-bottom: 10px; }
@@ -1516,6 +1518,8 @@ tr.fila-reprogramada:hover { background: var(--color-reprogramado-fondo); }
   .trend-card { padding: 8px 10px; margin-bottom: 12px; }
   .deadline-banner { padding: 6px 10px; margin-bottom: 8px; gap: 4px; }
   .deadline-banner span { font-size: 12px !important; letter-spacing: 0 !important; }
+  .accesos-rapidos { gap: 8px; margin-bottom: 8px; }
+  .accesos-rapidos .btn { padding: 9px 6px; font-size: 13px; line-height: 1.2; }
 
   .metric-card { padding: 8px 10px; min-width: 0; flex: none; border-left-width: 3px; }
   .metric-card__label { font-size: 10.5px; margin-bottom: 3px; letter-spacing: 0.02em; }

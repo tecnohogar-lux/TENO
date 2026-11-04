@@ -1,7 +1,8 @@
 import BotonCopiarEtiqueta from '../components/BotonCopiarEtiqueta';
 import { textoEtiquetaVenta } from '../utils/etiquetaTexto';
 import { lineaParaEnviar } from '../utils/precioLinea';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import FilaEnvio from '../components/FilaEnvio';
 import useBorrador from '../hooks/useBorrador';
 import useRepreciarBorrador from '../hooks/useRepreciarBorrador';
@@ -101,6 +102,16 @@ export default function ShippingPage() {
   const [showCreateForm, setShowCreateForm] = useBorrador('delivery.abierto', false);
   const [createForm, setCreateForm, borradorRestaurado] = useBorrador('delivery.form', emptyCreateForm);
   useRepreciarBorrador(borradorRestaurado, productsData?.products, (fn) => setCreateForm((f) => ({ ...f, items: fn(f.items) })));
+
+  // Acceso directo "Nueva etiqueta" del dashboard: llega con state.abrirFormulario y despliega el formulario.
+  const location = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!location.state?.abrirFormulario) return;
+    if (canCreate) setShowCreateForm(true);
+    navigate(location.pathname, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
   const [actionError, setActionError] = useState('');
 
   const vendedores = (usersData?.users || []).filter((u) => u.role === 'vendedor' && u.is_active);

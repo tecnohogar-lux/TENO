@@ -3,6 +3,7 @@ import Layout from '../components/Layout';
 import Dashboard from '../components/Dashboard';
 import NoticiasFeed from '../components/NoticiasFeed';
 import DeadlineBanner from '../components/DeadlineBanner';
+import AccesosRapidos from '../components/AccesosRapidos';
 import useFetch from '../hooks/useFetch';
 import useAuth from '../hooks/useAuth';
 
@@ -20,6 +21,7 @@ export default function DashboardPage() {
       </p>
 
       <DeadlineBanner />
+      <AccesosRapidos />
       <NoticiasFeed />
 
       {loading && (

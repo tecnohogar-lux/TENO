@@ -6,8 +6,12 @@ import { deliveryTypeLabel, isSinCobro } from '../utils/labels';
 const IG_CAPTION = 'Síguenos en IG y descubre miles de productos';
 const IG_URL = 'https://www.instagram.com/tecnohogar.cl/';
 
+// Con más productos que estos, la etiqueta no los lista (los nombres largos no caben): pide revisar la venta en el sistema.
+const MAX_PRODUCTOS_EN_ETIQUETA = 3;
+
 export default function LabelCard({ sale }) {
   const lines = saleLines(sale);
+  const demasiados = lines.length > MAX_PRODUCTOS_EN_ETIQUETA;
 
   return (
     <div
@@ -35,8 +39,14 @@ export default function LabelCard({ sale }) {
         {sale.comuna || '-'}
       </div>
 
-      <div style={{ padding: '4px 10px', borderBottom: '2px solid #000', flex: '1 1 auto', overflow: 'hidden' }}>
-        {lines.map((l, i) => (
+      <div style={{ padding: '4px 10px', borderBottom: '2px solid #000', flex: '1 1 auto', overflow: 'hidden', ...(demasiados ? { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center' } : {}) }}>
+        {demasiados && (
+          <>
+            <div style={{ fontWeight: 700, fontSize: 20, lineHeight: 1.2, textTransform: 'uppercase' }}>Revisar venta en sistema</div>
+            <div style={{ fontSize: 11, fontWeight: 700, marginTop: 4 }}>({lines.length} productos)</div>
+          </>
+        )}
+        {!demasiados && lines.map((l, i) => (
           <div
             key={i}
             style={{

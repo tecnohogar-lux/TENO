@@ -12,6 +12,8 @@ import useApi from '../hooks/useApi';
 import { formatCurrency } from '../utils/format';
 import { MIN_MAYOR, productPrice } from '../utils/priceType';
 import { PAYMENT_METHODS, paymentMethodLabel } from '../utils/labels';
+import useBorrador from '../hooks/useBorrador';
+import useRepreciarBorrador from '../hooks/useRepreciarBorrador';
 
 const FREE_PRODUCT_OPTION = [{ value: '__free__', label: 'Producto libre (no registrado)' }];
 
@@ -32,8 +34,11 @@ export default function CajaPage() {
 
   const vendedores = (usersData?.users || []).filter((u) => u.role === 'vendedor' && u.is_active);
   const vendorOptions = useMemo(() => vendedores.map((v) => ({ value: v.id, label: v.name })), [vendedores]);
+  // La venta en curso se guarda como borrador (no se pierde si el teléfono descarta la pestaña al minimizar);
+  // al procesar un retiro en tienda no se guarda nada (viene de la lista de retiros).
+  const borrador = { activo: !retiro };
   // Tipo de precio del próximo producto que se agregue (cada línea guarda el suyo).
-  const [priceType, setPriceType] = useState('sol');
+  const [priceType, setPriceType] = useBorrador('caja.precio', 'sol', borrador);
   const [mayorPrice, setMayorPrice] = useState('');
   const productOptions = useMemo(
     () => (productsData?.products || []).map((p) => ({ value: p.id, label: priceType === 'mayor' ? `${p.title}${p.agotado ? ' (agotado)' : ''}` : `${p.title} · ${formatCurrency(productPrice(p, priceType))}${p.agotado ? ' (agotado)' : ''}` })),
@@ -41,13 +46,13 @@ export default function CajaPage() {
   );
 
   const [retiroId, setRetiroId] = useState(retiro?.retiroId || null);
-  const [tipo, setTipo] = useState('TIENDA');
-  const [vendorId, setVendorId] = useState(retiro?.vendorId ? String(retiro.vendorId) : '');
-  const [newClient, setNewClient] = useState(emptyNewClient);
+  const [tipo, setTipo] = useBorrador('caja.tipo', 'TIENDA', borrador);
+  const [vendorId, setVendorId] = useBorrador('caja.vendedor', retiro?.vendorId ? String(retiro.vendorId) : '', borrador);
+  const [newClient, setNewClient] = useBorrador('caja.cliente', emptyNewClient, borrador);
   const [selectedProductId, setSelectedProductId] = useState('');
   const [selectedQty, setSelectedQty] = useState(1);
   const [freeProduct, setFreeProduct] = useState({ name: '', price: '', quantity: 1 });
-  const [cart, setCart] = useState(
+  const [cart, setCart, carritoRestaurado] = useBorrador('caja.carrito',
     retiro?.items
       ? retiro.items.map((item, idx) => {
         const price_type = item.price_type || retiro.priceType || 'marketplace';
@@ -58,19 +63,21 @@ export default function CajaPage() {
           ...(item.precio_modificado ? { precio_modificado: true } : {}),
         };
       })
-      : []
+      : [],
+    borrador
   );
+  useRepreciarBorrador(carritoRestaurado, productsData?.products, (fn) => setCart(fn));
   // Cambia cada vez que se registra una venta, para refrescar la lista de ventas de hoy.
   const [ventasRefresh, setVentasRefresh] = useState(0);
-  const [paymentMethod, setPaymentMethod] = useState('efectivo');
-  const [transferenciaVerificada, setTransferenciaVerificada] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useBorrador('caja.pago', 'efectivo', borrador);
+  const [transferenciaVerificada, setTransferenciaVerificada] = useBorrador('caja.transferencia', false, borrador);
   // Pago mixto: monto por cada forma de pago (string vacío = no se usa esa forma).
-  const [breakdownAmounts, setBreakdownAmounts] = useState({});
-  const [breakdownVerificada, setBreakdownVerificada] = useState(false);
-  const [notes, setNotes] = useState('');
-  const [address, setAddress] = useState('');
-  const [comuna, setComuna] = useState('');
-  const [phone, setPhone] = useState('');
+  const [breakdownAmounts, setBreakdownAmounts] = useBorrador('caja.mixto', {}, borrador);
+  const [breakdownVerificada, setBreakdownVerificada] = useBorrador('caja.mixtoVerificada', false, borrador);
+  const [notes, setNotes] = useBorrador('caja.notas', '', borrador);
+  const [address, setAddress] = useBorrador('caja.direccion', '', borrador);
+  const [comuna, setComuna] = useBorrador('caja.comuna', '', borrador);
+  const [phone, setPhone] = useBorrador('caja.telefono', '', borrador);
   const [successMsg, setSuccessMsg] = useState('');
 
   const isEnvioPrepagado = tipo === 'ENVIO_PREPAGADO';

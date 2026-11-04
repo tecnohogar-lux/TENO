@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import apiClient from '../api/client';
 import { tokenExpiryMs, rememberSessionMessage, SESSION_EXPIRED_MESSAGE } from '../utils/session';
+import { borrarTodosLosBorradores } from '../utils/borradores';
 
 function loadStoredUser() {
   try {
@@ -52,6 +53,7 @@ const useAuthStore = create((set) => ({
   logout: () => {
     localStorage.removeItem('teno_token');
     localStorage.removeItem('teno_user');
+    borrarTodosLosBorradores();
     set({ user: null, token: null, isAuthenticated: false });
   },
 }));

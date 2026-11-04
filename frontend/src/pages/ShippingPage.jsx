@@ -3,6 +3,8 @@ import { textoEtiquetaVenta } from '../utils/etiquetaTexto';
 import { lineaParaEnviar } from '../utils/precioLinea';
 import { useMemo, useState } from 'react';
 import FilaEnvio from '../components/FilaEnvio';
+import useBorrador from '../hooks/useBorrador';
+import useRepreciarBorrador from '../hooks/useRepreciarBorrador';
 import useEventoEstable from '../hooks/useEventoEstable';
 import Layout from '../components/Layout';
 import Badge from '../components/Badge';
@@ -95,8 +97,10 @@ export default function ShippingPage() {
   const [printBatch, setPrintBatch] = useState(null);
   const [editingSale, setEditingSale] = useState(null);
   const [editForm, setEditForm] = useState(null);
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [createForm, setCreateForm] = useState(emptyCreateForm);
+  // El formulario de crear etiqueta se guarda como borrador: no se pierde si el teléfono descarta la pestaña al minimizar.
+  const [showCreateForm, setShowCreateForm] = useBorrador('delivery.abierto', false);
+  const [createForm, setCreateForm, borradorRestaurado] = useBorrador('delivery.form', emptyCreateForm);
+  useRepreciarBorrador(borradorRestaurado, productsData?.products, (fn) => setCreateForm((f) => ({ ...f, items: fn(f.items) })));
   const [actionError, setActionError] = useState('');
 
   const vendedores = (usersData?.users || []).filter((u) => u.role === 'vendedor' && u.is_active);

@@ -22,6 +22,8 @@ import { showNewSale } from '../store/useNuevaVentaStore';
 import { MIN_MAYOR, productPrice } from '../utils/priceType';
 import BuscadorConBoton from '../components/BuscadorConBoton';
 import BarraCarga from '../components/BarraCarga';
+import useBorrador from '../hooks/useBorrador';
+import useRepreciarBorrador from '../hooks/useRepreciarBorrador';
 
 const PAGE_SIZE = 25;
 const emptyForm = { nombre: '', apellido: '', notes: '' };
@@ -50,15 +52,19 @@ export default function RetiroTiendaPage() {
     setPage(1);
   }
 
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(emptyForm);
+  // Un retiro nuevo se guarda como borrador (no se pierde si el teléfono descarta la pestaña al minimizar);
+  // al editar uno existente no se guarda nada.
+  const borrador = { activo: !editingRetiro };
+  const [showForm, setShowForm] = useBorrador('retiro.abierto', false, borrador);
+  const [form, setForm] = useBorrador('retiro.form', emptyForm, borrador);
   const [selectedProductId, setSelectedProductId] = useState('');
   const [selectedQty, setSelectedQty] = useState(1);
-  const [cart, setCart] = useState([]);
+  const [cart, setCart, carritoRestaurado] = useBorrador('retiro.carrito', [], borrador);
+  useRepreciarBorrador(carritoRestaurado, productsData?.products, (fn) => setCart(fn));
   const [successMsg, setSuccessMsg] = useState('');
   // Tipo de precio del próximo producto que se agregue (cada línea guarda el suyo).
   // En Retiro en Tienda el valor por defecto es MARKETPLACE.
-  const [priceType, setPriceType] = useState('marketplace');
+  const [priceType, setPriceType] = useBorrador('retiro.precio', 'marketplace', borrador);
   const [mayorPrice, setMayorPrice] = useState('');
   const [agotadoError, setAgotadoError] = useState('');
 

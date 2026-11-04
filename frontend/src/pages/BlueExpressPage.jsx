@@ -8,6 +8,8 @@ import LabelPrint from '../components/LabelPrint';
 import LabelPrintBatch from '../components/LabelPrintBatch';
 import SearchableSelect from '../components/SearchableSelect';
 import ShipmentItemsInput from '../components/ShipmentItemsInput';
+import useBorrador from '../hooks/useBorrador';
+import useRepreciarBorrador from '../hooks/useRepreciarBorrador';
 import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
 import useAuth from '../hooks/useAuth';
@@ -66,8 +68,10 @@ export default function BlueExpressPage() {
   const [printBatch, setPrintBatch] = useState(null);
   const [editingSale, setEditingSale] = useState(null);
   const [editForm, setEditForm] = useState(null);
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [createForm, setCreateForm] = useState(emptyCreateForm);
+  // El formulario de crear etiqueta se guarda como borrador: no se pierde si el teléfono descarta la pestaña al minimizar.
+  const [showCreateForm, setShowCreateForm] = useBorrador('regiones.abierto', false);
+  const [createForm, setCreateForm, borradorRestaurado] = useBorrador('regiones.form', emptyCreateForm);
+  useRepreciarBorrador(borradorRestaurado, productsData?.products, (fn) => setCreateForm((f) => ({ ...f, items: fn(f.items) })));
   const [actionError, setActionError] = useState('');
 
   const vendedores = (usersData?.users || []).filter((u) => u.role === 'vendedor' && u.is_active);

@@ -5,6 +5,7 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
+const { condicionBusqueda } = require('../utils/busqueda');
 const { recalcularCierresQueContienen } = require('../utils/cierreCaja');
 
 const requireAdminOperador = requireRole(['admin', 'operador', 'caja'], 'No tienes permiso para acceder a gastos y egresos');
@@ -19,20 +20,26 @@ router.get('/', authenticateToken, requireAdminOperador, async (req, res) => {
     const conditions = [];
     const params = [];
 
+    // ?search= (sin distinguir mayúsculas ni tildes): nombre, monto o quién lo registró.
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+    if (search) {
+      conditions.push(condicionBusqueda(['g.nombre', 'g.monto::text', `COALESCE((SELECT name FROM users WHERE id = g.created_by), '')`], search, params));
+    }
+
     if (from) {
       params.push(from);
-      conditions.push(`created_at >= $${params.length}`);
+      conditions.push(`g.created_at >= $${params.length}`);
     }
     if (to) {
       params.push(to);
-      conditions.push(`created_at <= $${params.length}`);
+      conditions.push(`g.created_at <= $${params.length}`);
     }
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    const countResult = await pool.query(`SELECT COUNT(*) as count FROM gastos ${whereClause}`, params);
+    const countResult = await pool.query(`SELECT COUNT(*) as count FROM gastos g ${whereClause}`, params);
     const total = parseInt(countResult.rows[0].count);
 
-    const totalMontoResult = await pool.query(`SELECT COALESCE(SUM(monto), 0) as suma FROM gastos ${whereClause}`, params);
+    const totalMontoResult = await pool.query(`SELECT COALESCE(SUM(g.monto), 0) as suma FROM gastos g ${whereClause}`, params);
 
     let query = `
       SELECT g.*, u.name as created_by_name

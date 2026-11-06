@@ -6,6 +6,7 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
+const { condicionBusqueda } = require('../utils/busqueda');
 const { recalcularCierresQueContienen } = require('../utils/cierreCaja');
 
 const requireStaff = requireRole(['admin', 'operador', 'caja'], 'No tienes permiso para acceder a ingresos');
@@ -14,17 +15,24 @@ const requireAdmin = requireRole(['admin'], 'Solo un admin puede corregir ingres
 router.get('/', authenticateToken, requireStaff, async (req, res) => {
   try {
     const { page, limit } = req.query;
+    const params = [];
 
-    const countResult = await pool.query('SELECT COUNT(*) as count, COALESCE(SUM(monto), 0) as suma FROM ingresos_caja');
+    // ?search= (sin distinguir mayúsculas ni tildes): nombre, monto o quién lo registró.
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+    const whereClause = search
+      ? `WHERE ${condicionBusqueda(['nombre', 'monto::text', `COALESCE((SELECT name FROM users WHERE id = created_by), '')`], search, params)}`
+      : '';
+
+    const countResult = await pool.query(`SELECT COUNT(*) as count, COALESCE(SUM(monto), 0) as suma FROM ingresos_caja ${whereClause}`, params);
     const total = parseInt(countResult.rows[0].count);
 
     let query = `
       SELECT i.*, u.name as created_by_name
       FROM ingresos_caja i
       LEFT JOIN users u ON i.created_by = u.id
+      ${whereClause}
       ORDER BY i.created_at DESC
     `;
-    const params = [];
 
     let pageNum = null;
     let limitNum = null;

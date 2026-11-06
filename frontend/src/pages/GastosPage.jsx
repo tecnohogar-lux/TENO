@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
 import MetricsCard from '../components/MetricsCard';
+import BuscadorConBoton from '../components/BuscadorConBoton';
 import useFetch from '../hooks/useFetch';
 import useApi from '../hooks/useApi';
 import useConfirm from '../hooks/useConfirm';
@@ -42,7 +43,12 @@ export default function GastosPage() {
   const [tipo, setTipo] = useState('egresos');
   const t = TIPOS[tipo];
   const [page, setPage] = useState(1);
-  const { data, loading, error, refetch } = useFetch(`${t.endpoint}?page=${page}&limit=${PAGE_SIZE}`, { deps: [t.endpoint, page] });
+  // Búsqueda por nombre, monto o quién lo registró (solo al pulsar Buscar / Enter, no letra por letra).
+  const [search, setSearch] = useState('');
+  const { data, loading, error, refetch } = useFetch(
+    `${t.endpoint}?page=${page}&limit=${PAGE_SIZE}&search=${encodeURIComponent(search)}`,
+    { deps: [t.endpoint, page, search] }
+  );
   const { post, del, loading: saving, error: saveError } = useApi();
   const { confirm, dialog: confirmDialog } = useConfirm();
 
@@ -54,6 +60,7 @@ export default function GastosPage() {
   function switchTipo(next) {
     setTipo(next);
     setPage(1);
+    setSearch('');
     setShowForm(false);
     setForm(emptyForm);
   }
@@ -79,9 +86,17 @@ export default function GastosPage() {
     <Layout>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
         <h1 style={{ fontSize: 22, margin: 0 }}>{t.title}</h1>
-        <button className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? 'Cancelar' : t.newLabel}
-        </button>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <BuscadorConBoton
+            value={search}
+            onSearch={(texto) => { setSearch(texto); setPage(1); }}
+            placeholder="Buscar por nombre, monto o quién lo registró..."
+            loading={loading}
+          />
+          <button className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>
+            {showForm ? 'Cancelar' : t.newLabel}
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, maxWidth: 360 }}>
@@ -146,7 +161,7 @@ export default function GastosPage() {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ color: 'var(--color-text-muted)' }}>{t.emptyLabel}</td>
+                  <td colSpan={5} style={{ color: 'var(--color-text-muted)' }}>{search ? 'Ningún resultado para la búsqueda' : t.emptyLabel}</td>
                 </tr>
               ) : (
                 rows.map((row) => (

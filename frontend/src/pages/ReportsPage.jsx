@@ -72,6 +72,23 @@ export default function ReportsPage() {
   const today = new Date().toISOString().slice(0, 10);
   const [comisionesRango, setComisionesRango] = useState({ desde: today, hasta: today });
   const [comisionesResult, setComisionesResult] = useState(null);
+  // Buscador por vendedor del cálculo de comisiones: filtra en pantalla las filas ya calculadas (sin ir al servidor).
+  const [buscaVendedor, setBuscaVendedor] = useState('');
+  const comisionesVista = useMemo(() => {
+    if (!comisionesResult) return null;
+    const sinTildes = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const q = sinTildes(buscaVendedor).trim();
+    const vendedores = q ? comisionesResult.vendedores.filter((v) => sinTildes(v.vendor_name).includes(q)) : comisionesResult.vendedores;
+    if (!q) return { ...comisionesResult, filtrado: false };
+    const suma = (campo) => vendedores.reduce((acc, v) => acc + (Number(v[campo]) || 0), 0);
+    return {
+      vendedores,
+      total_general: suma('total_comision'),
+      total_descuentos: suma('total_descuentos'),
+      total_neto: suma('neto'),
+      filtrado: true,
+    };
+  }, [comisionesResult, buscaVendedor]);
   const { post: postDescuento, del: delDescuento, loading: savingDescuento, error: descuentoError } = useApi();
   const { confirm, dialog: confirmDialog } = useConfirm();
   const { data: usersData } = useFetch('/api/users', { enabled: canManage });
@@ -345,12 +362,22 @@ export default function ReportsPage() {
               <label>Hasta</label>
               <input type="date" value={comisionesRango.hasta} onChange={(e) => setComisionesRango({ ...comisionesRango, hasta: e.target.value })} />
             </div>
+            <div className="form-field" style={{ marginBottom: 0, minWidth: 200 }}>
+              <label>Buscar vendedor</label>
+              <input
+                type="search"
+                value={buscaVendedor}
+                onChange={(e) => setBuscaVendedor(e.target.value)}
+                placeholder="Nombre del vendedor..."
+                autoComplete="off"
+              />
+            </div>
             <button className="btn btn-primary" onClick={handleCalcularComisiones} disabled={loadingComisiones}>
               {loadingComisiones ? 'Calculando...' : 'Calcular'}
             </button>
           </div>
           {comisionesError && <div className="alert alert-error">{comisionesError}</div>}
-          {comisionesResult && (
+          {comisionesVista && (
             <div style={{ overflowX: 'auto' }}>
               <table className="responsive-stack">
                 <thead>
@@ -363,12 +390,14 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {comisionesResult.vendedores.length === 0 ? (
+                  {comisionesVista.vendedores.length === 0 ? (
                     <tr>
-                      <td colSpan={5} style={{ color: 'var(--color-text-muted)' }}>Sin comisiones ni descuentos en ese rango de fechas</td>
+                      <td colSpan={5} style={{ color: 'var(--color-text-muted)' }}>
+                        {comisionesVista.filtrado ? 'Ningún vendedor coincide con la búsqueda' : 'Sin comisiones ni descuentos en ese rango de fechas'}
+                      </td>
                     </tr>
                   ) : (
-                    comisionesResult.vendedores.map((v) => (
+                    comisionesVista.vendedores.map((v) => (
                       <tr key={v.vendor_id}>
                         <td data-label="Vendedor">{v.vendor_name}</td>
                         <td data-label="Ventas">{v.cantidad_ventas}</td>
@@ -410,11 +439,16 @@ export default function ReportsPage() {
                   )}
                 </tbody>
               </table>
-              {comisionesResult.vendedores.length > 0 && (
+              {comisionesVista.vendedores.length > 0 && (
                 <div style={{ marginTop: 12, fontSize: 14, textAlign: 'right', lineHeight: 1.7 }}>
-                  <div>Comisiones: {formatCurrency(comisionesResult.total_general)}</div>
-                  <div>Descuentos: -{formatCurrency(comisionesResult.total_descuentos)}</div>
-                  <div>Neto a pagar: <strong>{formatCurrency(comisionesResult.total_neto)}</strong></div>
+                  {comisionesVista.filtrado && (
+                    <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                      Totales de la búsqueda ({comisionesVista.vendedores.length} de {comisionesResult.vendedores.length} vendedores)
+                    </div>
+                  )}
+                  <div>Comisiones: {formatCurrency(comisionesVista.total_general)}</div>
+                  <div>Descuentos: -{formatCurrency(comisionesVista.total_descuentos)}</div>
+                  <div>Neto a pagar: <strong>{formatCurrency(comisionesVista.total_neto)}</strong></div>
                 </div>
               )}
             </div>

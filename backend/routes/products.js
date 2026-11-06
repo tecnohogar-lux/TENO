@@ -88,13 +88,16 @@ function sanitizeProduct(product, role) {
 // ============================================
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const { page, limit, search } = req.query;
+    const { page, limit, search, estado } = req.query;
     const conditions = [];
     const params = [];
 
     if (search) {
       conditions.push(condicionBusqueda(['p.title', 'p.sku'], search, params));
     }
+    // ?estado=agotado | disponible (cualquier otro valor: todos)
+    if (estado === 'agotado') conditions.push('p.agotado = TRUE');
+    else if (estado === 'disponible') conditions.push('p.agotado IS NOT TRUE');
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -138,16 +141,19 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // ============================================
-// GET - IDs de todos los productos que coinciden con la búsqueda (para "seleccionar todos"
+// GET - IDs de todos los productos que coinciden con la búsqueda y el estado (para "seleccionar todos"
 // en la eliminación masiva, aunque estén en varias páginas). Va antes de /:id.
 // ============================================
 router.get('/ids', authenticateToken, requireManage('No tienes permiso para seleccionar productos'), async (req, res) => {
   try {
     const params = [];
-    let where = '';
+    const conditions = [];
     if (req.query.search) {
-      where = `WHERE ${condicionBusqueda(['title', 'sku'], req.query.search, params)}`;
+      conditions.push(condicionBusqueda(['title', 'sku'], req.query.search, params));
     }
+    if (req.query.estado === 'agotado') conditions.push('agotado = TRUE');
+    else if (req.query.estado === 'disponible') conditions.push('agotado IS NOT TRUE');
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const result = await pool.query(`SELECT id FROM products ${where} ORDER BY created_at DESC`, params);
     res.json({ ids: result.rows.map((r) => r.id) });
   } catch (err) {

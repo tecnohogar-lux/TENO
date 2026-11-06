@@ -29,10 +29,12 @@ export default function ProductsPage() {
   const canManage = user.role === 'operador' || user.role === 'admin' || user.role === 'caja';
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  // Filtro por disponibilidad: '' = todos, 'agotado' o 'disponible'.
+  const [estado, setEstado] = useState('');
 
   const { data, loading, error, refetch } = useFetch(
-    `/api/products?page=${page}&limit=${PAGE_SIZE}&search=${encodeURIComponent(search)}`,
-    { deps: [page, search] }
+    `/api/products?page=${page}&limit=${PAGE_SIZE}&search=${encodeURIComponent(search)}&estado=${estado}`,
+    { deps: [page, search, estado] }
   );
   const { post, put, del, loading: saving, error: saveError } = useApi();
   const { post: postImport, loading: importing, error: importError } = useApi();
@@ -66,6 +68,12 @@ export default function ProductsPage() {
     setSelectedIds(new Set());
   }
 
+  function handleEstadoChange(value) {
+    setEstado(value);
+    setPage(1);
+    setSelectedIds(new Set());
+  }
+
   const pageProducts = data?.products || [];
   const allPageSelected = pageProducts.length > 0 && pageProducts.every((p) => selectedIds.has(p.id));
 
@@ -91,7 +99,7 @@ export default function ProductsPage() {
     setSelectingAll(true);
     setActionError('');
     try {
-      const { data: res } = await apiClient.get(`/api/products/ids?search=${encodeURIComponent(search)}`);
+      const { data: res } = await apiClient.get(`/api/products/ids?search=${encodeURIComponent(search)}&estado=${estado}`);
       setSelectedIds(new Set(res.ids));
     } catch (err) {
       setActionError(err.response?.data?.error || 'No se pudo seleccionar los productos');
@@ -260,6 +268,21 @@ export default function ProductsPage() {
         </div>
       </div>
 
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }} role="group" aria-label="Filtrar por disponibilidad">
+        {[['', 'Todos'], ['disponible', 'Disponibles'], ['agotado', 'Agotados']].map(([valor, etiqueta]) => (
+          <button
+            key={valor || 'todos'}
+            type="button"
+            className={estado === valor ? 'btn btn-primary' : 'btn btn-secondary'}
+            style={{ padding: '6px 14px', fontSize: 13 }}
+            aria-pressed={estado === valor}
+            onClick={() => handleEstadoChange(valor)}
+          >
+            {etiqueta}
+          </button>
+        ))}
+      </div>
+
       {actionError && <div className="alert alert-error">{actionError}</div>}
       {importError && <div className="alert alert-error" style={{ whiteSpace: 'pre-line' }}>{importError}</div>}
       {exportError && <div className="alert alert-error">{exportError}</div>}
@@ -352,7 +375,7 @@ export default function ProductsPage() {
               <strong style={{ fontSize: 14 }}>{selectedIds.size} seleccionado{selectedIds.size === 1 ? '' : 's'}</strong>
               {allPageSelected && selectedIds.size < data.total && (
                 <button type="button" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={selectAllMatching} disabled={selectingAll}>
-                  {selectingAll ? 'Seleccionando...' : `Seleccionar los ${data.total} productos${search ? ' que coinciden con la búsqueda' : ''}`}
+                  {selectingAll ? 'Seleccionando...' : `Seleccionar los ${data.total} productos${search || estado ? ' que coinciden con el filtro' : ''}`}
                 </button>
               )}
               <div style={{ flex: 1 }} />

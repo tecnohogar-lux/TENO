@@ -370,6 +370,11 @@ export default function RetiroTiendaPage() {
                     <td data-label="Vendedor">{r.vendor_name}</td>
                     <td data-label="Productos" style={{ fontSize: 13 }}>
                       {r.items.map((i) => `${i.product_name} x${i.quantity}`).join(', ')}
+                      {r.notes && (
+                        <div style={{ marginTop: 6, fontSize: 12, color: 'var(--color-text-muted)', overflowWrap: 'anywhere', whiteSpace: 'pre-line' }}>
+                          <strong>Notas:</strong> {r.notes}
+                        </div>
+                      )}
                     </td>
                     <td data-label="Total">{formatCurrency(r.total)}</td>
                     <td data-label="Precios">

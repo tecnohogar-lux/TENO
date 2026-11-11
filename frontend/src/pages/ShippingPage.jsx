@@ -4,6 +4,8 @@ import { lineaParaEnviar } from '../utils/precioLinea';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import FilaEnvio from '../components/FilaEnvio';
+import Pagination from '../components/Pagination';
+import usePaginaLocal from '../hooks/usePaginaLocal';
 import useBorrador from '../hooks/useBorrador';
 import useRepreciarBorrador from '../hooks/useRepreciarBorrador';
 import useEventoEstable from '../hooks/useEventoEstable';
@@ -37,6 +39,8 @@ import TagPrecioModificado from '../components/TagPrecioModificado';
 const MOTIVO_STATUSES = ['cancelado', 'reprogramado'];
 
 const FREE_PRODUCT_OPTION = [{ value: '__free__', label: 'Producto libre (no registrado)' }];
+
+const FILAS_POR_PAGINA = 40;
 
 const emptyCreateForm = {
   vendor_id: '',
@@ -126,6 +130,10 @@ export default function ShippingPage() {
     if (statusFilter === 'todos') return all;
     return all.filter((s) => s.delivery_status === statusFilter);
   }, [data, statusFilter]);
+
+  // Solo se dibujan 40 envíos por página (Anterior / Siguiente): cientos de filas con listas desplegables
+  // hacían muy lenta la carga en el iPhone. La búsqueda, los filtros y la selección usan siempre la lista completa.
+  const { pagina, totalPaginas, visibles: shipmentsVisibles, irA: irAPagina } = usePaginaLocal(shipments, FILAS_POR_PAGINA, [search, filtersQuery, statusFilter]);
 
   const allSelected = shipments.length > 0 && selectedIds.length === shipments.length;
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
@@ -508,7 +516,8 @@ export default function ShippingPage() {
 
       {data && compacta && (
         <div className={`card${loading ? ' cargando' : ''}`} style={{ padding: 20 }}>
-          <TablaCompacta rows={shipments} vacio="Sin envíos que coincidan con el filtro" conEstado />
+          <TablaCompacta rows={shipmentsVisibles} vacio="Sin envíos que coincidan con el filtro" conEstado />
+          <Pagination page={pagina} totalPages={totalPaginas} total={shipments.length} onPageChange={irAPagina} />
         </div>
       )}
 
@@ -542,7 +551,7 @@ export default function ShippingPage() {
                   <td colSpan={canManage ? 13 : 12} style={{ color: 'var(--color-text-muted)' }}>Sin envíos que coincidan con el filtro</td>
                 </tr>
               ) : (
-                shipments.map((s) => (
+                shipmentsVisibles.map((s) => (
                   <FilaEnvio
                     key={s.id}
                     s={s}
@@ -564,6 +573,7 @@ export default function ShippingPage() {
               )}
             </tbody>
           </table>
+          <Pagination page={pagina} totalPages={totalPaginas} total={shipments.length} onPageChange={irAPagina} />
         </div>
       )}
 

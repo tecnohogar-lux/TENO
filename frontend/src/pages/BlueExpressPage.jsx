@@ -20,9 +20,13 @@ import { productPrice } from '../utils/priceType';
 import { DELIVERY_STATUS_LABELS, DELIVERY_STATUS_OPTIONS, deliveryStatusLabel } from '../utils/labels';
 import BuscadorConBoton from '../components/BuscadorConBoton';
 import BarraCarga from '../components/BarraCarga';
+import Pagination from '../components/Pagination';
+import usePaginaLocal from '../hooks/usePaginaLocal';
 import TagPrecioModificado from '../components/TagPrecioModificado';
 
-const FREE_PRODUCT_OPTION = [{ value: '__free__', label: 'Producto libre (no registrado)' }];
+const FILAS_POR_PAGINA = 40;
+
+const FREE_PRODUCT_OPTION =[{ value: '__free__', label: 'Producto libre (no registrado)' }];
 
 const emptyCreateForm = {
   vendor_id: '',
@@ -86,6 +90,10 @@ export default function BlueExpressPage() {
     if (statusFilter === 'todos') return all;
     return all.filter((s) => s.delivery_status === statusFilter);
   }, [data, statusFilter]);
+
+  // Solo se dibujan 40 envíos por página (Anterior / Siguiente): cientos de filas hacían muy lenta la carga en el iPhone.
+  // La búsqueda, los filtros y la selección usan siempre la lista completa.
+  const { pagina, totalPaginas, visibles: shipmentsVisibles, irA: irAPagina } = usePaginaLocal(shipments, FILAS_POR_PAGINA, [search, statusFilter]);
 
   const allSelected = shipments.length > 0 && selectedIds.length === shipments.length;
 
@@ -435,7 +443,7 @@ export default function BlueExpressPage() {
                   <td colSpan={canManage ? 12 : 11} style={{ color: 'var(--color-text-muted)' }}>Sin envíos a regiones que coincidan con el filtro</td>
                 </tr>
               ) : (
-                shipments.map((s) => (
+                shipmentsVisibles.map((s) => (
                   <tr key={s.id}>
                     {canManage && (
                       <td data-label="Seleccionar">
@@ -499,6 +507,7 @@ export default function BlueExpressPage() {
             </tbody>
           </table>
           </div>
+          <Pagination page={pagina} totalPages={totalPaginas} total={shipments.length} onPageChange={irAPagina} />
         </div>
       )}
 

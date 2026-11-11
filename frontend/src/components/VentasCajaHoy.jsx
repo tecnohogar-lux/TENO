@@ -4,12 +4,8 @@ import TablaCompacta from './TablaCompacta';
 import VistaToggle from './VistaToggle';
 import useFetch from '../hooks/useFetch';
 import useVistaCompacta from '../hooks/useVistaCompacta';
-import { formatCurrency } from '../utils/format';
+import { formatCurrency, formatHora as hora } from '../utils/format';
 import { PAYMENT_METHODS, paymentBreakdownLines, paymentMethodLabel } from '../utils/labels';
-
-function hora(value) {
-  return new Date(value).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', hour12: false });
-}
 
 function tipoVenta(v) {
   if (v.tipo_venta === 'ENVIO_PREPAGADO') return { label: 'Envío prepagado', color: '#2f6fb0' };

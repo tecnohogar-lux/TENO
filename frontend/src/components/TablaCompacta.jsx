@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import Badge from './Badge';
 import { DELIVERY_STATUS_LABELS, deliveryStatusLabel } from '../utils/labels';
-import { formatCurrency } from '../utils/format';
+import { formatCurrency, formatHora as hora } from '../utils/format';
 import { esReprogramadoPendiente } from '../utils/fechas';
 import TagReprogramado from './TagReprogramado';
 
@@ -15,11 +15,6 @@ function productoCompacto(row) {
   if (!largo) return { largo: '-', corto: '-', extra: 0 };
   const corto = largo.length > 15 ? `${largo.slice(0, 15).trimEnd()}...` : largo;
   return { largo, corto, extra: Math.max(items.length - 1, 0) };
-}
-
-function hora(value) {
-  if (!value) return '-';
-  return new Date(value).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 function diaMes(value) {

@@ -27,12 +27,22 @@ function fraccionComision(porcentaje) {
   return (porcentaje === null || porcentaje === undefined ? COMISION_ESTANDAR : Number(porcentaje)) / 100;
 }
 
+// Comisión de un producto SIN costo conocido (producto libre que se escribe a mano al vender, o producto del
+// catálogo sin costo cargado): como no hay costo contra el cual restar, se toma sobre el monto del producto,
+// o sea el porcentaje del vendedor (25% salvo que tenga otro) del precio de venta. null si no hay un precio válido.
+function comisionSinCosto(precioUnitario, porcentaje = null) {
+  const precio = Number(precioUnitario);
+  if (precioUnitario === null || precioUnitario === undefined || !Number.isFinite(precio) || precio <= 0) return null;
+  return Math.round(precio * fraccionComision(porcentaje) * 100) / 100;
+}
+
 // Comisión unitaria de un producto según el tipo de precio de la línea y el porcentaje del vendedor
 // (`porcentaje`: null = estándar, 25%).
 //  - sol / marketplace: comisión guardada en el producto (25% de la rentabilidad). Con otro porcentaje se
 //    calcula como ese porcentaje de la rentabilidad del producto.
 //  - mayor (precio libre) o precio modificado en esa venta: porcentaje de (precio de venta - costo), sin negativos.
-// Sin coincidencia en el catálogo (producto libre) o sin costo cargado => null.
+//  - Sin coincidencia en el catálogo (producto libre) o sin costo cargado: porcentaje del precio de venta
+//    (ver comisionSinCosto). Solo es null si no se conoce el precio unitario (`unitPrice`).
 // Si se conoce el id del producto se busca por id (sigue funcionando aunque el producto se haya renombrado);
 // si no, por nombre.
 async function lookupComisionUnitaria(dbClient, productName, priceType = 'marketplace', unitPrice = null, productId = null, precioModificado = false, porcentaje = null) {
@@ -46,7 +56,8 @@ async function lookupComisionUnitaria(dbClient, productName, priceType = 'market
     // Mismo costo que se guarda en la venta (costoDeLineas): costo tienda en SOL, costo en el resto.
     const p = r.rows[0];
     const costo = priceType === 'sol' && p?.costo_tienda !== null && p?.costo_tienda !== undefined ? p.costo_tienda : p?.costo;
-    if (costo === undefined || costo === null || unitPrice === null) return null;
+    if (costo === undefined || costo === null) return comisionSinCosto(unitPrice, porcentaje);
+    if (unitPrice === null) return null;
     return Math.max(0, Math.round((Number(unitPrice) - parseFloat(costo)) * fraccion * 100) / 100);
   }
 
@@ -60,7 +71,7 @@ async function lookupComisionUnitaria(dbClient, productName, priceType = 'market
     [clave]
   );
   const valor = result.rows[0]?.valor;
-  if (valor === undefined || valor === null) return null;
+  if (valor === undefined || valor === null) return comisionSinCosto(unitPrice, porcentaje);
   return estandar ? parseFloat(valor) : Math.round(parseFloat(valor) * fraccion * 100) / 100;
 }
 
@@ -173,4 +184,4 @@ async function summarizeLines(dbClient, rawLines, opciones = {}) {
   };
 }
 
-module.exports = { MIN_MAYOR, MIN_MAYOR_MESSAGE, TOLERANCIA_PRECIO, COMISION_ESTANDAR, porcentajeComisionVendedor, fraccionComision, precioDeCatalogo, lookupComisionUnitaria, comisionDeLineas, validateLines, summarizeLines, buscarProductoId, adjuntarProductIds, aplicarPrecios, costoDeLineas };
+module.exports = { MIN_MAYOR, MIN_MAYOR_MESSAGE, TOLERANCIA_PRECIO, COMISION_ESTANDAR, porcentajeComisionVendedor, fraccionComision, comisionSinCosto, precioDeCatalogo, lookupComisionUnitaria, comisionDeLineas, validateLines, summarizeLines, buscarProductoId, adjuntarProductIds, aplicarPrecios, costoDeLineas };

@@ -4,7 +4,7 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/auditLog');
-const { MIN_MAYOR, MIN_MAYOR_MESSAGE, lookupComisionUnitaria, porcentajeComisionVendedor, fraccionComision, precioDeCatalogo, validateLines, summarizeLines, buscarProductoId, costoDeLineas } = require('../utils/saleLines');
+const { MIN_MAYOR, MIN_MAYOR_MESSAGE, lookupComisionUnitaria, porcentajeComisionVendedor, fraccionComision, comisionSinCosto, precioDeCatalogo, validateLines, summarizeLines, buscarProductoId, costoDeLineas } = require('../utils/saleLines');
 const { buildQrValue } = require('../utils/qrCode');
 const { esSinCobro, conCobroSql, aplicarTipoEnvio } = require('../utils/sinCobro');
 const { PAYMENT_METHODS, validatePaymentBreakdown, normalizePaymentBreakdown, formaPagoCondition } = require('../utils/paymentBreakdown');
@@ -38,9 +38,10 @@ const NUEVO_ESTADO_VENTA_SQL = `COALESCE($2::text, CASE
   ELSE status END)`;
 
 // Comisión con el precio del catálogo (la que tiene un producto vendido sin cambiar su precio) para `cantidad` unidades,
-// con el porcentaje del vendedor (null = estándar).
-async function comisionCatalogo(db, nombre, priceType, productId, cantidad, porcentaje = null) {
-  const unitaria = await lookupComisionUnitaria(db, nombre, priceType, null, productId, false, porcentaje);
+// con el porcentaje del vendedor (null = estándar). `precioUnitario` es el precio de venta: se usa solo si el producto
+// no tiene comisión guardada (producto libre o sin costo), que se calcula sobre el monto del producto.
+async function comisionCatalogo(db, nombre, priceType, productId, cantidad, porcentaje = null, precioUnitario = null) {
+  const unitaria = await lookupComisionUnitaria(db, nombre, priceType, precioUnitario, productId, false, porcentaje);
   return unitaria !== null ? unitaria * cantidad : null;
 }
 
@@ -651,7 +652,7 @@ router.post('/', authenticateToken, async (req, res) => {
     } else {
       total = quantity * price;
       productId = await buscarProductoId(dbClient, product_name);
-      const comisionUnitaria = await lookupComisionUnitaria(dbClient, product_name, price_type, null, productId, false, porcentajeComision);
+      const comisionUnitaria = await lookupComisionUnitaria(dbClient, product_name, price_type, price, productId, false, porcentajeComision);
       comision = comisionUnitaria !== null ? comisionUnitaria * quantity : null;
       costoTotal = await costoDeLineas(dbClient, [{ product_id: productId, quantity, price_type }]);
     }
@@ -944,10 +945,16 @@ router.put('/:id', authenticateToken, async (req, res) => {
         costoTotal = porUnidadCosto !== null ? Math.round(porUnidadCosto * newQuantity * 100) / 100 : null;
         if (sale.price_type === 'mayor' && porUnidadCosto !== null) {
           comision = Math.max(0, Math.round((unitProducto - porUnidadCosto) * fraccionComision(porcentajeComision) * 100) / 100) * newQuantity;
+        } else if (sale.price_type === 'mayor') {
+          // Venta al mayor de un producto sin costo guardado: comisión sobre el monto del producto (precio libre).
+          const sinCosto = comisionSinCosto(unitProducto, porcentajeComision);
+          comision = sinCosto !== null ? sinCosto * newQuantity : null;
         } else if (sale.comision !== null && sale.comision !== undefined && Number(sale.quantity) > 0) {
           comision = Math.round((Number(sale.comision) / Number(sale.quantity)) * newQuantity * 100) / 100;
         } else {
-          comision = null;
+          // Venta sin comisión guardada (producto libre / sin costo): se calcula sobre el monto del producto.
+          const sinCosto = comisionSinCosto(unitProducto, porcentajeComision);
+          comision = sinCosto !== null ? sinCosto * newQuantity : null;
         }
       }
     }
@@ -975,14 +982,18 @@ router.put('/:id', authenticateToken, async (req, res) => {
         precioOriginal = precioModificado ? precioDeCatalogo(catalogo, sale.price_type) : null;
         comision = precioModificado
           ? (lookup !== null ? lookup * newQuantity : null)
-          : await comisionCatalogo(pool, product_name, sale.price_type, nuevoProductId, newQuantity, porcentajeComision);
+          : await comisionCatalogo(pool, product_name, sale.price_type, nuevoProductId, newQuantity, porcentajeComision, unitNuevo);
       } else if (precioModificado) {
         const costoUnidad = sale.costo_total !== null && sale.costo_total !== undefined && Number(sale.quantity) > 0 ? Number(sale.costo_total) / Number(sale.quantity) : null;
-        comision = costoUnidad !== null
-          ? Math.max(0, Math.round((unitNuevo - costoUnidad) * fraccionComision(porcentajeComision) * 100) / 100) * newQuantity
-          : null;
+        if (costoUnidad !== null) {
+          comision = Math.max(0, Math.round((unitNuevo - costoUnidad) * fraccionComision(porcentajeComision) * 100) / 100) * newQuantity;
+        } else {
+          // Sin costo guardado: la comisión es el porcentaje del monto del producto.
+          const sinCosto = comisionSinCosto(unitNuevo, porcentajeComision);
+          comision = sinCosto !== null ? sinCosto * newQuantity : null;
+        }
       } else {
-        comision = await comisionCatalogo(pool, sale.product_name, sale.price_type, sale.product_id || null, newQuantity, porcentajeComision);
+        comision = await comisionCatalogo(pool, sale.product_name, sale.price_type, sale.product_id || null, newQuantity, porcentajeComision, unitNuevo);
       }
     }
 

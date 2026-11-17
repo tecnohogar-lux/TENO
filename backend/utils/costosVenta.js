@@ -13,15 +13,27 @@ function lineasDe(venta) {
 
 const clave = (nombre) => String(nombre || '').trim().toLowerCase();
 
-// Agrega `costo_total` (costo unitario x cantidad, sumado por línea) a cada venta.
-// Se usa el costo que la venta guardó al crearse (sales.costo_total): no cambia si después sube o baja el
-// costo del producto. Solo las ventas sin costo guardado se calculan con el costo actual del catálogo.
-// Si alguna línea no está en el catálogo o no tiene costo cargado, queda null (un costo parcial confundiría).
+// Una venta de UN solo producto con costo guardado: el costo de su única línea es costo_total / cantidad, sin
+// consultar el catálogo.
+function costoUnitarioGuardado(v) {
+  const lineas = lineasDe(v);
+  if (lineas.length !== 1 || v.costo_total === null || v.costo_total === undefined || !(Number(v.quantity) > 0)) return null;
+  return Math.round((parseFloat(v.costo_total) / Number(v.quantity)) * 100) / 100;
+}
+
+// Agrega a cada venta:
+//  - `costo_total` (costo unitario x cantidad, sumado por línea). Se usa el costo que la venta guardó al crearse
+//    (sales.costo_total): no cambia si después sube o baja el costo del producto. Solo las ventas sin costo
+//    guardado se calculan con el costo actual del catálogo. Si alguna línea no está en el catálogo o no tiene
+//    costo cargado, queda null (un costo parcial confundiría).
+//  - `costos_lineas`: costo unitario de cada producto de la venta, en el mismo orden que sus líneas (null si no se
+//    conoce), para el detalle por producto del Excel. En una venta de un solo producto con costo guardado es el
+//    costo guardado; en una de varios productos es el costo actual del catálogo de cada uno.
 async function agregarCostos(ventas) {
   const ids = new Set();
   const nombres = new Set();
   for (const v of ventas) {
-    if (v.costo_total !== null && v.costo_total !== undefined) continue;
+    if (costoUnitarioGuardado(v) !== null) continue; // ya se sabe el costo de su única línea
     for (const l of lineasDe(v)) {
       if (l.product_id) ids.add(Number(l.product_id));
       if (l.product_name) nombres.add(clave(l.product_name)); // respaldo si el producto con ese id ya no existe
@@ -54,16 +66,21 @@ async function agregarCostos(ventas) {
     || porNombre.get(clave(l.product_name))
     || porNombreAnterior.get(clave(l.product_name));
 
+  const costoActual = (l) => {
+    const p = producto(l);
+    const unitario = p ? (l.price_type === 'sol' && p.costo_tienda !== null ? p.costo_tienda : p.costo) : null;
+    return unitario === null || unitario === undefined ? null : parseFloat(unitario);
+  };
+
   return ventas.map((v) => {
-    if (v.costo_total !== null && v.costo_total !== undefined) return { ...v, costo_total: parseFloat(v.costo_total) };
-    let total = 0;
-    for (const l of lineasDe(v)) {
-      const p = producto(l);
-      const unitario = p ? (l.price_type === 'sol' && p.costo_tienda !== null ? p.costo_tienda : p.costo) : null;
-      if (unitario === null || unitario === undefined) return { ...v, costo_total: null };
-      total += parseFloat(unitario) * Number(l.quantity);
-    }
-    return { ...v, costo_total: Math.round(total * 100) / 100 };
+    const lineas = lineasDe(v);
+    const guardado = costoUnitarioGuardado(v);
+    const costos_lineas = guardado !== null ? [guardado] : lineas.map(costoActual);
+
+    if (v.costo_total !== null && v.costo_total !== undefined) return { ...v, costo_total: parseFloat(v.costo_total), costos_lineas };
+    if (costos_lineas.some((c) => c === null)) return { ...v, costo_total: null, costos_lineas };
+    const total = lineas.reduce((acc, l, i) => acc + costos_lineas[i] * Number(l.quantity), 0);
+    return { ...v, costo_total: Math.round(total * 100) / 100, costos_lineas };
   });
 }
 

@@ -286,13 +286,20 @@ export default function ReportsPage() {
         return num(s.precio_producto) ?? Number(s.total) - (num(s.precio_envio) ?? 0);
       };
       const esEnvio = (s) => TIPOS_ENVIO.includes(s.tipo_venta);
+      // Productos de la venta línea por línea (null si es una venta de un solo producto). La columna `product_name`
+      // de la venta se corta a 255 caracteres, así que la lista completa se arma desde las líneas.
+      const lineasDe = (s) => (Array.isArray(s.items) && s.items.length > 0 ? s.items : null);
+      const listaProductos = (s) => {
+        const lineas = lineasDe(s);
+        return lineas ? lineas.map((l) => `${l.product_name} x${l.quantity}`).join(' + ') : s.product_name;
+      };
 
       // Orden de las columnas: primero las pedidas por operaciones, luego el resto de la información.
       // `total` suma la columna en la fila TOTALES (si no se define, queda vacía).
       const columnas = [
         { titulo: 'Fecha de ingreso', valor: (s) => formatDate(fechaRegistro(s)) },
         { titulo: 'Cantidad', valor: (s) => s.quantity },
-        { titulo: 'Producto', valor: (s) => s.product_name },
+        { titulo: 'Producto', valor: listaProductos },
         // El costo de compra es un dato interno: solo lo reciben admin/operador/caja.
         ...(canManage ? [{ titulo: 'Costo', valor: (s) => num(s.costo_total) ?? '', total: (s) => num(s.costo_total) ?? 0 }] : []),
         { titulo: 'Precio del producto', valor: (s) => productoDe(s) ?? '', total: (s) => productoDe(s) ?? 0 },
@@ -309,7 +316,11 @@ export default function ReportsPage() {
         { titulo: 'Tipo', valor: (s) => tipoVentaLabel(s.tipo_venta) },
         { titulo: 'Precio envío', valor: (s) => envioDe(s) ?? '', total: (s) => envioDe(s) ?? 0 },
         { titulo: 'Estado del envío', valor: (s) => (esEnvio(s) ? deliveryStatusLabel(s.delivery_status) : '-') },
+        // Para encontrar la venta en la hoja "Detalle de productos".
+        { titulo: 'N° venta', valor: (s) => s.id },
       ];
+      // Ancho de cada columna: sin esto Excel usa el ancho mínimo y los textos largos se ven cortados.
+      const ANCHOS = { 'Fecha de ingreso': 17, Cantidad: 9, Producto: 90, Costo: 12, 'Precio del producto': 18, Total: 12, 'Comisión': 12, Vendedor: 20, Cliente: 26, 'Forma de pago': 26, Estado: 13, 'Tipo de precio': 15, Delivery: 16, 'Fecha de envío': 17, Tipo: 14, 'Precio envío': 13, 'Estado del envío': 18, 'N° venta': 10 };
 
       const rows = displayRows.map((s) => Object.fromEntries(columnas.map((c) => [c.titulo, c.valor(s)])));
       const totales = columnas.map((c, i) => {
@@ -321,15 +332,75 @@ export default function ReportsPage() {
 
       const sheet = XLSX.utils.json_to_sheet(rows, { header: columnas.map((c) => c.titulo) });
       XLSX.utils.sheet_add_aoa(sheet, [[], totales], { origin: -1 });
+      sheet['!cols'] = columnas.map((c) => ({ wch: ANCHOS[c.titulo] || 14 }));
 
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, sheet, 'Ventas');
+
+      // Hoja "Detalle de productos": una fila por cada producto de cada venta (en el mismo orden que la hoja Ventas),
+      // con su cantidad, precio y costo. Así el detalle de lo que compró cada cliente sale completo, sin importar
+      // cuántos productos tenga la venta.
+      const detalleColumnas = [
+        { titulo: 'N° venta', valor: (f) => f.venta.id },
+        { titulo: 'Fecha de ingreso', valor: (f) => formatDate(fechaRegistro(f.venta)) },
+        { titulo: 'Cliente', valor: (f) => f.venta.client_name },
+        { titulo: 'Vendedor', valor: (f) => f.venta.vendor_name },
+        { titulo: 'Producto', valor: (f) => f.producto },
+        { titulo: 'Cantidad', valor: (f) => f.cantidad, total: (f) => f.cantidad },
+        { titulo: 'Tipo de precio', valor: (f) => priceTypeLabel(f.priceType) },
+        { titulo: 'Precio unitario', valor: (f) => f.precioUnitario },
+        { titulo: 'Subtotal', valor: (f) => f.subtotal, total: (f) => f.subtotal },
+        ...(canManage ? [
+          { titulo: 'Costo unitario', valor: (f) => f.costoUnitario ?? '' },
+          { titulo: 'Costo total', valor: (f) => (f.costoUnitario !== null ? f.costoUnitario * f.cantidad : ''), total: (f) => (f.costoUnitario !== null ? f.costoUnitario * f.cantidad : 0) },
+        ] : []),
+      ];
+      const detalleFilas = [];
+      for (const s of displayRows) {
+        const lineas = lineasDe(s) || [{
+          product_name: s.product_name,
+          quantity: s.quantity,
+          // Venta de un solo producto: su precio unitario es el monto de productos (sin el envío) dividido por la cantidad.
+          price: Number(s.quantity) > 0 ? (num(s.precio_producto) ?? Number(s.total) - (num(s.precio_envio) ?? 0)) / Number(s.quantity) : 0,
+          price_type: s.price_type,
+        }];
+        lineas.forEach((l, i) => {
+          const cantidad = Number(l.quantity);
+          const precioUnitario = Number(l.price);
+          const costo = canManage && Array.isArray(s.costos_lineas) ? s.costos_lineas[i] : null;
+          detalleFilas.push({
+            venta: s,
+            producto: l.product_name,
+            cantidad,
+            priceType: l.price_type || s.price_type,
+            precioUnitario: Math.round(precioUnitario * 100) / 100,
+            subtotal: Math.round(cantidad * precioUnitario * 100) / 100,
+            costoUnitario: costo !== null && costo !== undefined ? Number(costo) : null,
+          });
+        });
+      }
+      const hojaDetalle = XLSX.utils.json_to_sheet(
+        detalleFilas.map((f) => Object.fromEntries(detalleColumnas.map((c) => [c.titulo, c.valor(f)]))),
+        { header: detalleColumnas.map((c) => c.titulo) }
+      );
+      XLSX.utils.sheet_add_aoa(hojaDetalle, [[], detalleColumnas.map((c, i) => {
+        if (i === 0) return 'TOTALES';
+        if (!c.total) return '';
+        return Math.round(detalleFilas.reduce((acc, f) => acc + c.total(f), 0) * 100) / 100 || '';
+      })], { origin: -1 });
+      const ANCHOS_DETALLE = { 'N° venta': 10, 'Fecha de ingreso': 17, Cliente: 26, Vendedor: 20, Producto: 70, Cantidad: 9, 'Tipo de precio': 15, 'Precio unitario': 15, Subtotal: 13, 'Costo unitario': 14, 'Costo total': 13 };
+      hojaDetalle['!cols'] = detalleColumnas.map((c) => ({ wch: ANCHOS_DETALLE[c.titulo] || 14 }));
+      XLSX.utils.book_append_sheet(workbook, hojaDetalle, 'Detalle de productos');
       // Segunda hoja con los filtros usados, para saber de qué está hecho el reporte.
       const filasFiltros = [['Filtro', 'Selección'], ...(resumenFiltros.length > 0
         ? resumenFiltros.map((f) => [f.nombre, f.valores.join(', ')])
         : [['Sin filtros', 'Todas las ventas']]), [],
       ['Orden', orden === 'nuevo' ? 'De más nuevo a más viejo (fecha de ingreso)' : 'De más viejo a más nuevo (fecha de ingreso)'],
-      ['Ventas incluidas', displayRows.length]];
+      ['Ventas incluidas', displayRows.length],
+      [],
+      ['Hoja "Detalle de productos"', canManage
+        ? 'Una fila por cada producto de cada venta. En una venta de varios productos, el costo de cada uno es el costo actual del catálogo; el costo total de la venta (hoja Ventas) es el que se guardó al registrarla.'
+        : 'Una fila por cada producto de cada venta.']];
       const hojaFiltros = XLSX.utils.aoa_to_sheet(filasFiltros);
       hojaFiltros['!cols'] = [{ wch: 22 }, { wch: 80 }];
       XLSX.utils.book_append_sheet(workbook, hojaFiltros, 'Filtros');

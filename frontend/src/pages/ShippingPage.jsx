@@ -6,6 +6,10 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import FilaEnvio from '../components/FilaEnvio';
 import Pagination from '../components/Pagination';
 import usePaginaLocal from '../hooks/usePaginaLocal';
+import FormPaso from '../components/FormPaso';
+import NotaOpcional from '../components/NotaOpcional';
+import ResumenFormulario, { pasoResumen } from '../components/ResumenFormulario';
+import { irAlPrimerError } from '../utils/formulario';
 import useBorrador from '../hooks/useBorrador';
 import useRepreciarBorrador from '../hooks/useRepreciarBorrador';
 import useEventoEstable from '../hooks/useEventoEstable';
@@ -292,10 +296,34 @@ export default function ShippingPage() {
 
   const precioProductoCreate = createForm.items.reduce((sum, i) => sum + i.quantity * i.price, 0);
 
+  // Qué falta para guardar, por paso. Se muestra en el resumen y, después de intentar guardar, en rojo en cada campo.
+  const [intento, setIntento] = useState(false);
+  useEffect(() => { if (!showCreateForm) setIntento(false); }, [showCreateForm]);
+  const sinVendedor = canManage && !createForm.vendor_id;
+  const sinNombre = !createForm.nombre.trim();
+  const sinApellido = !createForm.apellido.trim();
+  const sinProductos = createForm.items.length === 0;
+  const precioInvalido = createForm.items.some((i) => !(Number(i.price) > 0));
+  const sinComuna = !createForm.comuna;
+  const sinEnvio = canManage && (createForm.precio_envio === '' || !(Number(createForm.precio_envio) >= 0));
+  const sinDireccion = !createForm.address.trim();
+  const sinTelefono = !createForm.phone.trim();
+  const faltanCliente = [sinVendedor && 'vendedor', sinNombre && 'nombre', sinApellido && 'apellido'].filter(Boolean);
+  const faltanProductos = [sinProductos && 'productos', precioInvalido && 'precio de un producto'].filter(Boolean);
+  const faltanEntrega = [sinComuna && 'comuna', sinEnvio && 'precio de envío', sinTelefono && 'teléfono', sinDireccion && 'dirección'].filter(Boolean);
+  const pasosResumen = [pasoResumen('Cliente', faltanCliente), pasoResumen('Productos', faltanProductos), pasoResumen('Entrega', faltanEntrega)];
+  const precioEnvioCreate = Number(createForm.precio_envio) || 0;
+  const cantidadProductosCreate = createForm.items.reduce((sum, i) => sum + Number(i.quantity), 0);
+  const campoConError = (falta) => `form-field${intento && falta ? ' con-error' : ''}`;
+  const mensajeError = (falta, texto) => (intento && falta ? <div className="campo-error">{texto}</div> : null);
+
   async function handleCreateSubmit(e) {
     e.preventDefault();
-    if (createForm.items.length === 0) return;
-    if (!createForm.nombre.trim() || !createForm.apellido.trim()) return;
+    if (faltanCliente.length + faltanProductos.length + faltanEntrega.length > 0) {
+      setIntento(true);
+      irAlPrimerError();
+      return;
+    }
     const payload = {
       tipo_venta: 'ENVIO',
       items: createForm.items.map(lineaParaEnviar).map(({ product_name, quantity, price, price_type, precio_modificado, precio_original }) => ({ product_name, quantity, price, price_type, precio_modificado, precio_original })),
@@ -421,86 +449,101 @@ export default function ShippingPage() {
       {showFilters && <SalesFilters filters={filters} onChange={setFilters} fields={filterFields} canManage={canManage} />}
 
       {showCreateForm && (
-        <form onSubmit={handleCreateSubmit} className="card" style={{ padding: 20, marginBottom: 24 }}>
+        <form onSubmit={handleCreateSubmit} className="card form-etiqueta" noValidate>
           {saveError && <div className="alert alert-error">{saveError}</div>}
-          <div className="form-grid-2" style={{ gap: 16 }}>
-            <div className="form-field">
-              <label>Vendedor</label>
-              {canManage ? (
-                <SearchableSelect
-                  value={createForm.vendor_id}
-                  onChange={(v) => setCreateForm({ ...createForm, vendor_id: v })}
-                  options={vendorOptions}
-                  placeholder="Selecciona un vendedor"
-                  required
-                />
-              ) : (
-                <input value={user.name} disabled />
-              )}
+          <div className="form-etiqueta__grid">
+            <div className="form-etiqueta__pasos">
+              <FormPaso numero={1} titulo="Cliente" error={intento && faltanCliente.length > 0}>
+                <div className="form-fila form-fila--cliente">
+                  <div className={campoConError(sinVendedor)}>
+                    <label>Vendedor</label>
+                    {canManage ? (
+                      <SearchableSelect
+                        value={createForm.vendor_id}
+                        onChange={(v) => setCreateForm({ ...createForm, vendor_id: v })}
+                        options={vendorOptions}
+                        placeholder="Selecciona un vendedor"
+                      />
+                    ) : (
+                      <input value={user.name} disabled />
+                    )}
+                    {mensajeError(sinVendedor, 'Falta el vendedor')}
+                  </div>
+                  <div className={campoConError(sinNombre)}>
+                    <label>Nombre</label>
+                    <input placeholder="Nombre" value={createForm.nombre} onChange={(e) => setCreateForm({ ...createForm, nombre: e.target.value })} />
+                    {mensajeError(sinNombre, 'Falta el nombre')}
+                  </div>
+                  <div className={campoConError(sinApellido)}>
+                    <label>Apellido</label>
+                    <input placeholder="Apellido" value={createForm.apellido} onChange={(e) => setCreateForm({ ...createForm, apellido: e.target.value })} />
+                    {mensajeError(sinApellido, 'Falta el apellido')}
+                  </div>
+                </div>
+              </FormPaso>
+
+              <ShipmentItemsInput
+                numero={2}
+                error={intento && faltanProductos.length > 0}
+                canEditPrice={canManage}
+                allowMayor
+                hideSol={user.role === 'vendedor'}
+                blockAgotado={user.role === 'vendedor'}
+                products={productsData?.products || []}
+                items={createForm.items}
+                onChange={(items) => setCreateForm({ ...createForm, items })}
+              />
+
+              <FormPaso numero={3} titulo="Entrega" error={intento && faltanEntrega.length > 0}>
+                <div className="form-fila form-fila--2">
+                  <div className={campoConError(sinComuna)}>
+                    <label>Comuna</label>
+                    <select value={createForm.comuna} onChange={(e) => handleComunaChange(e.target.value)}>
+                      <option value="">Selecciona una comuna</option>
+                      {(shippingCostsData?.costos || []).map((c) => (
+                        <option key={c.id} value={c.comuna}>{c.comuna} · {formatCurrency(c.precio)}</option>
+                      ))}
+                    </select>
+                    {mensajeError(sinComuna, 'Falta la comuna')}
+                  </div>
+                  <div className={campoConError(sinTelefono)}>
+                    <label>Teléfono</label>
+                    <input type="tel" inputMode="tel" placeholder="+56 9 1234 5678" value={createForm.phone} onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })} />
+                    {mensajeError(sinTelefono, 'Falta el teléfono')}
+                  </div>
+                </div>
+                <div className="form-fila">
+                  <div className={campoConError(sinDireccion)}>
+                    <label>Dirección</label>
+                    <input placeholder="Calle y número, depto" value={createForm.address} onChange={(e) => setCreateForm({ ...createForm, address: e.target.value })} />
+                    {mensajeError(sinDireccion, 'Falta la dirección')}
+                  </div>
+                </div>
+                {canManage && (
+                  <div className="form-fila form-fila--2">
+                    <div className={campoConError(sinEnvio)}>
+                      <label>Precio envío</label>
+                      <input type="number" inputMode="numeric" min="0" value={createForm.precio_envio} onChange={(e) => setCreateForm({ ...createForm, precio_envio: e.target.value })} />
+                      {mensajeError(sinEnvio, 'Falta el precio de envío')}
+                    </div>
+                  </div>
+                )}
+                <NotaOpcional value={createForm.notes} onChange={(notes) => setCreateForm({ ...createForm, notes })} />
+              </FormPaso>
             </div>
 
-            <div className="form-field">
-              <label>Cliente</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input placeholder="Nombre" value={createForm.nombre} onChange={(e) => setCreateForm({ ...createForm, nombre: e.target.value })} required style={{ flex: 1, minWidth: 0 }} />
-                <input placeholder="Apellido" value={createForm.apellido} onChange={(e) => setCreateForm({ ...createForm, apellido: e.target.value })} required style={{ flex: 1, minWidth: 0 }} />
-              </div>
-            </div>
-
-            <ShipmentItemsInput
-              canEditPrice={canManage}
-              addButtonGreen
-              allowMayor
-              hideSol={user.role === 'vendedor'}
-              blockAgotado={user.role === 'vendedor'}
-              products={productsData?.products || []}
-              items={createForm.items}
-              onChange={(items) => setCreateForm({ ...createForm, items })}
+            <ResumenFormulario
+              lineas={[
+                { etiqueta: `Productos (${cantidadProductosCreate})`, valor: formatCurrency(precioProductoCreate) },
+                { etiqueta: createForm.comuna ? `Envío · ${createForm.comuna}` : 'Envío', valor: createForm.comuna || canManage ? formatCurrency(precioEnvioCreate) : '—' },
+              ]}
+              total={precioProductoCreate + precioEnvioCreate}
+              totalNota={createForm.comuna || canManage ? 'incluye envío' : 'envío aparte'}
+              textoBoton="Guardar etiqueta"
+              guardando={saving}
+              pasos={pasosResumen}
             />
-
-            <div className="form-field">
-              <label>Comuna</label>
-              <select value={createForm.comuna} onChange={(e) => handleComunaChange(e.target.value)} required>
-                <option value="">Selecciona una comuna</option>
-                {(shippingCostsData?.costos || []).map((c) => (
-                  <option key={c.id} value={c.comuna}>{c.comuna} · {formatCurrency(c.precio)}</option>
-                ))}
-              </select>
-            </div>
-            <div />
-
-            <div className="form-field">
-              <label>Precio producto</label>
-              <input value={formatCurrency(precioProductoCreate)} readOnly />
-            </div>
-            <div className="form-field">
-              <label>Precio envío</label>
-              {user.role === 'vendedor' ? (
-                <input value={createForm.comuna ? formatCurrency(Number(createForm.precio_envio) || 0) : 'Según la comuna'} readOnly />
-              ) : (
-                <input type="number" min="0" value={createForm.precio_envio} onChange={(e) => setCreateForm({ ...createForm, precio_envio: e.target.value })} required />
-              )}
-            </div>
-
-            <div className="form-field">
-              <label>Dirección</label>
-              <input value={createForm.address} onChange={(e) => setCreateForm({ ...createForm, address: e.target.value })} required />
-            </div>
-            <div className="form-field">
-              <label>Teléfono</label>
-              <input value={createForm.phone} onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })} required />
-            </div>
           </div>
-          <div style={{ textAlign: 'right', fontSize: 13, color: 'var(--color-text-muted)', marginTop: -4, marginBottom: 12 }}>
-            Total: {formatCurrency(precioProductoCreate + (Number(createForm.precio_envio) || 0))}
-          </div>
-          <div className="form-field">
-            <label>Notas</label>
-            <textarea rows={2} value={createForm.notes} onChange={(e) => setCreateForm({ ...createForm, notes: e.target.value })} />
-          </div>
-          <button type="submit" className="btn btn-primary" disabled={saving}>
-            {saving ? 'Guardando...' : 'Guardar etiqueta'}
-          </button>
         </form>
       )}
 

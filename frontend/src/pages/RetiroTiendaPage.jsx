@@ -16,7 +16,6 @@ import useAuth from '../hooks/useAuth';
 import useConfirm from '../hooks/useConfirm';
 import { formatCurrency, formatDate } from '../utils/format';
 import PriceTypeBadge from '../components/PriceTypeBadge';
-import PrecioUnitarioEditable from '../components/PrecioUnitarioEditable';
 import { lineaParaEnviar, precioCatalogoDeGuardada } from '../utils/precioLinea';
 import { showNewSale } from '../store/useNuevaVentaStore';
 import { MIN_MAYOR, productPrice } from '../utils/priceType';
@@ -24,6 +23,12 @@ import BuscadorConBoton from '../components/BuscadorConBoton';
 import BarraCarga from '../components/BarraCarga';
 import useBorrador from '../hooks/useBorrador';
 import useRepreciarBorrador from '../hooks/useRepreciarBorrador';
+import FormPaso from '../components/FormPaso';
+import CantidadStepper from '../components/CantidadStepper';
+import LineasProductos from '../components/LineasProductos';
+import NotaOpcional from '../components/NotaOpcional';
+import ResumenFormulario, { pasoResumen } from '../components/ResumenFormulario';
+import { irAlPrimerError } from '../utils/formulario';
 
 const PAGE_SIZE = 25;
 const emptyForm = { nombre: '', apellido: '', notes: '' };
@@ -78,6 +83,20 @@ export default function RetiroTiendaPage() {
   const [agotadoError, setAgotadoError] = useState('');
 
   const total = cart.reduce((sum, item) => sum + item.quantity * item.price, 0);
+
+  // Qué falta para guardar, por paso. Se muestra en el resumen y, después de intentar guardar, en rojo en cada campo.
+  const [intento, setIntento] = useState(false);
+  useEffect(() => { if (!showForm) setIntento(false); }, [showForm]);
+  const sinNombre = !form.nombre.trim();
+  const sinApellido = !form.apellido.trim();
+  const sinProductos = cart.length === 0;
+  const precioInvalido = cart.some((i) => !(Number(i.price) > 0));
+  const faltanCliente = [sinNombre && 'nombre', sinApellido && 'apellido'].filter(Boolean);
+  const faltanProductos = [sinProductos && 'productos', precioInvalido && 'precio de un producto'].filter(Boolean);
+  const pasosResumen = [pasoResumen('Cliente', faltanCliente), pasoResumen('Productos', faltanProductos)];
+  const cantidadProductos = cart.reduce((sum, i) => sum + Number(i.quantity), 0);
+  const campoConError = (falta) => `form-field${intento && falta ? ' con-error' : ''}`;
+  const mensajeError = (falta, texto) => (intento && falta ? <div className="campo-error">{texto}</div> : null);
   const productOptions = useMemo(
     () => (productsData?.products || []).map((p) => ({ value: p.id, label: priceType === 'mayor' ? `${p.title}${p.agotado ? ' (agotado)' : ''}` : `${p.title} · ${formatCurrency(productPrice(p, priceType))}${p.agotado ? ' (agotado)' : ''}` })),
     [productsData, priceType]
@@ -121,7 +140,11 @@ export default function RetiroTiendaPage() {
   async function handleSubmit(e) {
     e.preventDefault();
     setSuccessMsg('');
-    if (!form.nombre.trim() || !form.apellido.trim() || cart.length === 0) return;
+    if (faltanCliente.length + faltanProductos.length > 0) {
+      setIntento(true);
+      irAlPrimerError();
+      return;
+    }
 
     const payload = {
       client_name: `${form.nombre.trim()} ${form.apellido.trim()}`,
@@ -218,109 +241,91 @@ export default function RetiroTiendaPage() {
       {successMsg && <div className="card" style={{ padding: 16, marginBottom: 20, color: 'var(--color-success)' }}>{successMsg}</div>}
 
       {showForm && (
-        <form onSubmit={handleSubmit} className="card" style={{ padding: 20, marginBottom: 24 }}>
+        <form onSubmit={handleSubmit} className="card form-etiqueta" noValidate>
+          {editingRetiro && <h3 className="form-etiqueta__titulo">Editar retiro</h3>}
           {editingRetiro?.status === 'entregado' && (
             <div className="alert alert-error">Este retiro ya fue entregado: los cambios no modifican la venta ya registrada en Caja.</div>
           )}
           {saveError && <div className="alert alert-error">{saveError}</div>}
-          <div className="form-grid-2" style={{ gap: 20 }}>
-            <div>
-              <div className="form-field">
-                <label>Vendedor</label>
-                <input value={editingRetiro ? editingRetiro.vendor_name : user.name} disabled />
-              </div>
-              <div className="form-field">
-                <label>Cliente</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input placeholder="Nombre" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} required style={{ flex: 1, minWidth: 0 }} />
-                  <input placeholder="Apellido" value={form.apellido} onChange={(e) => setForm({ ...form, apellido: e.target.value })} required style={{ flex: 1, minWidth: 0 }} />
+          <div className="form-etiqueta__grid">
+            <div className="form-etiqueta__pasos">
+              <FormPaso numero={1} titulo="Cliente" error={intento && faltanCliente.length > 0}>
+                <div className="form-fila form-fila--cliente">
+                  <div className="form-field">
+                    <label>Vendedor</label>
+                    <input value={editingRetiro ? editingRetiro.vendor_name : user.name} disabled />
+                  </div>
+                  <div className={campoConError(sinNombre)}>
+                    <label>Nombre</label>
+                    <input placeholder="Nombre" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+                    {mensajeError(sinNombre, 'Falta el nombre')}
+                  </div>
+                  <div className={campoConError(sinApellido)}>
+                    <label>Apellido</label>
+                    <input placeholder="Apellido" value={form.apellido} onChange={(e) => setForm({ ...form, apellido: e.target.value })} />
+                    {mensajeError(sinApellido, 'Falta el apellido')}
+                  </div>
                 </div>
-              </div>
-              <div className="form-field">
-                <label>Notas</label>
-                <textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-              </div>
-              <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={saving || cart.length === 0}>
-                {saving ? 'Guardando...' : `${editingRetiro ? 'Guardar cambios' : 'Registrar retiro'} (${formatCurrency(total)})`}
-              </button>
-            </div>
+                <NotaOpcional value={form.notes} onChange={(notes) => setForm({ ...form, notes })} />
+              </FormPaso>
 
-            <div>
-              <PriceTypeToggle value={priceType} onChange={handlePriceTypeChange} allowMayor hideSol={user.role === 'vendedor'} />
-              {priceType === 'mayor' && (
-                <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: -4 }}>
-                  Venta al mayor: mínimo {MIN_MAYOR} unidades por producto y precio libre.
+              <FormPaso
+                numero={2}
+                titulo="Productos"
+                error={intento && faltanProductos.length > 0}
+                acciones={<PriceTypeToggle compact value={priceType} onChange={handlePriceTypeChange} allowMayor hideSol={user.role === 'vendedor'} />}
+              >
+                <p className="form-paso__nota">
+                  {priceType === 'mayor'
+                    ? `Venta al mayor: mínimo ${MIN_MAYOR} unidades por producto y precio libre.`
+                    : 'El tipo de precio elegido arriba vale para el próximo producto que agregues.'}
                 </p>
-              )}
-              <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>Productos</h3>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-                <div style={{ flex: 1 }}>
-                  <SearchableSelect
-                    value={selectedProductId}
-                    onChange={(v) => { setSelectedProductId(v); setAgotadoError(''); }}
-                    options={productOptions}
-                    placeholder="Selecciona un producto"
-                  />
+                <div className="agregar-producto">
+                  <div className="agregar-producto__buscar buscador-producto">
+                    <SearchableSelect
+                      value={selectedProductId}
+                      onChange={(v) => { setSelectedProductId(v); setAgotadoError(''); }}
+                      options={productOptions}
+                      placeholder="Buscar producto por nombre"
+                    />
+                  </div>
+                  <div className="agregar-producto__acciones">
+                    <CantidadStepper value={selectedQty} onChange={setSelectedQty} min={priceType === 'mayor' ? MIN_MAYOR : 1} />
+                    <button
+                      type="button"
+                      className="btn btn-add"
+                      onClick={addToCart}
+                      disabled={!selectedProductId || (priceType === 'mayor' && (Number(selectedQty) < MIN_MAYOR || !(Number(mayorPrice) > 0)))}
+                    >
+                      Agregar
+                    </button>
+                  </div>
                 </div>
-                <input type="number" min={priceType === 'mayor' ? MIN_MAYOR : 1} value={selectedQty} onChange={(e) => setSelectedQty(e.target.value)} style={{ width: 70 }} />
-                <button
-                  type="button"
-                  className="btn btn-add"
-                  onClick={addToCart}
-                  disabled={!selectedProductId || (priceType === 'mayor' && (Number(selectedQty) < MIN_MAYOR || !(Number(mayorPrice) > 0)))}
-                >
-                  Agregar
-                </button>
-              </div>
-              {agotadoError && <div className="alert alert-error" role="alert">{agotadoError}</div>}
+                {agotadoError && <div className="alert alert-error" role="alert">{agotadoError}</div>}
 
-              {priceType === 'mayor' && selectedProductId && (
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="Precio unitario (libre)"
-                  value={mayorPrice}
-                  onChange={(e) => setMayorPrice(e.target.value)}
-                  style={{ width: '100%', marginBottom: 16 }}
-                />
-              )}
+                {priceType === 'mayor' && selectedProductId && (
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    placeholder="Precio unitario (libre)"
+                    value={mayorPrice}
+                    onChange={(e) => setMayorPrice(e.target.value)}
+                    className="campo-suelto"
+                  />
+                )}
 
-              <table className="responsive-stack">
-                <thead>
-                  <tr>
-                    <th>Producto</th>
-                    <th>Precio unit.</th>
-                    <th>Cant.</th>
-                    <th>Subtotal</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cart.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} style={{ color: 'var(--color-text-muted)' }}>Carrito vacío</td>
-                    </tr>
-                  ) : (
-                    cart.map((item) => (
-                      <tr key={item.key}>
-                        <td data-label="Producto">{item.product_name} <PriceTypeBadge type={item.price_type} /></td>
-                        <td data-label="Precio unit."><PrecioUnitarioEditable item={item} editable={canManage} onChange={cambiarLinea} /></td>
-                        <td data-label="Cant.">{item.quantity}</td>
-                        <td data-label="Subtotal">{formatCurrency(item.quantity * item.price)}</td>
-                        <td data-label="Quitar">
-                          <button type="button" className="btn btn-secondary" style={{ padding: '2px 8px', fontSize: 12 }} onClick={() => removeFromCart(item.key)}>
-                            Quitar
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-              <div style={{ marginTop: 12, textAlign: 'right', fontSize: 16, fontWeight: 600 }}>
-                Total: {formatCurrency(total)}
-              </div>
+                <LineasProductos items={cart} canEditPrice={canManage} onChangeLinea={cambiarLinea} onRemove={removeFromCart} error={intento && sinProductos} />
+              </FormPaso>
             </div>
+
+            <ResumenFormulario
+              lineas={[{ etiqueta: `Productos (${cantidadProductos})`, valor: formatCurrency(total) }]}
+              total={total}
+              textoBoton={editingRetiro ? 'Guardar cambios' : 'Registrar retiro'}
+              guardando={saving}
+              pasos={pasosResumen}
+            />
           </div>
         </form>
       )}
